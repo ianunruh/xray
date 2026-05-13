@@ -5,11 +5,41 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"google.golang.org/protobuf/proto"
 )
 
 const maxRetries = 3
+
+// aggregateLocks provides per-aggregate mutual exclusion so that the
+// load→execute→append cycle is serialized for each aggregate ID.
+type aggregateLocks struct {
+	mu    sync.Mutex
+	locks map[string]*sync.Mutex
+}
+
+func newAggregateLocks() *aggregateLocks {
+	return &aggregateLocks{locks: make(map[string]*sync.Mutex)}
+}
+
+func (a *aggregateLocks) Lock(id string) {
+	a.mu.Lock()
+	l, ok := a.locks[id]
+	if !ok {
+		l = &sync.Mutex{}
+		a.locks[id] = l
+	}
+	a.mu.Unlock()
+	l.Lock()
+}
+
+func (a *aggregateLocks) Unlock(id string) {
+	a.mu.Lock()
+	l := a.locks[id]
+	a.mu.Unlock()
+	l.Unlock()
+}
 
 // Command represents a domain command targeting a specific aggregate.
 type Command interface {
@@ -25,6 +55,7 @@ type Handler[A Aggregate] struct {
 	log       *slog.Logger
 	snapshots SnapshotStore
 	publisher EventPublisher
+	locks     *aggregateLocks
 }
 
 // NewHandler creates a Handler for the given aggregate type.
@@ -34,6 +65,7 @@ func NewHandler[A Aggregate](store EventStore, registry *Registry, factory func(
 		registry: registry,
 		factory:  factory,
 		log:      log,
+		locks:    newAggregateLocks(),
 	}
 }
 
@@ -74,6 +106,9 @@ func (h *Handler[A]) Load(ctx context.Context, aggregateID string) (A, error) {
 // retried up to maxRetries times.
 func (h *Handler[A]) Handle(ctx context.Context, cmd Command, execute func(A) ([]Event, error)) error {
 	aggregateID := cmd.AggregateID()
+
+	h.locks.Lock(aggregateID)
+	defer h.locks.Unlock(aggregateID)
 
 	for attempt := range maxRetries {
 		if attempt > 0 {
