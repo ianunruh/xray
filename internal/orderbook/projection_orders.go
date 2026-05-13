@@ -96,6 +96,15 @@ func (p *OrderProjection) applyOrderCancelled(data *orderbookv1.OrderCancelled) 
 	summary.Status = orderbookv1.OrderStatus_ORDER_STATUS_CANCELLED
 }
 
+// GetOrder returns a single order by symbol and order ID.
+func (p *OrderProjection) GetOrder(symbol, orderID string) (*orderbookv1.OrderSummary, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	summary, ok := p.orders[symbol][orderID]
+	return summary, ok
+}
+
 // ListOrders returns all orders for the given symbol.
 func (p *OrderProjection) ListOrders(symbol string) []*orderbookv1.OrderSummary {
 	p.mu.RLock()

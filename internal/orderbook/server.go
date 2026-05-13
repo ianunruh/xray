@@ -141,28 +141,22 @@ func (s *Server) GetMarketDepth(ctx context.Context, req *connect.Request[orderb
 }
 
 func (s *Server) GetOrder(ctx context.Context, req *connect.Request[orderbookv1.GetOrderRequest]) (*connect.Response[orderbookv1.GetOrderResponse], error) {
-	book, err := s.replayAggregate(ctx, req.Msg.Symbol)
-	if err != nil {
-		s.log.Error("GetOrder failed", "symbol", req.Msg.Symbol, "order_id", req.Msg.OrderId, "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-
-	order, ok := book.Orders[req.Msg.OrderId]
+	order, ok := s.orders.GetOrder(req.Msg.Symbol, req.Msg.OrderId)
 	if !ok {
 		s.log.Warn("GetOrder not found", "symbol", req.Msg.Symbol, "order_id", req.Msg.OrderId)
 		return nil, connect.NewError(connect.CodeNotFound, ErrOrderNotFound)
 	}
 
 	resp := &orderbookv1.GetOrderResponse{
-		OrderId:           order.ID,
-		Symbol:            req.Msg.Symbol,
-		Side:              sideToProto(order.Side),
+		OrderId:           order.OrderId,
+		Symbol:            order.Symbol,
+		Side:              order.Side,
 		Price:             order.Price,
 		Quantity:          order.Quantity,
-		RemainingQuantity: order.RemainingQty,
-		PlacedAt:          timestamppb.New(order.PlacedAt),
-		OrderType:         orderTypeToProto(order.OrderType),
-		TimeInForce:       tifToProto(order.TimeInForce),
+		RemainingQuantity: order.RemainingQuantity,
+		PlacedAt:          order.PlacedAt,
+		OrderType:         order.OrderType,
+		TimeInForce:       order.TimeInForce,
 	}
 
 	s.log.Info("GetOrder", "symbol", req.Msg.Symbol, "order_id", req.Msg.OrderId)

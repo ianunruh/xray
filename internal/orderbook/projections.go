@@ -9,6 +9,7 @@ type TradeReader interface {
 
 // OrderReader provides read access to the order projection.
 type OrderReader interface {
+	GetOrder(symbol, orderID string) (*orderbookv1.OrderSummary, bool)
 	ListOrders(symbol string) []*orderbookv1.OrderSummary
 }
 
