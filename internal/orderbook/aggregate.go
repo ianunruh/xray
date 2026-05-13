@@ -61,21 +61,9 @@ func (ob *OrderBook) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 
 	switch order.Side {
 	case Buy:
-		ob.Bids = append(ob.Bids, order)
-		sort.SliceStable(ob.Bids, func(i, j int) bool {
-			if ob.Bids[i].Price != ob.Bids[j].Price {
-				return ob.Bids[i].Price > ob.Bids[j].Price // highest price first
-			}
-			return ob.Bids[i].PlacedAt.Before(ob.Bids[j].PlacedAt) // earliest time first
-		})
+		ob.Bids = insertSorted(ob.Bids, order, bidLess)
 	case Sell:
-		ob.Asks = append(ob.Asks, order)
-		sort.SliceStable(ob.Asks, func(i, j int) bool {
-			if ob.Asks[i].Price != ob.Asks[j].Price {
-				return ob.Asks[i].Price < ob.Asks[j].Price // lowest price first
-			}
-			return ob.Asks[i].PlacedAt.Before(ob.Asks[j].PlacedAt) // earliest time first
-		})
+		ob.Asks = insertSorted(ob.Asks, order, askLess)
 	}
 }
 
@@ -130,6 +118,36 @@ func (ob *OrderBook) removeAsk(id string) {
 			return
 		}
 	}
+}
+
+// bidLess returns true if a should appear before b in the bids slice
+// (highest price first, then earliest time).
+func bidLess(a, b *Order) bool {
+	if a.Price != b.Price {
+		return a.Price > b.Price
+	}
+	return a.PlacedAt.Before(b.PlacedAt)
+}
+
+// askLess returns true if a should appear before b in the asks slice
+// (lowest price first, then earliest time).
+func askLess(a, b *Order) bool {
+	if a.Price != b.Price {
+		return a.Price < b.Price
+	}
+	return a.PlacedAt.Before(b.PlacedAt)
+}
+
+// insertSorted inserts order into the slice at the position determined by
+// binary search using the provided less function. O(log n) search + O(n) shift.
+func insertSorted(orders []*Order, order *Order, less func(a, b *Order) bool) []*Order {
+	i := sort.Search(len(orders), func(i int) bool {
+		return !less(orders[i], order)
+	})
+	orders = append(orders, nil)
+	copy(orders[i+1:], orders[i:])
+	orders[i] = order
+	return orders
 }
 
 func sideFromProto(s orderbookv1.Side) Side {
