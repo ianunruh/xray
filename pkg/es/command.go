@@ -41,6 +41,43 @@ func (a *aggregateLocks) Unlock(id string) {
 	l.Unlock()
 }
 
+// aggregateCache stores recently-used aggregates so that sequential commands
+// targeting the same aggregate can skip the DB round-trip. The per-aggregate
+// lock in Handler guarantees single-writer access, so the cached state is
+// always consistent with the store after a successful append.
+type aggregateCache[A Aggregate] struct {
+	mu    sync.Mutex
+	items map[string]cachedEntry[A]
+}
+
+type cachedEntry[A Aggregate] struct {
+	agg             A
+	version         int
+	snapshotVersion int
+}
+
+func newAggregateCache[A Aggregate]() *aggregateCache[A] {
+	return &aggregateCache[A]{items: make(map[string]cachedEntry[A])}
+}
+
+// Take returns and removes the cached entry for the given aggregate ID.
+func (c *aggregateCache[A]) Take(id string) (cachedEntry[A], bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.items[id]
+	if ok {
+		delete(c.items, id)
+	}
+	return entry, ok
+}
+
+// Put stores an aggregate in the cache.
+func (c *aggregateCache[A]) Put(id string, agg A, version, snapshotVersion int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.items[id] = cachedEntry[A]{agg: agg, version: version, snapshotVersion: snapshotVersion}
+}
+
 // Command represents a domain command targeting a specific aggregate.
 type Command interface {
 	AggregateID() string
@@ -56,6 +93,7 @@ type Handler[A Aggregate] struct {
 	snapshots SnapshotStore
 	publisher EventPublisher
 	locks     *aggregateLocks
+	cache     *aggregateCache[A]
 }
 
 // NewHandler creates a Handler for the given aggregate type.
@@ -66,6 +104,7 @@ func NewHandler[A Aggregate](store EventStore, registry *Registry, factory func(
 		factory:  factory,
 		log:      log,
 		locks:    newAggregateLocks(),
+		cache:    newAggregateCache[A](),
 	}
 }
 
@@ -140,16 +179,29 @@ func (h *Handler[A]) Handle(ctx context.Context, cmd Command, execute func(A) ([
 func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute func(A) ([]Event, error)) ([]Event, error) {
 	h.log.Info("handling command", "aggregate_id", aggregateID)
 
-	agg := h.factory(aggregateID)
+	var agg A
+	var expectedVersion int
+	var snapshotVersion int
 
-	lr, err := h.loadAggregate(ctx, agg, aggregateID)
-	if err != nil {
-		return nil, err
+	if cached, ok := h.cache.Take(aggregateID); ok {
+		agg = cached.agg
+		expectedVersion = cached.version
+		snapshotVersion = cached.snapshotVersion
+		h.log.Info("using cached aggregate", "aggregate_id", aggregateID, "version", expectedVersion)
+	} else {
+		agg = h.factory(aggregateID)
+
+		lr, err := h.loadAggregate(ctx, agg, aggregateID)
+		if err != nil {
+			return nil, err
+		}
+		expectedVersion = lr.expectedVersion
+		snapshotVersion = lr.snapshotVersion
 	}
 
 	// Save a snapshot after loading if the aggregate has crossed the threshold.
 	// This captures consistent, committed state before execute may mutate the aggregate.
-	h.maybeSaveSnapshot(ctx, agg, aggregateID, lr.expectedVersion, lr.snapshotVersion)
+	snapshotVersion = h.maybeSaveSnapshot(ctx, agg, aggregateID, expectedVersion, snapshotVersion)
 
 	newEvents, err := execute(agg)
 	if err != nil {
@@ -158,6 +210,8 @@ func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute 
 	}
 
 	if len(newEvents) == 0 {
+		// No mutation occurred, safe to put back unchanged.
+		h.cache.Put(aggregateID, agg, expectedVersion, snapshotVersion)
 		return nil, nil
 	}
 
@@ -170,12 +224,16 @@ func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute 
 		rawNew[i] = raw
 	}
 
-	if err := h.store.Append(ctx, aggregateID, lr.expectedVersion, rawNew); err != nil {
+	if err := h.store.Append(ctx, aggregateID, expectedVersion, rawNew); err != nil {
+		// Append failed — don't cache, aggregate may be partially mutated.
 		return nil, err
 	}
 
-	newVersion := lr.expectedVersion + len(newEvents)
+	newVersion := expectedVersion + len(newEvents)
 	h.log.Info("events appended", "aggregate_id", aggregateID, "new_event_count", len(newEvents), "new_version", newVersion)
+
+	// Cache the aggregate at its new version for the next command.
+	h.cache.Put(aggregateID, agg, newVersion, snapshotVersion)
 
 	return newEvents, nil
 }
@@ -268,36 +326,38 @@ func (h *Handler[A]) deserializeSnapshot(sa Snapshotable, data []byte) (proto.Me
 
 // maybeSaveSnapshot saves a snapshot if the aggregate supports it and the
 // current version has crossed a snapshot interval threshold since the last snapshot.
-func (h *Handler[A]) maybeSaveSnapshot(ctx context.Context, agg A, aggregateID string, currentVersion, snapshotVersion int) {
+// It returns the effective snapshot version for caching: currentVersion if a
+// snapshot was saved, or the previous snapshotVersion otherwise.
+func (h *Handler[A]) maybeSaveSnapshot(ctx context.Context, agg A, aggregateID string, currentVersion, snapshotVersion int) int {
 	if h.snapshots == nil {
-		return
+		return snapshotVersion
 	}
 
 	sa, ok := Aggregate(agg).(Snapshotable)
 	if !ok {
-		return
+		return snapshotVersion
 	}
 
 	interval := sa.SnapshotInterval()
 	if interval <= 0 {
-		return
+		return snapshotVersion
 	}
 
 	// Save a snapshot if we've crossed a threshold boundary since the last snapshot.
 	if currentVersion/interval <= snapshotVersion/interval {
-		return
+		return snapshotVersion
 	}
 
 	msg, err := sa.Snapshot()
 	if err != nil {
 		h.log.Error("failed to create snapshot", "aggregate_id", aggregateID, "error", err)
-		return
+		return snapshotVersion
 	}
 
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		h.log.Error("failed to marshal snapshot", "aggregate_id", aggregateID, "error", err)
-		return
+		return snapshotVersion
 	}
 
 	snap := Snapshot{
@@ -308,8 +368,9 @@ func (h *Handler[A]) maybeSaveSnapshot(ctx context.Context, agg A, aggregateID s
 
 	if err := h.snapshots.SaveSnapshot(ctx, snap); err != nil {
 		h.log.Error("failed to save snapshot", "aggregate_id", aggregateID, "error", err)
-		return
+		return snapshotVersion
 	}
 
 	h.log.Info("snapshot saved", "aggregate_id", aggregateID, "version", currentVersion)
+	return currentVersion
 }

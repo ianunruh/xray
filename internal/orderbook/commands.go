@@ -154,15 +154,19 @@ func ExecuteCancelOrder(book *OrderBook, cmd CancelOrder) ([]es.Event, error) {
 		return nil, ErrNoRemainingQty
 	}
 
-	return []es.Event{
-		{
-			AggregateID: book.AggregateID(),
-			Type:        "OrderCancelled",
-			Timestamp:   time.Now(),
-			Data: &orderbookv1.OrderCancelled{
-				OrderId: cmd.OrderID,
-				Symbol:  cmd.Symbol,
-			},
+	evt := es.Event{
+		AggregateID: book.AggregateID(),
+		Type:        "OrderCancelled",
+		Timestamp:   time.Now(),
+		Data: &orderbookv1.OrderCancelled{
+			OrderId: cmd.OrderID,
+			Symbol:  cmd.Symbol,
 		},
-	}, nil
+	}
+
+	if err := book.Apply(evt); err != nil {
+		return nil, fmt.Errorf("apply order cancelled: %w", err)
+	}
+
+	return []es.Event{evt}, nil
 }

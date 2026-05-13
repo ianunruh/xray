@@ -88,42 +88,42 @@ func TestHandler_Integration(t *testing.T) {
 	// First command: place an order.
 	err := handler.Handle(ctx, cmd, func(agg *testAggregate) ([]es.Event, error) {
 		assert.Equal(t, 0, agg.orderCount)
-		return []es.Event{
-			{
-				AggregateID: agg.AggregateID(),
-				Type:        "OrderPlaced",
-				Timestamp:   now,
-				Data: &orderbookv1.OrderPlaced{
-					OrderId:  "order-1",
-					Symbol:   "AAPL",
-					Side:     orderbookv1.Side_SIDE_BUY,
-					Price:    1500000,
-					Quantity: 50,
-					PlacedAt: timestamppb.New(now),
-				},
+		evt := es.Event{
+			AggregateID: agg.AggregateID(),
+			Type:        "OrderPlaced",
+			Timestamp:   now,
+			Data: &orderbookv1.OrderPlaced{
+				OrderId:  "order-1",
+				Symbol:   "AAPL",
+				Side:     orderbookv1.Side_SIDE_BUY,
+				Price:    1500000,
+				Quantity: 50,
+				PlacedAt: timestamppb.New(now),
 			},
-		}, nil
+		}
+		require.NoError(t, agg.Apply(evt))
+		return []es.Event{evt}, nil
 	})
 	require.NoError(t, err)
 
 	// Second command: verify aggregate was rehydrated with the first event.
 	err = handler.Handle(ctx, cmd, func(agg *testAggregate) ([]es.Event, error) {
 		assert.Equal(t, 1, agg.orderCount)
-		return []es.Event{
-			{
-				AggregateID: agg.AggregateID(),
-				Type:        "OrderPlaced",
-				Timestamp:   now,
-				Data: &orderbookv1.OrderPlaced{
-					OrderId:  "order-2",
-					Symbol:   "AAPL",
-					Side:     orderbookv1.Side_SIDE_SELL,
-					Price:    1510000,
-					Quantity: 25,
-					PlacedAt: timestamppb.New(now),
-				},
+		evt := es.Event{
+			AggregateID: agg.AggregateID(),
+			Type:        "OrderPlaced",
+			Timestamp:   now,
+			Data: &orderbookv1.OrderPlaced{
+				OrderId:  "order-2",
+				Symbol:   "AAPL",
+				Side:     orderbookv1.Side_SIDE_SELL,
+				Price:    1510000,
+				Quantity: 25,
+				PlacedAt: timestamppb.New(now),
 			},
-		}, nil
+		}
+		require.NoError(t, agg.Apply(evt))
+		return []es.Event{evt}, nil
 	})
 	require.NoError(t, err)
 
@@ -178,7 +178,9 @@ func TestHandler_WithSnapshots(t *testing.T) {
 	// crossing the threshold.
 	for i := 1; i <= 3; i++ {
 		err := handler.Handle(ctx, cmd, func(agg *snapshotAggregate) ([]es.Event, error) {
-			return []es.Event{makeEvent(fmt.Sprintf("order-%d", i))}, nil
+			evt := makeEvent(fmt.Sprintf("order-%d", i))
+			require.NoError(t, agg.Apply(evt))
+			return []es.Event{evt}, nil
 		})
 		require.NoError(t, err)
 	}
@@ -188,10 +190,12 @@ func TestHandler_WithSnapshots(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, snap, "snapshot is saved lazily on next load")
 
-	// 4th handle: loads 3 events, which crosses the threshold → saves snapshot at version 3.
+	// 4th handle: sees version 3 (from cache), which crosses the threshold → saves snapshot.
 	err = handler.Handle(ctx, cmd, func(agg *snapshotAggregate) ([]es.Event, error) {
 		assert.Equal(t, 3, agg.orderCount, "loaded from 3 events")
-		return []es.Event{makeEvent("order-4")}, nil
+		evt := makeEvent("order-4")
+		require.NoError(t, agg.Apply(evt))
+		return []es.Event{evt}, nil
 	})
 	require.NoError(t, err)
 
@@ -206,19 +210,35 @@ func TestHandler_WithSnapshots(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, raw, 4)
 
-	// 5th handle: restores from snapshot(3) + replays event 4.
+	// 5th handle: uses cached aggregate (version 4, orderCount 4).
 	err = handler.Handle(ctx, cmd, func(agg *snapshotAggregate) ([]es.Event, error) {
-		assert.Equal(t, 4, agg.orderCount, "snapshot(3) + 1 replayed event")
+		assert.Equal(t, 4, agg.orderCount, "cached aggregate with 4 events applied")
 		return nil, nil
 	})
 	require.NoError(t, err)
 }
 
+// loadCountingStore wraps a Store and counts Load calls.
+type loadCountingStore struct {
+	*memstore.Store
+	loads   int
+	appends int
+}
+
+func (s *loadCountingStore) Load(ctx context.Context, aggregateID string) ([]es.RawEvent, error) {
+	s.loads++
+	return s.Store.Load(ctx, aggregateID)
+}
+
+func (s *loadCountingStore) LoadFrom(ctx context.Context, aggregateID string, fromVersion int) ([]es.RawEvent, error) {
+	s.loads++
+	return s.Store.LoadFrom(ctx, aggregateID, fromVersion)
+}
+
 // conflictOnceStore wraps a Store and returns ErrOptimisticConcurrency on the
 // first Append call, then delegates to the real store.
 type conflictOnceStore struct {
-	*memstore.Store
-	appends int
+	loadCountingStore
 }
 
 func (s *conflictOnceStore) Append(ctx context.Context, aggregateID string, expectedVersion int, events []es.RawEvent) error {
@@ -231,7 +251,7 @@ func (s *conflictOnceStore) Append(ctx context.Context, aggregateID string, expe
 
 func TestHandler_RetryOnConflict(t *testing.T) {
 	registry := newTestRegistry()
-	store := &conflictOnceStore{Store: memstore.New()}
+	store := &conflictOnceStore{loadCountingStore: loadCountingStore{Store: memstore.New()}}
 
 	handler := es.NewHandler(store, registry, func(id string) *testAggregate {
 		a := &testAggregate{}
@@ -244,31 +264,98 @@ func TestHandler_RetryOnConflict(t *testing.T) {
 	cmd := testCommand{aggregateID: "orderbook:AAPL"}
 
 	err := handler.Handle(ctx, cmd, func(agg *testAggregate) ([]es.Event, error) {
-		return []es.Event{
-			{
-				AggregateID: agg.AggregateID(),
-				Type:        "OrderPlaced",
-				Timestamp:   now,
-				Data: &orderbookv1.OrderPlaced{
-					OrderId:  "order-1",
-					Symbol:   "AAPL",
-					Side:     orderbookv1.Side_SIDE_BUY,
-					Price:    1500000,
-					Quantity: 50,
-					PlacedAt: timestamppb.New(now),
-				},
+		evt := es.Event{
+			AggregateID: agg.AggregateID(),
+			Type:        "OrderPlaced",
+			Timestamp:   now,
+			Data: &orderbookv1.OrderPlaced{
+				OrderId:  "order-1",
+				Symbol:   "AAPL",
+				Side:     orderbookv1.Side_SIDE_BUY,
+				Price:    1500000,
+				Quantity: 50,
+				PlacedAt: timestamppb.New(now),
 			},
-		}, nil
+		}
+		require.NoError(t, agg.Apply(evt))
+		return []es.Event{evt}, nil
 	})
 	require.NoError(t, err)
 
 	// First append conflicted, second succeeded.
 	assert.Equal(t, 2, store.appends)
 
+	// Cache was discarded after conflict, so aggregate was reloaded from DB.
+	assert.Equal(t, 2, store.loads)
+
 	// Verify the event was persisted.
 	raw, err := store.Load(ctx, "orderbook:AAPL")
 	require.NoError(t, err)
 	assert.Len(t, raw, 1)
+}
+
+func TestHandler_CacheReuse(t *testing.T) {
+	registry := newTestRegistry()
+	store := &loadCountingStore{Store: memstore.New()}
+
+	handler := es.NewHandler(store, registry, func(id string) *testAggregate {
+		a := &testAggregate{}
+		a.SetID(id)
+		return a
+	}, slog.Default())
+
+	ctx := context.Background()
+	now := time.Now()
+	cmd := testCommand{aggregateID: "orderbook:AAPL"}
+
+	// First command: loads from DB.
+	err := handler.Handle(ctx, cmd, func(agg *testAggregate) ([]es.Event, error) {
+		assert.Equal(t, 0, agg.orderCount)
+		evt := es.Event{
+			AggregateID: agg.AggregateID(),
+			Type:        "OrderPlaced",
+			Timestamp:   now,
+			Data: &orderbookv1.OrderPlaced{
+				OrderId:  "order-1",
+				Symbol:   "AAPL",
+				Side:     orderbookv1.Side_SIDE_BUY,
+				Price:    1500000,
+				Quantity: 50,
+				PlacedAt: timestamppb.New(now),
+			},
+		}
+		require.NoError(t, agg.Apply(evt))
+		return []es.Event{evt}, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, store.loads, "first handle should load from DB")
+
+	// Second command: uses cached aggregate, no DB load.
+	err = handler.Handle(ctx, cmd, func(agg *testAggregate) ([]es.Event, error) {
+		assert.Equal(t, 1, agg.orderCount, "cached aggregate should have first event applied")
+		evt := es.Event{
+			AggregateID: agg.AggregateID(),
+			Type:        "OrderPlaced",
+			Timestamp:   now,
+			Data: &orderbookv1.OrderPlaced{
+				OrderId:  "order-2",
+				Symbol:   "AAPL",
+				Side:     orderbookv1.Side_SIDE_SELL,
+				Price:    1510000,
+				Quantity: 25,
+				PlacedAt: timestamppb.New(now),
+			},
+		}
+		require.NoError(t, agg.Apply(evt))
+		return []es.Event{evt}, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, store.loads, "second handle should use cache, not load from DB")
+
+	// Verify both events were persisted.
+	raw, err := store.Load(ctx, "orderbook:AAPL")
+	require.NoError(t, err)
+	assert.Len(t, raw, 2)
 }
 
 type recordingPublisher struct {
@@ -296,21 +383,21 @@ func TestHandler_WithPublisher(t *testing.T) {
 	cmd := testCommand{aggregateID: "orderbook:AAPL"}
 
 	err := handler.Handle(ctx, cmd, func(agg *testAggregate) ([]es.Event, error) {
-		return []es.Event{
-			{
-				AggregateID: agg.AggregateID(),
-				Type:        "OrderPlaced",
-				Timestamp:   now,
-				Data: &orderbookv1.OrderPlaced{
-					OrderId:  "order-1",
-					Symbol:   "AAPL",
-					Side:     orderbookv1.Side_SIDE_BUY,
-					Price:    1500000,
-					Quantity: 50,
-					PlacedAt: timestamppb.New(now),
-				},
+		evt := es.Event{
+			AggregateID: agg.AggregateID(),
+			Type:        "OrderPlaced",
+			Timestamp:   now,
+			Data: &orderbookv1.OrderPlaced{
+				OrderId:  "order-1",
+				Symbol:   "AAPL",
+				Side:     orderbookv1.Side_SIDE_BUY,
+				Price:    1500000,
+				Quantity: 50,
+				PlacedAt: timestamppb.New(now),
 			},
-		}, nil
+		}
+		require.NoError(t, agg.Apply(evt))
+		return []es.Event{evt}, nil
 	})
 	require.NoError(t, err)
 

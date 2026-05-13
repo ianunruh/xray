@@ -30,9 +30,6 @@ const (
 		WHERE aggregate_id = $1 AND version >= $2
 		ORDER BY version`
 
-	queryInsert = `INSERT INTO events (aggregate_id, type, version, data, timestamp)
-		VALUES ($1, $2, $3, $4, $5)`
-
 	queryLoadAll = `SELECT id, aggregate_id, type, version, data, timestamp
 		FROM events
 		ORDER BY aggregate_id, version`
@@ -97,29 +94,29 @@ func (s *Store) queryEvents(ctx context.Context, query string, args ...any) ([]e
 	return events, rows.Err()
 }
 
-// Append inserts new events in a transaction. A unique constraint violation
-// on (aggregate_id, version) is mapped to ErrOptimisticConcurrency.
+// Append inserts new events in a single batch INSERT. A unique constraint
+// violation on (aggregate_id, version) is mapped to ErrOptimisticConcurrency.
 func (s *Store) Append(ctx context.Context, aggregateID string, expectedVersion int, events []es.RawEvent) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
+	rows := make([][]any, len(events))
 	for i, evt := range events {
 		version := expectedVersion + i + 1
-		_, err := tx.Exec(ctx, queryInsert,
-			aggregateID, evt.Type, version, evt.Data, evt.Timestamp)
-		if err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-				return es.ErrOptimisticConcurrency
-			}
-			return fmt.Errorf("insert event: %w", err)
-		}
+		rows[i] = []any{aggregateID, evt.Type, version, evt.Data, evt.Timestamp}
 	}
 
-	return tx.Commit(ctx)
+	_, err := s.pool.CopyFrom(ctx,
+		pgx.Identifier{"events"},
+		[]string{"aggregate_id", "type", "version", "data", "timestamp"},
+		pgx.CopyFromRows(rows),
+	)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return es.ErrOptimisticConcurrency
+		}
+		return fmt.Errorf("insert events: %w", err)
+	}
+
+	return nil
 }
 
 // LoadSnapshot returns the most recent snapshot for the aggregate, or nil if none exists.
