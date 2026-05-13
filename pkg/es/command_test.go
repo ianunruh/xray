@@ -2,6 +2,7 @@ package es_test
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -43,7 +44,7 @@ func TestHandler_Integration(t *testing.T) {
 		a := &testAggregate{}
 		a.SetID(id)
 		return a
-	})
+	}, slog.Default())
 
 	ctx := context.Background()
 	now := time.Now()

@@ -2,6 +2,7 @@ package orderbook_test
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,7 +29,7 @@ func TestPlaceOrder_ThroughHandler(t *testing.T) {
 
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
-	})
+	}, slog.Default())
 
 	ctx := context.Background()
 
@@ -99,7 +100,7 @@ func TestCancelOrder_ThroughHandler(t *testing.T) {
 
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
-	})
+	}, slog.Default())
 
 	ctx := context.Background()
 

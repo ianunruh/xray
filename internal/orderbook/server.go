@@ -3,6 +3,7 @@ package orderbook
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -19,14 +20,16 @@ type Server struct {
 	handler  *es.Handler[*OrderBook]
 	store    es.EventStore
 	registry *es.Registry
+	log      *slog.Logger
 }
 
 // NewServer creates a new Server with the given dependencies.
-func NewServer(handler *es.Handler[*OrderBook], store es.EventStore, registry *es.Registry) *Server {
+func NewServer(handler *es.Handler[*OrderBook], store es.EventStore, registry *es.Registry, log *slog.Logger) *Server {
 	return &Server{
 		handler:  handler,
 		store:    store,
 		registry: registry,
+		log:      log,
 	}
 }
 
@@ -50,6 +53,7 @@ func (s *Server) PlaceOrder(ctx context.Context, req *connect.Request[orderbookv
 		return events, nil
 	})
 	if err != nil {
+		s.log.Error("PlaceOrder failed", "symbol", msg.Symbol, "error", err)
 		return nil, mapError(err)
 	}
 
@@ -62,6 +66,8 @@ func (s *Server) PlaceOrder(ctx context.Context, req *connect.Request[orderbookv
 			resp.Trades = append(resp.Trades, data)
 		}
 	}
+
+	s.log.Info("PlaceOrder", "symbol", msg.Symbol, "side", msg.Side, "price", msg.Price, "quantity", msg.Quantity, "order_id", resp.OrderId, "trade_count", len(resp.Trades))
 
 	return connect.NewResponse(resp), nil
 }
@@ -78,8 +84,11 @@ func (s *Server) CancelOrder(ctx context.Context, req *connect.Request[orderbook
 		return ExecuteCancelOrder(book, cmd)
 	})
 	if err != nil {
+		s.log.Error("CancelOrder failed", "symbol", msg.Symbol, "order_id", msg.OrderId, "error", err)
 		return nil, mapError(err)
 	}
+
+	s.log.Info("CancelOrder", "symbol", msg.Symbol, "order_id", msg.OrderId)
 
 	return connect.NewResponse(&orderbookv1.CancelOrderResponse{}), nil
 }
@@ -87,6 +96,7 @@ func (s *Server) CancelOrder(ctx context.Context, req *connect.Request[orderbook
 func (s *Server) GetOrderBook(ctx context.Context, req *connect.Request[orderbookv1.GetOrderBookRequest]) (*connect.Response[orderbookv1.GetOrderBookResponse], error) {
 	book, err := s.replayAggregate(ctx, req.Msg.Symbol)
 	if err != nil {
+		s.log.Error("GetOrderBook failed", "symbol", req.Msg.Symbol, "error", err)
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
@@ -101,17 +111,21 @@ func (s *Server) GetOrderBook(ctx context.Context, req *connect.Request[orderboo
 		resp.Asks = append(resp.Asks, orderToLevel(ask))
 	}
 
+	s.log.Info("GetOrderBook", "symbol", req.Msg.Symbol, "bid_count", len(resp.Bids), "ask_count", len(resp.Asks))
+
 	return connect.NewResponse(resp), nil
 }
 
 func (s *Server) GetOrder(ctx context.Context, req *connect.Request[orderbookv1.GetOrderRequest]) (*connect.Response[orderbookv1.GetOrderResponse], error) {
 	book, err := s.replayAggregate(ctx, req.Msg.Symbol)
 	if err != nil {
+		s.log.Error("GetOrder failed", "symbol", req.Msg.Symbol, "order_id", req.Msg.OrderId, "error", err)
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
 	order, ok := book.Orders[req.Msg.OrderId]
 	if !ok {
+		s.log.Error("GetOrder not found", "symbol", req.Msg.Symbol, "order_id", req.Msg.OrderId)
 		return nil, connect.NewError(connect.CodeNotFound, ErrOrderNotFound)
 	}
 
@@ -124,6 +138,8 @@ func (s *Server) GetOrder(ctx context.Context, req *connect.Request[orderbookv1.
 		RemainingQuantity: order.RemainingQty,
 		PlacedAt:          timestamppb.New(order.PlacedAt),
 	}
+
+	s.log.Info("GetOrder", "symbol", req.Msg.Symbol, "order_id", req.Msg.OrderId)
 
 	return connect.NewResponse(resp), nil
 }

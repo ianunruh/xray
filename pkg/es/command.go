@@ -3,6 +3,7 @@ package es
 import (
 	"context"
 	"fmt"
+	"log/slog"
 )
 
 // Command represents a domain command targeting a specific aggregate.
@@ -16,14 +17,16 @@ type Handler[A Aggregate] struct {
 	store    EventStore
 	registry *Registry
 	factory  func(id string) A
+	log      *slog.Logger
 }
 
 // NewHandler creates a Handler for the given aggregate type.
-func NewHandler[A Aggregate](store EventStore, registry *Registry, factory func(id string) A) *Handler[A] {
+func NewHandler[A Aggregate](store EventStore, registry *Registry, factory func(id string) A, log *slog.Logger) *Handler[A] {
 	return &Handler[A]{
 		store:    store,
 		registry: registry,
 		factory:  factory,
+		log:      log,
 	}
 }
 
@@ -33,8 +36,11 @@ func NewHandler[A Aggregate](store EventStore, registry *Registry, factory func(
 func (h *Handler[A]) Handle(ctx context.Context, cmd Command, execute func(A) ([]Event, error)) error {
 	aggregateID := cmd.AggregateID()
 
+	h.log.Info("handling command", "aggregate_id", aggregateID)
+
 	rawEvents, err := h.store.Load(ctx, aggregateID)
 	if err != nil {
+		h.log.Error("failed to load events", "aggregate_id", aggregateID, "error", err)
 		return fmt.Errorf("load events: %w", err)
 	}
 
@@ -52,6 +58,7 @@ func (h *Handler[A]) Handle(ctx context.Context, cmd Command, execute func(A) ([
 
 	newEvents, err := execute(agg)
 	if err != nil {
+		h.log.Error("command execution failed", "aggregate_id", aggregateID, "error", err)
 		return fmt.Errorf("execute command: %w", err)
 	}
 
@@ -70,8 +77,11 @@ func (h *Handler[A]) Handle(ctx context.Context, cmd Command, execute func(A) ([
 
 	expectedVersion := len(rawEvents)
 	if err := h.store.Append(ctx, aggregateID, expectedVersion, rawNew); err != nil {
+		h.log.Error("failed to append events", "aggregate_id", aggregateID, "expected_version", expectedVersion, "error", err)
 		return fmt.Errorf("append events: %w", err)
 	}
+
+	h.log.Info("events appended", "aggregate_id", aggregateID, "new_event_count", len(newEvents), "new_version", expectedVersion+len(newEvents))
 
 	return nil
 }

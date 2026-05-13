@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -27,17 +27,21 @@ func main() {
 		listenAddr = ":8080"
 	}
 
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
 	ctx := context.Background()
 
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
-		log.Fatalf("connect to database: %v", err)
+		log.Error("failed to connect to database", "error", err)
+		os.Exit(1)
 	}
 	defer pool.Close()
 
 	store := pgstore.New(pool)
 	if err := store.Migrate(ctx); err != nil {
-		log.Fatalf("migrate: %v", err)
+		log.Error("failed to migrate", "error", err)
+		os.Exit(1)
 	}
 
 	registry := es.NewRegistry()
@@ -47,9 +51,9 @@ func main() {
 
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
-	})
+	}, log)
 
-	srv := orderbook.NewServer(handler, store, registry)
+	srv := orderbook.NewServer(handler, store, registry, log)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
@@ -64,8 +68,9 @@ func main() {
 	httpServer.Protocols.SetHTTP2(true)
 	httpServer.Protocols.SetUnencryptedHTTP2(true)
 
-	log.Printf("listening on %s", listenAddr)
+	log.Info("listening", "addr", listenAddr)
 	if err := httpServer.ListenAndServe(); err != nil {
-		log.Fatalf("listen: %v", err)
+		log.Error("listen failed", "error", err)
+		os.Exit(1)
 	}
 }

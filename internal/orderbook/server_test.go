@@ -2,6 +2,7 @@ package orderbook_test
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,9 +26,9 @@ func newTestServer(t *testing.T) (orderbookv1connect.OrderBookServiceClient, *ht
 	store := memstore.New()
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
-	})
+	}, slog.Default())
 
-	srv := orderbook.NewServer(handler, store, registry)
+	srv := orderbook.NewServer(handler, store, registry, slog.Default())
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
