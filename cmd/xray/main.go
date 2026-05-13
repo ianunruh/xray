@@ -31,7 +31,14 @@ func main() {
 
 	ctx := context.Background()
 
-	pool, err := pgxpool.New(ctx, dsn)
+	poolConfig, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		log.Error("failed to parse database config", "error", err)
+		os.Exit(1)
+	}
+	poolConfig.ConnConfig.Tracer = pgstore.NewQueryTracer(log)
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		log.Error("failed to connect to database", "error", err)
 		os.Exit(1)
