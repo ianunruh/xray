@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package orderbook.v1;
+
+option go_package = "github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1";
+
+import "google/protobuf/timestamp.proto";
+import "orderbook/v1/events.proto";
+
+service OrderBookService {
+  rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+  rpc GetOrderBook(GetOrderBookRequest) returns (GetOrderBookResponse);
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+}
+
+message PlaceOrderRequest {
+  string symbol = 1;
+  Side side = 2;
+  int64 price = 3;
+  int64 quantity = 4;
+}
+
+message PlaceOrderResponse {
+  string order_id = 1;
+  repeated TradeExecuted trades = 2;
+}
+
+message CancelOrderRequest {
+  string symbol = 1;
+  string order_id = 2;
+}
+
+message CancelOrderResponse {}
+
+message GetOrderBookRequest {
+  string symbol = 1;
+}
+
+message GetOrderBookResponse {
+  string symbol = 1;
+  repeated OrderBookLevel bids = 2;
+  repeated OrderBookLevel asks = 3;
+}
+
+message OrderBookLevel {
+  string order_id = 1;
+  int64 price = 2;
+  int64 quantity = 3;
+  int64 remaining_quantity = 4;
+  google.protobuf.Timestamp placed_at = 5;
+}
+
+message GetOrderRequest {
+  string symbol = 1;
+  string order_id = 2;
+}
+
+message GetOrderResponse {
+  string order_id = 1;
+  string symbol = 2;
+  Side side = 3;
+  int64 price = 4;
+  int64 quantity = 5;
+  int64 remaining_quantity = 6;
+  google.protobuf.Timestamp placed_at = 7;
+}

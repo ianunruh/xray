@@ -1,6 +1,7 @@
 package orderbook
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,6 +10,13 @@ import (
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/pkg/es"
+)
+
+var (
+	ErrInvalidPrice    = errors.New("price must be positive")
+	ErrInvalidQuantity = errors.New("quantity must be positive")
+	ErrOrderNotFound   = errors.New("order not found")
+	ErrNoRemainingQty  = errors.New("order has no remaining quantity")
 )
 
 // PlaceOrder is a command to place a new limit order on the book.
@@ -36,10 +44,10 @@ func (c CancelOrder) AggregateID() string {
 // ExecutePlaceOrder produces events for placing and matching a new order.
 func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 	if cmd.Quantity <= 0 {
-		return nil, fmt.Errorf("quantity must be positive")
+		return nil, ErrInvalidQuantity
 	}
 	if cmd.Price <= 0 {
-		return nil, fmt.Errorf("price must be positive")
+		return nil, ErrInvalidPrice
 	}
 
 	now := time.Now()
@@ -88,10 +96,10 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 func ExecuteCancelOrder(book *OrderBook, cmd CancelOrder) ([]es.Event, error) {
 	order, ok := book.Orders[cmd.OrderID]
 	if !ok {
-		return nil, fmt.Errorf("order %s not found", cmd.OrderID)
+		return nil, ErrOrderNotFound
 	}
 	if order.RemainingQty <= 0 {
-		return nil, fmt.Errorf("order %s has no remaining quantity", cmd.OrderID)
+		return nil, ErrNoRemainingQty
 	}
 
 	return []es.Event{
