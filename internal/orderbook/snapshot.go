@@ -67,5 +67,5 @@ func (ob *OrderBook) RestoreSnapshot(msg proto.Message) error {
 
 // SnapshotInterval returns the number of events between automatic snapshots.
 func (ob *OrderBook) SnapshotInterval() int {
-	return 100
+	return 5000
 }

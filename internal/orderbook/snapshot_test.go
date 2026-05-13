@@ -128,5 +128,5 @@ func TestOrderBook_Snapshot_RoundTrip(t *testing.T) {
 
 func TestOrderBook_SnapshotInterval(t *testing.T) {
 	book := orderbook.NewOrderBook("orderbook:AAPL")
-	assert.Equal(t, 100, book.SnapshotInterval())
+	assert.Equal(t, 5000, book.SnapshotInterval())
 }
