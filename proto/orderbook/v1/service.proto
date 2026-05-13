@@ -19,6 +19,8 @@ message PlaceOrderRequest {
   Side side = 2;
   int64 price = 3;
   int64 quantity = 4;
+  OrderType order_type = 5;
+  TimeInForce time_in_force = 6;
 }
 
 message PlaceOrderResponse {
@@ -64,4 +66,6 @@ message GetOrderResponse {
   int64 quantity = 5;
   int64 remaining_quantity = 6;
   google.protobuf.Timestamp placed_at = 7;
+  OrderType order_type = 8;
+  TimeInForce time_in_force = 9;
 }

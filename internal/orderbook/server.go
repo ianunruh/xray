@@ -32,11 +32,19 @@ func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger) *Server {
 func (s *Server) PlaceOrder(ctx context.Context, req *connect.Request[orderbookv1.PlaceOrderRequest]) (*connect.Response[orderbookv1.PlaceOrderResponse], error) {
 	msg := req.Msg
 
+	// Default market orders with unspecified TIF to IOC.
+	tif := tifFromProto(msg.TimeInForce)
+	if orderTypeFromProto(msg.OrderType) == Market && msg.TimeInForce == orderbookv1.TimeInForce_TIME_IN_FORCE_UNSPECIFIED {
+		tif = IOC
+	}
+
 	cmd := PlaceOrder{
-		Symbol:   msg.Symbol,
-		Side:     sideFromProto(msg.Side),
-		Price:    msg.Price,
-		Quantity: msg.Quantity,
+		Symbol:      msg.Symbol,
+		Side:        sideFromProto(msg.Side),
+		Price:       msg.Price,
+		Quantity:    msg.Quantity,
+		OrderType:   orderTypeFromProto(msg.OrderType),
+		TimeInForce: tif,
 	}
 
 	var produced []es.Event
@@ -133,6 +141,8 @@ func (s *Server) GetOrder(ctx context.Context, req *connect.Request[orderbookv1.
 		Quantity:          order.Quantity,
 		RemainingQuantity: order.RemainingQty,
 		PlacedAt:          timestamppb.New(order.PlacedAt),
+		OrderType:         orderTypeToProto(order.OrderType),
+		TimeInForce:       tifToProto(order.TimeInForce),
 	}
 
 	s.log.Info("GetOrder", "symbol", req.Msg.Symbol, "order_id", req.Msg.OrderId)
@@ -168,8 +178,10 @@ func mapError(err error) *connect.Error {
 	}
 
 	switch unwrapped {
-	case ErrInvalidPrice, ErrInvalidQuantity:
+	case ErrInvalidPrice, ErrInvalidQuantity, ErrMarketGTC, ErrMarketRequiresZeroPrice:
 		return connect.NewError(connect.CodeInvalidArgument, unwrapped)
+	case ErrInsufficientLiquidity:
+		return connect.NewError(connect.CodeFailedPrecondition, unwrapped)
 	case ErrOrderNotFound, ErrNoRemainingQty:
 		return connect.NewError(connect.CodeNotFound, unwrapped)
 	case es.ErrOptimisticConcurrency:

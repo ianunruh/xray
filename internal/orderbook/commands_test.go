@@ -183,3 +183,191 @@ func TestPlaceOrder_InvalidInput(t *testing.T) {
 	})
 	assert.Error(t, err)
 }
+
+func TestPlaceOrder_MarketGTC_Rejected(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        orderbook.Buy,
+		Price:       0,
+		Quantity:    100,
+		OrderType:   orderbook.Market,
+		TimeInForce: orderbook.GTC,
+	})
+	assert.ErrorIs(t, err, orderbook.ErrMarketGTC)
+}
+
+func TestPlaceOrder_MarketWithPrice_Rejected(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        orderbook.Buy,
+		Price:       1500000,
+		Quantity:    100,
+		OrderType:   orderbook.Market,
+		TimeInForce: orderbook.IOC,
+	})
+	assert.ErrorIs(t, err, orderbook.ErrMarketRequiresZeroPrice)
+}
+
+func TestPlaceOrder_IOC_PartialFillCancelsRemainder(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+
+	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
+		return orderbook.NewOrderBook(id)
+	}, slog.Default())
+
+	ctx := context.Background()
+
+	// Place a sell order for 50 shares.
+	err := handler.Handle(ctx, orderbook.PlaceOrder{
+		Symbol:   "AAPL",
+		Side:     orderbook.Sell,
+		Price:    1500000,
+		Quantity: 50,
+	}, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+			Symbol:   "AAPL",
+			Side:     orderbook.Sell,
+			Price:    1500000,
+			Quantity: 50,
+		})
+	})
+	require.NoError(t, err)
+
+	// Place an IOC buy for 100. Only 50 can fill; remainder should be cancelled.
+	var produced []es.Event
+	err = handler.Handle(ctx, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        orderbook.Buy,
+		Price:       1500000,
+		Quantity:    100,
+		TimeInForce: orderbook.IOC,
+	}, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		events, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+			Symbol:      "AAPL",
+			Side:        orderbook.Buy,
+			Price:       1500000,
+			Quantity:    100,
+			TimeInForce: orderbook.IOC,
+		})
+		produced = events
+		return events, err
+	})
+	require.NoError(t, err)
+
+	// Events: OrderPlaced, TradeExecuted, OrderCancelled
+	require.Len(t, produced, 3)
+	assert.Equal(t, "OrderPlaced", produced[0].Type)
+	assert.Equal(t, "TradeExecuted", produced[1].Type)
+	assert.Equal(t, "OrderCancelled", produced[2].Type)
+
+	trade := produced[1].Data.(*orderbookv1.TradeExecuted)
+	assert.Equal(t, int64(50), trade.Quantity)
+}
+
+func TestPlaceOrder_FOK_InsufficientLiquidity(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+
+	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
+		return orderbook.NewOrderBook(id)
+	}, slog.Default())
+
+	ctx := context.Background()
+
+	// Place a sell order for 50 shares.
+	err := handler.Handle(ctx, orderbook.PlaceOrder{
+		Symbol:   "AAPL",
+		Side:     orderbook.Sell,
+		Price:    1500000,
+		Quantity: 50,
+	}, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+			Symbol:   "AAPL",
+			Side:     orderbook.Sell,
+			Price:    1500000,
+			Quantity: 50,
+		})
+	})
+	require.NoError(t, err)
+
+	// FOK buy for 100 should be rejected — only 50 available.
+	err = handler.Handle(ctx, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        orderbook.Buy,
+		Price:       1500000,
+		Quantity:    100,
+		TimeInForce: orderbook.FOK,
+	}, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+			Symbol:      "AAPL",
+			Side:        orderbook.Buy,
+			Price:       1500000,
+			Quantity:    100,
+			TimeInForce: orderbook.FOK,
+		})
+	})
+	require.Error(t, err)
+}
+
+func TestPlaceOrder_FOK_Success(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+
+	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
+		return orderbook.NewOrderBook(id)
+	}, slog.Default())
+
+	ctx := context.Background()
+
+	// Place a sell order for 100.
+	err := handler.Handle(ctx, orderbook.PlaceOrder{
+		Symbol:   "AAPL",
+		Side:     orderbook.Sell,
+		Price:    1500000,
+		Quantity: 100,
+	}, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+			Symbol:   "AAPL",
+			Side:     orderbook.Sell,
+			Price:    1500000,
+			Quantity: 100,
+		})
+	})
+	require.NoError(t, err)
+
+	// FOK buy for 100 should succeed — exact liquidity available.
+	var produced []es.Event
+	err = handler.Handle(ctx, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        orderbook.Buy,
+		Price:       1500000,
+		Quantity:    100,
+		TimeInForce: orderbook.FOK,
+	}, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		events, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+			Symbol:      "AAPL",
+			Side:        orderbook.Buy,
+			Price:       1500000,
+			Quantity:    100,
+			TimeInForce: orderbook.FOK,
+		})
+		produced = events
+		return events, err
+	})
+	require.NoError(t, err)
+
+	// Events: OrderPlaced, TradeExecuted (no cancel since fully filled)
+	require.Len(t, produced, 2)
+	assert.Equal(t, "OrderPlaced", produced[0].Type)
+	assert.Equal(t, "TradeExecuted", produced[1].Type)
+
+	trade := produced[1].Data.(*orderbookv1.TradeExecuted)
+	assert.Equal(t, int64(100), trade.Quantity)
+}

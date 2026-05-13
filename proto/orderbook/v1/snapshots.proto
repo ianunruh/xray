@@ -19,4 +19,6 @@ message OrderSnapshot {
   int64 quantity = 4;
   int64 remaining_quantity = 5;
   google.protobuf.Timestamp placed_at = 6;
+  OrderType order_type = 7;
+  TimeInForce time_in_force = 8;
 }

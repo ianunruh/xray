@@ -82,6 +82,8 @@ type OrderSnapshot struct {
 	Quantity          int64                  `protobuf:"varint,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	RemainingQuantity int64                  `protobuf:"varint,5,opt,name=remaining_quantity,json=remainingQuantity,proto3" json:"remaining_quantity,omitempty"`
 	PlacedAt          *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=placed_at,json=placedAt,proto3" json:"placed_at,omitempty"`
+	OrderType         OrderType              `protobuf:"varint,7,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
+	TimeInForce       TimeInForce            `protobuf:"varint,8,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -158,6 +160,20 @@ func (x *OrderSnapshot) GetPlacedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *OrderSnapshot) GetOrderType() OrderType {
+	if x != nil {
+		return x.OrderType
+	}
+	return OrderType_ORDER_TYPE_UNSPECIFIED
+}
+
+func (x *OrderSnapshot) GetTimeInForce() TimeInForce {
+	if x != nil {
+		return x.TimeInForce
+	}
+	return TimeInForce_TIME_IN_FORCE_UNSPECIFIED
+}
+
 var File_orderbook_v1_snapshots_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_snapshots_proto_rawDesc = "" +
@@ -165,14 +181,17 @@ const file_orderbook_v1_snapshots_proto_rawDesc = "" +
 	"\x1corderbook/v1/snapshots.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"`\n" +
 	"\x11OrderBookSnapshot\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x123\n" +
-	"\x06orders\x18\x02 \x03(\v2\x1b.orderbook.v1.OrderSnapshotR\x06orders\"\xec\x01\n" +
+	"\x06orders\x18\x02 \x03(\v2\x1b.orderbook.v1.OrderSnapshotR\x06orders\"\xe3\x02\n" +
 	"\rOrderSnapshot\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +
 	"\x05price\x18\x03 \x01(\x03R\x05price\x12\x1a\n" +
 	"\bquantity\x18\x04 \x01(\x03R\bquantity\x12-\n" +
 	"\x12remaining_quantity\x18\x05 \x01(\x03R\x11remainingQuantity\x127\n" +
-	"\tplaced_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bplacedAtB7Z5github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1b\x06proto3"
+	"\tplaced_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bplacedAt\x126\n" +
+	"\n" +
+	"order_type\x18\a \x01(\x0e2\x17.orderbook.v1.OrderTypeR\torderType\x12=\n" +
+	"\rtime_in_force\x18\b \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForceB7Z5github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1b\x06proto3"
 
 var (
 	file_orderbook_v1_snapshots_proto_rawDescOnce sync.Once
@@ -192,16 +211,20 @@ var file_orderbook_v1_snapshots_proto_goTypes = []any{
 	(*OrderSnapshot)(nil),         // 1: orderbook.v1.OrderSnapshot
 	(Side)(0),                     // 2: orderbook.v1.Side
 	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(OrderType)(0),                // 4: orderbook.v1.OrderType
+	(TimeInForce)(0),              // 5: orderbook.v1.TimeInForce
 }
 var file_orderbook_v1_snapshots_proto_depIdxs = []int32{
 	1, // 0: orderbook.v1.OrderBookSnapshot.orders:type_name -> orderbook.v1.OrderSnapshot
 	2, // 1: orderbook.v1.OrderSnapshot.side:type_name -> orderbook.v1.Side
 	3, // 2: orderbook.v1.OrderSnapshot.placed_at:type_name -> google.protobuf.Timestamp
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	4, // 3: orderbook.v1.OrderSnapshot.order_type:type_name -> orderbook.v1.OrderType
+	5, // 4: orderbook.v1.OrderSnapshot.time_in_force:type_name -> orderbook.v1.TimeInForce
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_orderbook_v1_snapshots_proto_init() }

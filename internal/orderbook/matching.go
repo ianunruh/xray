@@ -32,7 +32,7 @@ func matchBuy(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.Tr
 		if incoming.RemainingQty <= 0 {
 			break
 		}
-		if ask.Price > incoming.Price {
+		if incoming.OrderType != Market && ask.Price > incoming.Price {
 			break // asks are sorted lowest first; no more matches possible
 		}
 
@@ -61,7 +61,7 @@ func matchSell(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.T
 		if incoming.RemainingQty <= 0 {
 			break
 		}
-		if bid.Price < incoming.Price {
+		if incoming.OrderType != Market && bid.Price < incoming.Price {
 			break // bids are sorted highest first; no more matches possible
 		}
 
@@ -81,4 +81,30 @@ func matchSell(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.T
 	}
 
 	return trades
+}
+
+// AvailableQty returns the total resting quantity available on the given side
+// at or better than the given price. For market orders (isMarket=true), all
+// resting quantity on the side is counted regardless of price.
+func AvailableQty(book *OrderBook, side Side, price int64, isMarket bool) int64 {
+	var total int64
+	switch side {
+	case Buy:
+		// Buying: count asks at or below the price
+		for _, ask := range book.Asks {
+			if !isMarket && ask.Price > price {
+				break
+			}
+			total += ask.RemainingQty
+		}
+	case Sell:
+		// Selling: count bids at or above the price
+		for _, bid := range book.Bids {
+			if !isMarket && bid.Price < price {
+				break
+			}
+			total += bid.RemainingQty
+		}
+	}
+	return total
 }

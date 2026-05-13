@@ -10,7 +10,24 @@ const (
 	Sell Side = 2
 )
 
-// Order represents a limit order on the book.
+// OrderType distinguishes limit from market orders.
+type OrderType int
+
+const (
+	Limit  OrderType = 0
+	Market OrderType = 1
+)
+
+// TimeInForce controls how long an order remains active.
+type TimeInForce int
+
+const (
+	GTC TimeInForce = 0
+	IOC TimeInForce = 1
+	FOK TimeInForce = 2
+)
+
+// Order represents an order on the book.
 type Order struct {
 	ID           string
 	Side         Side
@@ -18,4 +35,6 @@ type Order struct {
 	Quantity     int64
 	RemainingQty int64
 	PlacedAt     time.Time
+	OrderType    OrderType
+	TimeInForce  TimeInForce
 }

@@ -71,6 +71,107 @@ func (Side) EnumDescriptor() ([]byte, []int) {
 	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{0}
 }
 
+type OrderType int32
+
+const (
+	OrderType_ORDER_TYPE_UNSPECIFIED OrderType = 0
+	OrderType_ORDER_TYPE_LIMIT       OrderType = 1
+	OrderType_ORDER_TYPE_MARKET      OrderType = 2
+)
+
+// Enum value maps for OrderType.
+var (
+	OrderType_name = map[int32]string{
+		0: "ORDER_TYPE_UNSPECIFIED",
+		1: "ORDER_TYPE_LIMIT",
+		2: "ORDER_TYPE_MARKET",
+	}
+	OrderType_value = map[string]int32{
+		"ORDER_TYPE_UNSPECIFIED": 0,
+		"ORDER_TYPE_LIMIT":       1,
+		"ORDER_TYPE_MARKET":      2,
+	}
+)
+
+func (x OrderType) Enum() *OrderType {
+	p := new(OrderType)
+	*p = x
+	return p
+}
+
+func (x OrderType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (OrderType) Descriptor() protoreflect.EnumDescriptor {
+	return file_orderbook_v1_events_proto_enumTypes[1].Descriptor()
+}
+
+func (OrderType) Type() protoreflect.EnumType {
+	return &file_orderbook_v1_events_proto_enumTypes[1]
+}
+
+func (x OrderType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use OrderType.Descriptor instead.
+func (OrderType) EnumDescriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{1}
+}
+
+type TimeInForce int32
+
+const (
+	TimeInForce_TIME_IN_FORCE_UNSPECIFIED TimeInForce = 0
+	TimeInForce_TIME_IN_FORCE_GTC         TimeInForce = 1
+	TimeInForce_TIME_IN_FORCE_IOC         TimeInForce = 2
+	TimeInForce_TIME_IN_FORCE_FOK         TimeInForce = 3
+)
+
+// Enum value maps for TimeInForce.
+var (
+	TimeInForce_name = map[int32]string{
+		0: "TIME_IN_FORCE_UNSPECIFIED",
+		1: "TIME_IN_FORCE_GTC",
+		2: "TIME_IN_FORCE_IOC",
+		3: "TIME_IN_FORCE_FOK",
+	}
+	TimeInForce_value = map[string]int32{
+		"TIME_IN_FORCE_UNSPECIFIED": 0,
+		"TIME_IN_FORCE_GTC":         1,
+		"TIME_IN_FORCE_IOC":         2,
+		"TIME_IN_FORCE_FOK":         3,
+	}
+)
+
+func (x TimeInForce) Enum() *TimeInForce {
+	p := new(TimeInForce)
+	*p = x
+	return p
+}
+
+func (x TimeInForce) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TimeInForce) Descriptor() protoreflect.EnumDescriptor {
+	return file_orderbook_v1_events_proto_enumTypes[2].Descriptor()
+}
+
+func (TimeInForce) Type() protoreflect.EnumType {
+	return &file_orderbook_v1_events_proto_enumTypes[2]
+}
+
+func (x TimeInForce) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TimeInForce.Descriptor instead.
+func (TimeInForce) EnumDescriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{2}
+}
+
 type OrderPlaced struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OrderId       string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
@@ -79,6 +180,8 @@ type OrderPlaced struct {
 	Price         int64                  `protobuf:"varint,4,opt,name=price,proto3" json:"price,omitempty"`
 	Quantity      int64                  `protobuf:"varint,5,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	PlacedAt      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=placed_at,json=placedAt,proto3" json:"placed_at,omitempty"`
+	OrderType     OrderType              `protobuf:"varint,7,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
+	TimeInForce   TimeInForce            `protobuf:"varint,8,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -153,6 +256,20 @@ func (x *OrderPlaced) GetPlacedAt() *timestamppb.Timestamp {
 		return x.PlacedAt
 	}
 	return nil
+}
+
+func (x *OrderPlaced) GetOrderType() OrderType {
+	if x != nil {
+		return x.OrderType
+	}
+	return OrderType_ORDER_TYPE_UNSPECIFIED
+}
+
+func (x *OrderPlaced) GetTimeInForce() TimeInForce {
+	if x != nil {
+		return x.TimeInForce
+	}
+	return TimeInForce_TIME_IN_FORCE_UNSPECIFIED
 }
 
 type OrderCancelled struct {
@@ -303,14 +420,17 @@ var File_orderbook_v1_events_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"\x19orderbook/v1/events.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd3\x01\n" +
+	"\x19orderbook/v1/events.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xca\x02\n" +
 	"\vOrderPlaced\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12&\n" +
 	"\x04side\x18\x03 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +
 	"\x05price\x18\x04 \x01(\x03R\x05price\x12\x1a\n" +
 	"\bquantity\x18\x05 \x01(\x03R\bquantity\x127\n" +
-	"\tplaced_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bplacedAt\"C\n" +
+	"\tplaced_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bplacedAt\x126\n" +
+	"\n" +
+	"order_type\x18\a \x01(\x0e2\x17.orderbook.v1.OrderTypeR\torderType\x12=\n" +
+	"\rtime_in_force\x18\b \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\"C\n" +
 	"\x0eOrderCancelled\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\"\xf7\x01\n" +
@@ -327,7 +447,16 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\x04Side\x12\x14\n" +
 	"\x10SIDE_UNSPECIFIED\x10\x00\x12\f\n" +
 	"\bSIDE_BUY\x10\x01\x12\r\n" +
-	"\tSIDE_SELL\x10\x02B7Z5github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1b\x06proto3"
+	"\tSIDE_SELL\x10\x02*T\n" +
+	"\tOrderType\x12\x1a\n" +
+	"\x16ORDER_TYPE_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10ORDER_TYPE_LIMIT\x10\x01\x12\x15\n" +
+	"\x11ORDER_TYPE_MARKET\x10\x02*q\n" +
+	"\vTimeInForce\x12\x1d\n" +
+	"\x19TIME_IN_FORCE_UNSPECIFIED\x10\x00\x12\x15\n" +
+	"\x11TIME_IN_FORCE_GTC\x10\x01\x12\x15\n" +
+	"\x11TIME_IN_FORCE_IOC\x10\x02\x12\x15\n" +
+	"\x11TIME_IN_FORCE_FOK\x10\x03B7Z5github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1b\x06proto3"
 
 var (
 	file_orderbook_v1_events_proto_rawDescOnce sync.Once
@@ -341,24 +470,28 @@ func file_orderbook_v1_events_proto_rawDescGZIP() []byte {
 	return file_orderbook_v1_events_proto_rawDescData
 }
 
-var file_orderbook_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_orderbook_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
 var file_orderbook_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_orderbook_v1_events_proto_goTypes = []any{
 	(Side)(0),                     // 0: orderbook.v1.Side
-	(*OrderPlaced)(nil),           // 1: orderbook.v1.OrderPlaced
-	(*OrderCancelled)(nil),        // 2: orderbook.v1.OrderCancelled
-	(*TradeExecuted)(nil),         // 3: orderbook.v1.TradeExecuted
-	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	(OrderType)(0),                // 1: orderbook.v1.OrderType
+	(TimeInForce)(0),              // 2: orderbook.v1.TimeInForce
+	(*OrderPlaced)(nil),           // 3: orderbook.v1.OrderPlaced
+	(*OrderCancelled)(nil),        // 4: orderbook.v1.OrderCancelled
+	(*TradeExecuted)(nil),         // 5: orderbook.v1.TradeExecuted
+	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
 }
 var file_orderbook_v1_events_proto_depIdxs = []int32{
 	0, // 0: orderbook.v1.OrderPlaced.side:type_name -> orderbook.v1.Side
-	4, // 1: orderbook.v1.OrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
-	4, // 2: orderbook.v1.TradeExecuted.executed_at:type_name -> google.protobuf.Timestamp
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	6, // 1: orderbook.v1.OrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
+	1, // 2: orderbook.v1.OrderPlaced.order_type:type_name -> orderbook.v1.OrderType
+	2, // 3: orderbook.v1.OrderPlaced.time_in_force:type_name -> orderbook.v1.TimeInForce
+	6, // 4: orderbook.v1.TradeExecuted.executed_at:type_name -> google.protobuf.Timestamp
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_orderbook_v1_events_proto_init() }
@@ -371,7 +504,7 @@ func file_orderbook_v1_events_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_orderbook_v1_events_proto_rawDesc), len(file_orderbook_v1_events_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      3,
 			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,

@@ -180,3 +180,61 @@ func TestMatch_SellSide(t *testing.T) {
 	assert.Equal(t, "bid-1", trades[0].BuyOrderId)
 	assert.Equal(t, "sell-1", trades[0].SellOrderId)
 }
+
+func TestMatch_MarketBuySweepsAllAsks(t *testing.T) {
+	book := newTestBook()
+	now := time.Now()
+
+	placeOrderOnBook(t, book, "ask-1", Sell, 1490000, 30, now)
+	placeOrderOnBook(t, book, "ask-2", Sell, 1500000, 50, now.Add(time.Second))
+	placeOrderOnBook(t, book, "ask-3", Sell, 1600000, 40, now.Add(2*time.Second))
+
+	buyOrder := &Order{
+		ID:           "buy-1",
+		Side:         Buy,
+		Price:        0, // market order — no price limit
+		Quantity:     120,
+		RemainingQty: 120,
+		PlacedAt:     now.Add(3 * time.Second),
+		OrderType:    Market,
+	}
+
+	trades := Match(book, buyOrder, now)
+
+	require.Len(t, trades, 3)
+	assert.Equal(t, int64(1490000), trades[0].Price)
+	assert.Equal(t, int64(30), trades[0].Quantity)
+	assert.Equal(t, int64(1500000), trades[1].Price)
+	assert.Equal(t, int64(50), trades[1].Quantity)
+	assert.Equal(t, int64(1600000), trades[2].Price)
+	assert.Equal(t, int64(40), trades[2].Quantity)
+	assert.Equal(t, int64(0), buyOrder.RemainingQty)
+}
+
+func TestMatch_MarketSellSweepsAllBids(t *testing.T) {
+	book := newTestBook()
+	now := time.Now()
+
+	placeOrderOnBook(t, book, "bid-1", Buy, 1510000, 40, now)
+	placeOrderOnBook(t, book, "bid-2", Buy, 1500000, 60, now.Add(time.Second))
+	placeOrderOnBook(t, book, "bid-3", Buy, 1400000, 20, now.Add(2*time.Second))
+
+	sellOrder := &Order{
+		ID:           "sell-1",
+		Side:         Sell,
+		Price:        0,
+		Quantity:     100,
+		RemainingQty: 100,
+		PlacedAt:     now.Add(3 * time.Second),
+		OrderType:    Market,
+	}
+
+	trades := Match(book, sellOrder, now)
+
+	require.Len(t, trades, 2)
+	assert.Equal(t, int64(1510000), trades[0].Price)
+	assert.Equal(t, int64(40), trades[0].Quantity)
+	assert.Equal(t, int64(1500000), trades[1].Price)
+	assert.Equal(t, int64(60), trades[1].Quantity)
+	assert.Equal(t, int64(0), sellOrder.RemainingQty)
+}

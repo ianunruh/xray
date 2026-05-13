@@ -228,3 +228,112 @@ func TestServer_GetOrder_NotFound(t *testing.T) {
 	assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 }
 
+func TestServer_PlaceOrder_MarketOrder(t *testing.T) {
+	client, _ := newTestServer(t)
+	ctx := context.Background()
+
+	// Place a resting sell order.
+	_, err := client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_SELL,
+		Price:    1500000,
+		Quantity: 100,
+	}))
+	require.NoError(t, err)
+
+	// Place a market buy that sweeps it.
+	resp, err := client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:    "AAPL",
+		Side:      orderbookv1.Side_SIDE_BUY,
+		Quantity:  100,
+		OrderType: orderbookv1.OrderType_ORDER_TYPE_MARKET,
+	}))
+	require.NoError(t, err)
+	assert.NotEmpty(t, resp.Msg.OrderId)
+	require.Len(t, resp.Msg.Trades, 1)
+	assert.Equal(t, int64(1500000), resp.Msg.Trades[0].Price)
+	assert.Equal(t, int64(100), resp.Msg.Trades[0].Quantity)
+
+	// Verify the order is visible via GetOrder.
+	orderResp, err := client.GetOrder(ctx, connect.NewRequest(&orderbookv1.GetOrderRequest{
+		Symbol:  "AAPL",
+		OrderId: resp.Msg.OrderId,
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, orderbookv1.OrderType_ORDER_TYPE_MARKET, orderResp.Msg.OrderType)
+	assert.Equal(t, orderbookv1.TimeInForce_TIME_IN_FORCE_IOC, orderResp.Msg.TimeInForce)
+}
+
+func TestServer_PlaceOrder_IOC(t *testing.T) {
+	client, _ := newTestServer(t)
+	ctx := context.Background()
+
+	// Place a resting sell order for 50.
+	_, err := client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_SELL,
+		Price:    1500000,
+		Quantity: 50,
+	}))
+	require.NoError(t, err)
+
+	// IOC buy for 100 — fills 50, cancels remaining 50.
+	resp, err := client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:      "AAPL",
+		Side:        orderbookv1.Side_SIDE_BUY,
+		Price:       1500000,
+		Quantity:    100,
+		TimeInForce: orderbookv1.TimeInForce_TIME_IN_FORCE_IOC,
+	}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Trades, 1)
+	assert.Equal(t, int64(50), resp.Msg.Trades[0].Quantity)
+
+	// The book should have no bids remaining (IOC cancelled the rest).
+	bookResp, err := client.GetOrderBook(ctx, connect.NewRequest(&orderbookv1.GetOrderBookRequest{
+		Symbol: "AAPL",
+	}))
+	require.NoError(t, err)
+	assert.Empty(t, bookResp.Msg.Bids)
+	assert.Empty(t, bookResp.Msg.Asks)
+}
+
+func TestServer_PlaceOrder_FOK_Rejected(t *testing.T) {
+	client, _ := newTestServer(t)
+	ctx := context.Background()
+
+	// Place a resting sell for 50.
+	_, err := client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_SELL,
+		Price:    1500000,
+		Quantity: 50,
+	}))
+	require.NoError(t, err)
+
+	// FOK buy for 100 — insufficient liquidity.
+	_, err = client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:      "AAPL",
+		Side:        orderbookv1.Side_SIDE_BUY,
+		Price:       1500000,
+		Quantity:    100,
+		TimeInForce: orderbookv1.TimeInForce_TIME_IN_FORCE_FOK,
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+}
+
+func TestServer_PlaceOrder_MarketGTC_Rejected(t *testing.T) {
+	client, _ := newTestServer(t)
+	ctx := context.Background()
+
+	_, err := client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:      "AAPL",
+		Side:        orderbookv1.Side_SIDE_BUY,
+		Quantity:    100,
+		OrderType:   orderbookv1.OrderType_ORDER_TYPE_MARKET,
+		TimeInForce: orderbookv1.TimeInForce_TIME_IN_FORCE_GTC,
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}

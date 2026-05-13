@@ -28,6 +28,8 @@ type PlaceOrderRequest struct {
 	Side          Side                   `protobuf:"varint,2,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
 	Price         int64                  `protobuf:"varint,3,opt,name=price,proto3" json:"price,omitempty"`
 	Quantity      int64                  `protobuf:"varint,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	OrderType     OrderType              `protobuf:"varint,5,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
+	TimeInForce   TimeInForce            `protobuf:"varint,6,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -88,6 +90,20 @@ func (x *PlaceOrderRequest) GetQuantity() int64 {
 		return x.Quantity
 	}
 	return 0
+}
+
+func (x *PlaceOrderRequest) GetOrderType() OrderType {
+	if x != nil {
+		return x.OrderType
+	}
+	return OrderType_ORDER_TYPE_UNSPECIFIED
+}
+
+func (x *PlaceOrderRequest) GetTimeInForce() TimeInForce {
+	if x != nil {
+		return x.TimeInForce
+	}
+	return TimeInForce_TIME_IN_FORCE_UNSPECIFIED
 }
 
 type PlaceOrderResponse struct {
@@ -471,6 +487,8 @@ type GetOrderResponse struct {
 	Quantity          int64                  `protobuf:"varint,5,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	RemainingQuantity int64                  `protobuf:"varint,6,opt,name=remaining_quantity,json=remainingQuantity,proto3" json:"remaining_quantity,omitempty"`
 	PlacedAt          *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=placed_at,json=placedAt,proto3" json:"placed_at,omitempty"`
+	OrderType         OrderType              `protobuf:"varint,8,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
+	TimeInForce       TimeInForce            `protobuf:"varint,9,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -554,16 +572,33 @@ func (x *GetOrderResponse) GetPlacedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *GetOrderResponse) GetOrderType() OrderType {
+	if x != nil {
+		return x.OrderType
+	}
+	return OrderType_ORDER_TYPE_UNSPECIFIED
+}
+
+func (x *GetOrderResponse) GetTimeInForce() TimeInForce {
+	if x != nil {
+		return x.TimeInForce
+	}
+	return TimeInForce_TIME_IN_FORCE_UNSPECIFIED
+}
+
 var File_orderbook_v1_service_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1aorderbook/v1/service.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"\x85\x01\n" +
+	"\x1aorderbook/v1/service.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"\xfc\x01\n" +
 	"\x11PlaceOrderRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +
 	"\x05price\x18\x03 \x01(\x03R\x05price\x12\x1a\n" +
-	"\bquantity\x18\x04 \x01(\x03R\bquantity\"d\n" +
+	"\bquantity\x18\x04 \x01(\x03R\bquantity\x126\n" +
+	"\n" +
+	"order_type\x18\x05 \x01(\x0e2\x17.orderbook.v1.OrderTypeR\torderType\x12=\n" +
+	"\rtime_in_force\x18\x06 \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\"d\n" +
 	"\x12PlaceOrderResponse\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x123\n" +
 	"\x06trades\x18\x02 \x03(\v2\x1b.orderbook.v1.TradeExecutedR\x06trades\"G\n" +
@@ -585,7 +620,7 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\tplaced_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bplacedAt\"D\n" +
 	"\x0fGetOrderRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x19\n" +
-	"\border_id\x18\x02 \x01(\tR\aorderId\"\x87\x02\n" +
+	"\border_id\x18\x02 \x01(\tR\aorderId\"\xfe\x02\n" +
 	"\x10GetOrderResponse\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12&\n" +
@@ -593,7 +628,10 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\x05price\x18\x04 \x01(\x03R\x05price\x12\x1a\n" +
 	"\bquantity\x18\x05 \x01(\x03R\bquantity\x12-\n" +
 	"\x12remaining_quantity\x18\x06 \x01(\x03R\x11remainingQuantity\x127\n" +
-	"\tplaced_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\bplacedAt2\xd9\x02\n" +
+	"\tplaced_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\bplacedAt\x126\n" +
+	"\n" +
+	"order_type\x18\b \x01(\x0e2\x17.orderbook.v1.OrderTypeR\torderType\x12=\n" +
+	"\rtime_in_force\x18\t \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce2\xd9\x02\n" +
 	"\x10OrderBookService\x12O\n" +
 	"\n" +
 	"PlaceOrder\x12\x1f.orderbook.v1.PlaceOrderRequest\x1a .orderbook.v1.PlaceOrderResponse\x12R\n" +
@@ -625,30 +663,36 @@ var file_orderbook_v1_service_proto_goTypes = []any{
 	(*GetOrderRequest)(nil),       // 7: orderbook.v1.GetOrderRequest
 	(*GetOrderResponse)(nil),      // 8: orderbook.v1.GetOrderResponse
 	(Side)(0),                     // 9: orderbook.v1.Side
-	(*TradeExecuted)(nil),         // 10: orderbook.v1.TradeExecuted
-	(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
+	(OrderType)(0),                // 10: orderbook.v1.OrderType
+	(TimeInForce)(0),              // 11: orderbook.v1.TimeInForce
+	(*TradeExecuted)(nil),         // 12: orderbook.v1.TradeExecuted
+	(*timestamppb.Timestamp)(nil), // 13: google.protobuf.Timestamp
 }
 var file_orderbook_v1_service_proto_depIdxs = []int32{
 	9,  // 0: orderbook.v1.PlaceOrderRequest.side:type_name -> orderbook.v1.Side
-	10, // 1: orderbook.v1.PlaceOrderResponse.trades:type_name -> orderbook.v1.TradeExecuted
-	6,  // 2: orderbook.v1.GetOrderBookResponse.bids:type_name -> orderbook.v1.OrderBookLevel
-	6,  // 3: orderbook.v1.GetOrderBookResponse.asks:type_name -> orderbook.v1.OrderBookLevel
-	11, // 4: orderbook.v1.OrderBookLevel.placed_at:type_name -> google.protobuf.Timestamp
-	9,  // 5: orderbook.v1.GetOrderResponse.side:type_name -> orderbook.v1.Side
-	11, // 6: orderbook.v1.GetOrderResponse.placed_at:type_name -> google.protobuf.Timestamp
-	0,  // 7: orderbook.v1.OrderBookService.PlaceOrder:input_type -> orderbook.v1.PlaceOrderRequest
-	2,  // 8: orderbook.v1.OrderBookService.CancelOrder:input_type -> orderbook.v1.CancelOrderRequest
-	4,  // 9: orderbook.v1.OrderBookService.GetOrderBook:input_type -> orderbook.v1.GetOrderBookRequest
-	7,  // 10: orderbook.v1.OrderBookService.GetOrder:input_type -> orderbook.v1.GetOrderRequest
-	1,  // 11: orderbook.v1.OrderBookService.PlaceOrder:output_type -> orderbook.v1.PlaceOrderResponse
-	3,  // 12: orderbook.v1.OrderBookService.CancelOrder:output_type -> orderbook.v1.CancelOrderResponse
-	5,  // 13: orderbook.v1.OrderBookService.GetOrderBook:output_type -> orderbook.v1.GetOrderBookResponse
-	8,  // 14: orderbook.v1.OrderBookService.GetOrder:output_type -> orderbook.v1.GetOrderResponse
-	11, // [11:15] is the sub-list for method output_type
-	7,  // [7:11] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	10, // 1: orderbook.v1.PlaceOrderRequest.order_type:type_name -> orderbook.v1.OrderType
+	11, // 2: orderbook.v1.PlaceOrderRequest.time_in_force:type_name -> orderbook.v1.TimeInForce
+	12, // 3: orderbook.v1.PlaceOrderResponse.trades:type_name -> orderbook.v1.TradeExecuted
+	6,  // 4: orderbook.v1.GetOrderBookResponse.bids:type_name -> orderbook.v1.OrderBookLevel
+	6,  // 5: orderbook.v1.GetOrderBookResponse.asks:type_name -> orderbook.v1.OrderBookLevel
+	13, // 6: orderbook.v1.OrderBookLevel.placed_at:type_name -> google.protobuf.Timestamp
+	9,  // 7: orderbook.v1.GetOrderResponse.side:type_name -> orderbook.v1.Side
+	13, // 8: orderbook.v1.GetOrderResponse.placed_at:type_name -> google.protobuf.Timestamp
+	10, // 9: orderbook.v1.GetOrderResponse.order_type:type_name -> orderbook.v1.OrderType
+	11, // 10: orderbook.v1.GetOrderResponse.time_in_force:type_name -> orderbook.v1.TimeInForce
+	0,  // 11: orderbook.v1.OrderBookService.PlaceOrder:input_type -> orderbook.v1.PlaceOrderRequest
+	2,  // 12: orderbook.v1.OrderBookService.CancelOrder:input_type -> orderbook.v1.CancelOrderRequest
+	4,  // 13: orderbook.v1.OrderBookService.GetOrderBook:input_type -> orderbook.v1.GetOrderBookRequest
+	7,  // 14: orderbook.v1.OrderBookService.GetOrder:input_type -> orderbook.v1.GetOrderRequest
+	1,  // 15: orderbook.v1.OrderBookService.PlaceOrder:output_type -> orderbook.v1.PlaceOrderResponse
+	3,  // 16: orderbook.v1.OrderBookService.CancelOrder:output_type -> orderbook.v1.CancelOrderResponse
+	5,  // 17: orderbook.v1.OrderBookService.GetOrderBook:output_type -> orderbook.v1.GetOrderBookResponse
+	8,  // 18: orderbook.v1.OrderBookService.GetOrder:output_type -> orderbook.v1.GetOrderResponse
+	15, // [15:19] is the sub-list for method output_type
+	11, // [11:15] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_orderbook_v1_service_proto_init() }
