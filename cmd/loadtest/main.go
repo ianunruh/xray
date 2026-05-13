@@ -334,6 +334,8 @@ func runDepthWorker(ctx context.Context, client orderbookv1connect.OrderBookServ
 		_, err := client.GetMarketDepth(ctx, req)
 		d := time.Since(start)
 		stats.record("GetMarketDepth", d, err)
+
+		time.Sleep(time.Millisecond)
 	}
 }
 
@@ -362,6 +364,8 @@ func runOrderWorker(ctx context.Context, client orderbookv1connect.OrderBookServ
 			err = nil
 		}
 		stats.record("GetOrder", d, err)
+
+		time.Sleep(time.Millisecond)
 	}
 }
 
