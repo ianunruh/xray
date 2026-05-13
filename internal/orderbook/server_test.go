@@ -10,7 +10,6 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
@@ -28,7 +27,7 @@ func newTestServer(t *testing.T) (orderbookv1connect.OrderBookServiceClient, *ht
 		return orderbook.NewOrderBook(id)
 	}, slog.Default())
 
-	srv := orderbook.NewServer(handler, store, registry, store, slog.Default())
+	srv := orderbook.NewServer(handler, slog.Default())
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
@@ -229,10 +228,3 @@ func TestServer_GetOrder_NotFound(t *testing.T) {
 	assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 }
 
-func newTestRegistryForServer() *es.Registry {
-	r := es.NewRegistry()
-	r.Register("OrderPlaced", func() proto.Message { return new(orderbookv1.OrderPlaced) })
-	r.Register("TradeExecuted", func() proto.Message { return new(orderbookv1.TradeExecuted) })
-	r.Register("OrderCancelled", func() proto.Message { return new(orderbookv1.OrderCancelled) })
-	return r
-}

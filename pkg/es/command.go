@@ -46,6 +46,18 @@ type loadResult struct {
 	snapshotVersion int // version of the snapshot used (0 if none)
 }
 
+// Load creates and hydrates an aggregate from the event store (and snapshots
+// if configured). It is intended for read-only queries where no new events
+// are produced.
+func (h *Handler[A]) Load(ctx context.Context, aggregateID string) (A, error) {
+	agg := h.factory(aggregateID)
+	if _, err := h.loadAggregate(ctx, agg, aggregateID); err != nil {
+		var zero A
+		return zero, err
+	}
+	return agg, nil
+}
+
 // Handle loads the aggregate, calls execute to produce new events, and appends
 // them to the store. The execute function receives the fully-hydrated aggregate
 // and must return the new events to persist.

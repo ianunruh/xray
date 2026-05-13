@@ -53,7 +53,7 @@ func main() {
 		return orderbook.NewOrderBook(id)
 	}, log).WithSnapshots(store)
 
-	srv := orderbook.NewServer(handler, store, registry, store, log)
+	srv := orderbook.NewServer(handler, log)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
