@@ -21,8 +21,15 @@ type depthLevel struct {
 	orderCount int32
 }
 
+// depthPrice rounds a price (4 implied decimals) to 2 decimal places for
+// depth aggregation. E.g. 1505012 ($150.5012) → 1505000 ($150.50).
+func depthPrice(price int64) int64 {
+	return price / 100 * 100
+}
+
 // DepthProjection maintains aggregated price levels per symbol, updated
-// incrementally from order lifecycle events.
+// incrementally from order lifecycle events. Prices are rounded to 2 decimal
+// places for aggregation.
 type DepthProjection struct {
 	mu     sync.RWMutex
 	orders map[string]*depthOrder                            // orderID -> tracked order
@@ -59,18 +66,19 @@ func (p *DepthProjection) HandleEvents(_ context.Context, events []es.Event) err
 }
 
 func (p *DepthProjection) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
+	price := depthPrice(data.Price)
 	p.orders[data.OrderId] = &depthOrder{
 		symbol:       data.Symbol,
 		side:         data.Side,
-		price:        data.Price,
+		price:        price,
 		remainingQty: data.Quantity,
 	}
 
 	levels := p.levelsFor(data.Symbol, data.Side)
-	lvl := levels[data.Price]
+	lvl := levels[price]
 	if lvl == nil {
 		lvl = &depthLevel{}
-		levels[data.Price] = lvl
+		levels[price] = lvl
 	}
 	lvl.quantity += data.Quantity
 	lvl.orderCount++

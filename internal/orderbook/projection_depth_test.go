@@ -249,3 +249,42 @@ func TestDepthProjection_DepthLimit(t *testing.T) {
 	require.Len(t, asks, 1)
 	assert.Equal(t, int64(1500000), asks[0].Price) // best ask (lowest)
 }
+
+func TestDepthProjection_SubCentAggregation(t *testing.T) {
+	proj := orderbook.NewDepthProjection()
+	ctx := context.Background()
+
+	// Two orders at different sub-cent prices that round to the same cent.
+	err := proj.HandleEvents(ctx, []es.Event{
+		{
+			Type: "OrderPlaced",
+			Data: &orderbookv1.OrderPlaced{
+				OrderId:  "o1",
+				Symbol:   "AAPL",
+				Side:     orderbookv1.Side_SIDE_SELL,
+				Price:    1500012, // $150.0012
+				Quantity: 100,
+				PlacedAt: timestamppb.Now(),
+			},
+		},
+		{
+			Type: "OrderPlaced",
+			Data: &orderbookv1.OrderPlaced{
+				OrderId:  "o2",
+				Symbol:   "AAPL",
+				Side:     orderbookv1.Side_SIDE_SELL,
+				Price:    1500087, // $150.0087
+				Quantity: 50,
+				PlacedAt: timestamppb.Now(),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	bids, asks := proj.GetDepth("AAPL", 0)
+	assert.Empty(t, bids)
+	require.Len(t, asks, 1, "sub-cent prices should aggregate to one level")
+	assert.Equal(t, int64(1500000), asks[0].Price) // rounded to $150.00
+	assert.Equal(t, int64(150), asks[0].Quantity)
+	assert.Equal(t, int32(2), asks[0].OrderCount)
+}
