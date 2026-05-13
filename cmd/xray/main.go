@@ -5,7 +5,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"fmt"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -29,7 +31,13 @@ func main() {
 		listenAddr = ":8080"
 	}
 
-	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logLevelStr := os.Getenv("LOG_LEVEL")
+	if logLevelStr == "" {
+		logLevelStr = "info"
+	}
+	logLevel := parseLogLevel(logLevelStr)
+
+	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel}))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -109,4 +117,21 @@ func main() {
 	}
 
 	log.Info("shutdown complete")
+}
+
+func parseLogLevel(s string) slog.Level {
+	switch strings.ToLower(s) {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		fmt.Fprintf(os.Stderr, "unknown log level: %s\n", s)
+		os.Exit(1)
+		return slog.LevelInfo
+	}
 }
