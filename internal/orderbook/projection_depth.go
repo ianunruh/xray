@@ -141,37 +141,61 @@ func (p *DepthProjection) levelsFor(symbol string, side orderbookv1.Side) map[in
 // sorted highest-first, asks lowest-first. If depth > 0, at most that many
 // levels per side are returned.
 func (p *DepthProjection) GetDepth(symbol string, depth int32) (bids, asks []*orderbookv1.PriceLevel) {
+	// Snapshot the raw data under the read lock (O(n) copy).
 	p.mu.RLock()
-	defer p.mu.RUnlock()
+	bidSnap := snapshotLevels(p.bids[symbol])
+	askSnap := snapshotLevels(p.asks[symbol])
+	p.mu.RUnlock()
 
-	bids = collectLevels(p.bids[symbol], depth, true)
-	asks = collectLevels(p.asks[symbol], depth, false)
+	// Sort and build proto objects outside the lock.
+	bids = buildLevels(bidSnap, depth, true)
+	asks = buildLevels(askSnap, depth, false)
 	return bids, asks
 }
 
-func collectLevels(levels map[int64]*depthLevel, depth int32, descending bool) []*orderbookv1.PriceLevel {
+type levelSnapshot struct {
+	price      int64
+	quantity   int64
+	orderCount int32
+}
+
+func snapshotLevels(levels map[int64]*depthLevel) []levelSnapshot {
 	if len(levels) == 0 {
 		return nil
 	}
-
-	out := make([]*orderbookv1.PriceLevel, 0, len(levels))
+	out := make([]levelSnapshot, 0, len(levels))
 	for price, lvl := range levels {
-		out = append(out, &orderbookv1.PriceLevel{
-			Price:      price,
-			Quantity:   lvl.quantity,
-			OrderCount: lvl.orderCount,
+		out = append(out, levelSnapshot{
+			price:      price,
+			quantity:   lvl.quantity,
+			orderCount: lvl.orderCount,
 		})
+	}
+	return out
+}
+
+func buildLevels(snap []levelSnapshot, depth int32, descending bool) []*orderbookv1.PriceLevel {
+	if len(snap) == 0 {
+		return nil
 	}
 
 	if descending {
-		sort.Slice(out, func(i, j int) bool { return out[i].Price > out[j].Price })
+		sort.Slice(snap, func(i, j int) bool { return snap[i].price > snap[j].price })
 	} else {
-		sort.Slice(out, func(i, j int) bool { return out[i].Price < out[j].Price })
+		sort.Slice(snap, func(i, j int) bool { return snap[i].price < snap[j].price })
 	}
 
-	if depth > 0 && int(depth) < len(out) {
-		out = out[:depth]
+	if depth > 0 && int(depth) < len(snap) {
+		snap = snap[:depth]
 	}
 
+	out := make([]*orderbookv1.PriceLevel, len(snap))
+	for i, s := range snap {
+		out[i] = &orderbookv1.PriceLevel{
+			Price:      s.price,
+			Quantity:   s.quantity,
+			OrderCount: s.orderCount,
+		}
+	}
 	return out
 }
