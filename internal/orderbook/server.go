@@ -21,15 +21,17 @@ type Server struct {
 	log     *slog.Logger
 	trades  TradeReader
 	orders  OrderReader
+	depth   DepthReader
 }
 
 // NewServer creates a new Server with the given dependencies.
-func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeReader, orders OrderReader) *Server {
+func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeReader, orders OrderReader, depth DepthReader) *Server {
 	return &Server{
 		handler: handler,
 		log:     log,
 		trades:  trades,
 		orders:  orders,
+		depth:   depth,
 	}
 }
 
@@ -120,6 +122,20 @@ func (s *Server) GetOrderBook(ctx context.Context, req *connect.Request[orderboo
 	}
 
 	s.log.Info("GetOrderBook", "symbol", req.Msg.Symbol, "bid_count", len(resp.Bids), "ask_count", len(resp.Asks))
+
+	return connect.NewResponse(resp), nil
+}
+
+func (s *Server) GetMarketDepth(ctx context.Context, req *connect.Request[orderbookv1.GetMarketDepthRequest]) (*connect.Response[orderbookv1.GetMarketDepthResponse], error) {
+	bids, asks := s.depth.GetDepth(req.Msg.Symbol, req.Msg.Depth)
+
+	resp := &orderbookv1.GetMarketDepthResponse{
+		Symbol: req.Msg.Symbol,
+		Bids:   bids,
+		Asks:   asks,
+	}
+
+	s.log.Info("GetMarketDepth", "symbol", req.Msg.Symbol, "bid_levels", len(resp.Bids), "ask_levels", len(resp.Asks))
 
 	return connect.NewResponse(resp), nil
 }

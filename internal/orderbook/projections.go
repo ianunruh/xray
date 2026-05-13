@@ -11,3 +11,8 @@ type TradeReader interface {
 type OrderReader interface {
 	ListOrders(symbol string) []*orderbookv1.OrderSummary
 }
+
+// DepthReader provides read access to the market depth projection.
+type DepthReader interface {
+	GetDepth(symbol string, depth int32) (bids, asks []*orderbookv1.PriceLevel)
+}

@@ -26,14 +26,15 @@ func newTestServer(t *testing.T) (orderbookv1connect.OrderBookServiceClient, *ht
 
 	tradeProjection := orderbook.NewTradeProjection()
 	orderProjection := orderbook.NewOrderProjection()
+	depthProjection := orderbook.NewDepthProjection()
 
-	publisher := es.NewFanOutPublisher(slog.Default(), tradeProjection, orderProjection)
+	publisher := es.NewFanOutPublisher(slog.Default(), tradeProjection, orderProjection, depthProjection)
 
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
 	}, slog.Default()).WithPublisher(publisher)
 
-	srv := orderbook.NewServer(handler, slog.Default(), tradeProjection, orderProjection)
+	srv := orderbook.NewServer(handler, slog.Default(), tradeProjection, orderProjection, depthProjection)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
@@ -232,6 +233,162 @@ func TestServer_GetOrder_NotFound(t *testing.T) {
 	}))
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+}
+
+func TestServer_GetMarketDepth_Empty(t *testing.T) {
+	client, _ := newTestServer(t)
+	ctx := context.Background()
+
+	resp, err := client.GetMarketDepth(ctx, connect.NewRequest(&orderbookv1.GetMarketDepthRequest{
+		Symbol: "AAPL",
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, "AAPL", resp.Msg.Symbol)
+	assert.Empty(t, resp.Msg.Bids)
+	assert.Empty(t, resp.Msg.Asks)
+}
+
+func TestServer_GetMarketDepth_Aggregation(t *testing.T) {
+	client, _ := newTestServer(t)
+	ctx := context.Background()
+
+	// Place two sell orders at the same price.
+	_, err := client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_SELL,
+		Price:    1500000,
+		Quantity: 100,
+	}))
+	require.NoError(t, err)
+
+	_, err = client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_SELL,
+		Price:    1500000,
+		Quantity: 50,
+	}))
+	require.NoError(t, err)
+
+	resp, err := client.GetMarketDepth(ctx, connect.NewRequest(&orderbookv1.GetMarketDepthRequest{
+		Symbol: "AAPL",
+	}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Asks, 1)
+	assert.Equal(t, int64(1500000), resp.Msg.Asks[0].Price)
+	assert.Equal(t, int64(150), resp.Msg.Asks[0].Quantity)
+	assert.Equal(t, int32(2), resp.Msg.Asks[0].OrderCount)
+}
+
+func TestServer_GetMarketDepth_DepthLimit(t *testing.T) {
+	client, _ := newTestServer(t)
+	ctx := context.Background()
+
+	// Place asks at two different prices.
+	_, err := client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_SELL,
+		Price:    1500000,
+		Quantity: 100,
+	}))
+	require.NoError(t, err)
+
+	_, err = client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_SELL,
+		Price:    1510000,
+		Quantity: 50,
+	}))
+	require.NoError(t, err)
+
+	// Place bids at two different prices.
+	_, err = client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_BUY,
+		Price:    1490000,
+		Quantity: 200,
+	}))
+	require.NoError(t, err)
+
+	_, err = client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_BUY,
+		Price:    1480000,
+		Quantity: 75,
+	}))
+	require.NoError(t, err)
+
+	// Depth=1 returns only the best level per side.
+	resp, err := client.GetMarketDepth(ctx, connect.NewRequest(&orderbookv1.GetMarketDepthRequest{
+		Symbol: "AAPL",
+		Depth:  1,
+	}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Bids, 1)
+	assert.Equal(t, int64(1490000), resp.Msg.Bids[0].Price)
+	require.Len(t, resp.Msg.Asks, 1)
+	assert.Equal(t, int64(1500000), resp.Msg.Asks[0].Price)
+}
+
+func TestServer_GetMarketDepth_MultiplePrice(t *testing.T) {
+	client, _ := newTestServer(t)
+	ctx := context.Background()
+
+	// Place asks at different prices.
+	_, err := client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_SELL,
+		Price:    1500000,
+		Quantity: 100,
+	}))
+	require.NoError(t, err)
+
+	_, err = client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_SELL,
+		Price:    1510000,
+		Quantity: 50,
+	}))
+	require.NoError(t, err)
+
+	// Place bids at different prices.
+	_, err = client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_BUY,
+		Price:    1490000,
+		Quantity: 200,
+	}))
+	require.NoError(t, err)
+
+	_, err = client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_BUY,
+		Price:    1480000,
+		Quantity: 75,
+	}))
+	require.NoError(t, err)
+
+	resp, err := client.GetMarketDepth(ctx, connect.NewRequest(&orderbookv1.GetMarketDepthRequest{
+		Symbol: "AAPL",
+	}))
+	require.NoError(t, err)
+
+	// Bids: best (highest) first.
+	require.Len(t, resp.Msg.Bids, 2)
+	assert.Equal(t, int64(1490000), resp.Msg.Bids[0].Price)
+	assert.Equal(t, int64(200), resp.Msg.Bids[0].Quantity)
+	assert.Equal(t, int32(1), resp.Msg.Bids[0].OrderCount)
+	assert.Equal(t, int64(1480000), resp.Msg.Bids[1].Price)
+	assert.Equal(t, int64(75), resp.Msg.Bids[1].Quantity)
+	assert.Equal(t, int32(1), resp.Msg.Bids[1].OrderCount)
+
+	// Asks: best (lowest) first.
+	require.Len(t, resp.Msg.Asks, 2)
+	assert.Equal(t, int64(1500000), resp.Msg.Asks[0].Price)
+	assert.Equal(t, int64(100), resp.Msg.Asks[0].Quantity)
+	assert.Equal(t, int32(1), resp.Msg.Asks[0].OrderCount)
+	assert.Equal(t, int64(1510000), resp.Msg.Asks[1].Price)
+	assert.Equal(t, int64(50), resp.Msg.Asks[1].Quantity)
+	assert.Equal(t, int32(1), resp.Msg.Asks[1].OrderCount)
 }
 
 func TestServer_PlaceOrder_MarketOrder(t *testing.T) {

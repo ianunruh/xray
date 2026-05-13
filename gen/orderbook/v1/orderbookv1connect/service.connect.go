@@ -42,6 +42,9 @@ const (
 	// OrderBookServiceGetOrderBookProcedure is the fully-qualified name of the OrderBookService's
 	// GetOrderBook RPC.
 	OrderBookServiceGetOrderBookProcedure = "/orderbook.v1.OrderBookService/GetOrderBook"
+	// OrderBookServiceGetMarketDepthProcedure is the fully-qualified name of the OrderBookService's
+	// GetMarketDepth RPC.
+	OrderBookServiceGetMarketDepthProcedure = "/orderbook.v1.OrderBookService/GetMarketDepth"
 	// OrderBookServiceGetOrderProcedure is the fully-qualified name of the OrderBookService's GetOrder
 	// RPC.
 	OrderBookServiceGetOrderProcedure = "/orderbook.v1.OrderBookService/GetOrder"
@@ -58,6 +61,7 @@ type OrderBookServiceClient interface {
 	PlaceOrder(context.Context, *connect.Request[v1.PlaceOrderRequest]) (*connect.Response[v1.PlaceOrderResponse], error)
 	CancelOrder(context.Context, *connect.Request[v1.CancelOrderRequest]) (*connect.Response[v1.CancelOrderResponse], error)
 	GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error)
+	GetMarketDepth(context.Context, *connect.Request[v1.GetMarketDepthRequest]) (*connect.Response[v1.GetMarketDepthResponse], error)
 	GetOrder(context.Context, *connect.Request[v1.GetOrderRequest]) (*connect.Response[v1.GetOrderResponse], error)
 	ListTrades(context.Context, *connect.Request[v1.ListTradesRequest]) (*connect.Response[v1.ListTradesResponse], error)
 	ListOrders(context.Context, *connect.Request[v1.ListOrdersRequest]) (*connect.Response[v1.ListOrdersResponse], error)
@@ -92,6 +96,12 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(orderBookServiceMethods.ByName("GetOrderBook")),
 			connect.WithClientOptions(opts...),
 		),
+		getMarketDepth: connect.NewClient[v1.GetMarketDepthRequest, v1.GetMarketDepthResponse](
+			httpClient,
+			baseURL+OrderBookServiceGetMarketDepthProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("GetMarketDepth")),
+			connect.WithClientOptions(opts...),
+		),
 		getOrder: connect.NewClient[v1.GetOrderRequest, v1.GetOrderResponse](
 			httpClient,
 			baseURL+OrderBookServiceGetOrderProcedure,
@@ -115,12 +125,13 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 
 // orderBookServiceClient implements OrderBookServiceClient.
 type orderBookServiceClient struct {
-	placeOrder   *connect.Client[v1.PlaceOrderRequest, v1.PlaceOrderResponse]
-	cancelOrder  *connect.Client[v1.CancelOrderRequest, v1.CancelOrderResponse]
-	getOrderBook *connect.Client[v1.GetOrderBookRequest, v1.GetOrderBookResponse]
-	getOrder     *connect.Client[v1.GetOrderRequest, v1.GetOrderResponse]
-	listTrades   *connect.Client[v1.ListTradesRequest, v1.ListTradesResponse]
-	listOrders   *connect.Client[v1.ListOrdersRequest, v1.ListOrdersResponse]
+	placeOrder     *connect.Client[v1.PlaceOrderRequest, v1.PlaceOrderResponse]
+	cancelOrder    *connect.Client[v1.CancelOrderRequest, v1.CancelOrderResponse]
+	getOrderBook   *connect.Client[v1.GetOrderBookRequest, v1.GetOrderBookResponse]
+	getMarketDepth *connect.Client[v1.GetMarketDepthRequest, v1.GetMarketDepthResponse]
+	getOrder       *connect.Client[v1.GetOrderRequest, v1.GetOrderResponse]
+	listTrades     *connect.Client[v1.ListTradesRequest, v1.ListTradesResponse]
+	listOrders     *connect.Client[v1.ListOrdersRequest, v1.ListOrdersResponse]
 }
 
 // PlaceOrder calls orderbook.v1.OrderBookService.PlaceOrder.
@@ -136,6 +147,11 @@ func (c *orderBookServiceClient) CancelOrder(ctx context.Context, req *connect.R
 // GetOrderBook calls orderbook.v1.OrderBookService.GetOrderBook.
 func (c *orderBookServiceClient) GetOrderBook(ctx context.Context, req *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error) {
 	return c.getOrderBook.CallUnary(ctx, req)
+}
+
+// GetMarketDepth calls orderbook.v1.OrderBookService.GetMarketDepth.
+func (c *orderBookServiceClient) GetMarketDepth(ctx context.Context, req *connect.Request[v1.GetMarketDepthRequest]) (*connect.Response[v1.GetMarketDepthResponse], error) {
+	return c.getMarketDepth.CallUnary(ctx, req)
 }
 
 // GetOrder calls orderbook.v1.OrderBookService.GetOrder.
@@ -158,6 +174,7 @@ type OrderBookServiceHandler interface {
 	PlaceOrder(context.Context, *connect.Request[v1.PlaceOrderRequest]) (*connect.Response[v1.PlaceOrderResponse], error)
 	CancelOrder(context.Context, *connect.Request[v1.CancelOrderRequest]) (*connect.Response[v1.CancelOrderResponse], error)
 	GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error)
+	GetMarketDepth(context.Context, *connect.Request[v1.GetMarketDepthRequest]) (*connect.Response[v1.GetMarketDepthResponse], error)
 	GetOrder(context.Context, *connect.Request[v1.GetOrderRequest]) (*connect.Response[v1.GetOrderResponse], error)
 	ListTrades(context.Context, *connect.Request[v1.ListTradesRequest]) (*connect.Response[v1.ListTradesResponse], error)
 	ListOrders(context.Context, *connect.Request[v1.ListOrdersRequest]) (*connect.Response[v1.ListOrdersResponse], error)
@@ -188,6 +205,12 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 		connect.WithSchema(orderBookServiceMethods.ByName("GetOrderBook")),
 		connect.WithHandlerOptions(opts...),
 	)
+	orderBookServiceGetMarketDepthHandler := connect.NewUnaryHandler(
+		OrderBookServiceGetMarketDepthProcedure,
+		svc.GetMarketDepth,
+		connect.WithSchema(orderBookServiceMethods.ByName("GetMarketDepth")),
+		connect.WithHandlerOptions(opts...),
+	)
 	orderBookServiceGetOrderHandler := connect.NewUnaryHandler(
 		OrderBookServiceGetOrderProcedure,
 		svc.GetOrder,
@@ -214,6 +237,8 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 			orderBookServiceCancelOrderHandler.ServeHTTP(w, r)
 		case OrderBookServiceGetOrderBookProcedure:
 			orderBookServiceGetOrderBookHandler.ServeHTTP(w, r)
+		case OrderBookServiceGetMarketDepthProcedure:
+			orderBookServiceGetMarketDepthHandler.ServeHTTP(w, r)
 		case OrderBookServiceGetOrderProcedure:
 			orderBookServiceGetOrderHandler.ServeHTTP(w, r)
 		case OrderBookServiceListTradesProcedure:
@@ -239,6 +264,10 @@ func (UnimplementedOrderBookServiceHandler) CancelOrder(context.Context, *connec
 
 func (UnimplementedOrderBookServiceHandler) GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.GetOrderBook is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) GetMarketDepth(context.Context, *connect.Request[v1.GetMarketDepthRequest]) (*connect.Response[v1.GetMarketDepthResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.GetMarketDepth is not implemented"))
 }
 
 func (UnimplementedOrderBookServiceHandler) GetOrder(context.Context, *connect.Request[v1.GetOrderRequest]) (*connect.Response[v1.GetOrderResponse], error) {

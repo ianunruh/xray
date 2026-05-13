@@ -62,20 +62,21 @@ func main() {
 	// Create projections.
 	tradeProjection := orderbook.NewTradeProjection()
 	orderProjection := orderbook.NewOrderProjection()
+	depthProjection := orderbook.NewDepthProjection()
 
 	// Hydrate projections from stored events.
-	if err := es.HydrateProjections(ctx, store, registry, log, tradeProjection, orderProjection); err != nil {
+	if err := es.HydrateProjections(ctx, store, registry, log, tradeProjection, orderProjection, depthProjection); err != nil {
 		log.Error("failed to hydrate projections", "error", err)
 		os.Exit(1)
 	}
 
-	publisher := es.NewFanOutPublisher(log, tradeProjection, orderProjection)
+	publisher := es.NewFanOutPublisher(log, tradeProjection, orderProjection, depthProjection)
 
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
 	}, log).WithSnapshots(store).WithPublisher(publisher)
 
-	srv := orderbook.NewServer(handler, log, tradeProjection, orderProjection)
+	srv := orderbook.NewServer(handler, log, tradeProjection, orderProjection, depthProjection)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)

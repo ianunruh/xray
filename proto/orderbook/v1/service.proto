@@ -19,6 +19,7 @@ service OrderBookService {
   rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
   rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
   rpc GetOrderBook(GetOrderBookRequest) returns (GetOrderBookResponse);
+  rpc GetMarketDepth(GetMarketDepthRequest) returns (GetMarketDepthResponse);
   rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
   rpc ListTrades(ListTradesRequest) returns (ListTradesResponse);
   rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
@@ -61,6 +62,23 @@ message OrderBookLevel {
   int64 quantity = 3;
   int64 remaining_quantity = 4;
   google.protobuf.Timestamp placed_at = 5;
+}
+
+message GetMarketDepthRequest {
+  string symbol = 1;
+  int32 depth = 2;  // max levels per side, 0 = all
+}
+
+message GetMarketDepthResponse {
+  string symbol = 1;
+  repeated PriceLevel bids = 2;
+  repeated PriceLevel asks = 3;
+}
+
+message PriceLevel {
+  int64 price = 1;
+  int64 quantity = 2;
+  int32 order_count = 3;
 }
 
 message GetOrderRequest {
