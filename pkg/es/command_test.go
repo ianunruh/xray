@@ -214,6 +214,63 @@ func TestHandler_WithSnapshots(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// conflictOnceStore wraps a Store and returns ErrOptimisticConcurrency on the
+// first Append call, then delegates to the real store.
+type conflictOnceStore struct {
+	*memstore.Store
+	appends int
+}
+
+func (s *conflictOnceStore) Append(ctx context.Context, aggregateID string, expectedVersion int, events []es.RawEvent) error {
+	s.appends++
+	if s.appends == 1 {
+		return es.ErrOptimisticConcurrency
+	}
+	return s.Store.Append(ctx, aggregateID, expectedVersion, events)
+}
+
+func TestHandler_RetryOnConflict(t *testing.T) {
+	registry := newTestRegistry()
+	store := &conflictOnceStore{Store: memstore.New()}
+
+	handler := es.NewHandler(store, registry, func(id string) *testAggregate {
+		a := &testAggregate{}
+		a.SetID(id)
+		return a
+	}, slog.Default())
+
+	ctx := context.Background()
+	now := time.Now()
+	cmd := testCommand{aggregateID: "orderbook:AAPL"}
+
+	err := handler.Handle(ctx, cmd, func(agg *testAggregate) ([]es.Event, error) {
+		return []es.Event{
+			{
+				AggregateID: agg.AggregateID(),
+				Type:        "OrderPlaced",
+				Timestamp:   now,
+				Data: &orderbookv1.OrderPlaced{
+					OrderId:  "order-1",
+					Symbol:   "AAPL",
+					Side:     orderbookv1.Side_SIDE_BUY,
+					Price:    1500000,
+					Quantity: 50,
+					PlacedAt: timestamppb.New(now),
+				},
+			},
+		}, nil
+	})
+	require.NoError(t, err)
+
+	// First append conflicted, second succeeded.
+	assert.Equal(t, 2, store.appends)
+
+	// Verify the event was persisted.
+	raw, err := store.Load(ctx, "orderbook:AAPL")
+	require.NoError(t, err)
+	assert.Len(t, raw, 1)
+}
+
 type recordingPublisher struct {
 	published []es.Event
 }

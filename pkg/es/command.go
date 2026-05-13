@@ -2,11 +2,14 @@ package es
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"google.golang.org/protobuf/proto"
 )
+
+const maxRetries = 3
 
 // Command represents a domain command targeting a specific aggregate.
 type Command interface {
@@ -67,18 +70,46 @@ func (h *Handler[A]) Load(ctx context.Context, aggregateID string) (A, error) {
 }
 
 // Handle loads the aggregate, calls execute to produce new events, and appends
-// them to the store. The execute function receives the fully-hydrated aggregate
-// and must return the new events to persist.
+// them to the store. On optimistic concurrency conflicts the entire cycle is
+// retried up to maxRetries times.
 func (h *Handler[A]) Handle(ctx context.Context, cmd Command, execute func(A) ([]Event, error)) error {
 	aggregateID := cmd.AggregateID()
 
+	for attempt := range maxRetries {
+		if attempt > 0 {
+			h.log.Info("retrying command", "aggregate_id", aggregateID, "attempt", attempt+1)
+		}
+
+		newEvents, err := h.tryHandle(ctx, aggregateID, execute)
+		if errors.Is(err, ErrOptimisticConcurrency) {
+			h.log.Warn("optimistic concurrency conflict, will retry", "aggregate_id", aggregateID, "attempt", attempt+1)
+			continue
+		}
+		if err != nil {
+			return err
+		}
+
+		if h.publisher != nil && len(newEvents) > 0 {
+			if err := h.publisher.Publish(ctx, newEvents); err != nil {
+				h.log.Error("failed to publish events", "aggregate_id", aggregateID, "error", err)
+			}
+		}
+
+		return nil
+	}
+
+	return fmt.Errorf("append events: %w", ErrOptimisticConcurrency)
+}
+
+// tryHandle performs a single load→execute→append attempt.
+func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute func(A) ([]Event, error)) ([]Event, error) {
 	h.log.Info("handling command", "aggregate_id", aggregateID)
 
 	agg := h.factory(aggregateID)
 
 	lr, err := h.loadAggregate(ctx, agg, aggregateID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Save a snapshot after loading if the aggregate has crossed the threshold.
@@ -88,37 +119,30 @@ func (h *Handler[A]) Handle(ctx context.Context, cmd Command, execute func(A) ([
 	newEvents, err := execute(agg)
 	if err != nil {
 		h.log.Warn("command execution failed", "aggregate_id", aggregateID, "error", err)
-		return fmt.Errorf("execute command: %w", err)
+		return nil, fmt.Errorf("execute command: %w", err)
 	}
 
 	if len(newEvents) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	rawNew := make([]RawEvent, len(newEvents))
 	for i, evt := range newEvents {
 		raw, err := h.registry.Serialize(evt)
 		if err != nil {
-			return fmt.Errorf("serialize event: %w", err)
+			return nil, fmt.Errorf("serialize event: %w", err)
 		}
 		rawNew[i] = raw
 	}
 
 	if err := h.store.Append(ctx, aggregateID, lr.expectedVersion, rawNew); err != nil {
-		h.log.Warn("failed to append events", "aggregate_id", aggregateID, "expected_version", lr.expectedVersion, "error", err)
-		return fmt.Errorf("append events: %w", err)
-	}
-
-	if h.publisher != nil {
-		if err := h.publisher.Publish(ctx, newEvents); err != nil {
-			h.log.Error("failed to publish events", "aggregate_id", aggregateID, "error", err)
-		}
+		return nil, err
 	}
 
 	newVersion := lr.expectedVersion + len(newEvents)
 	h.log.Info("events appended", "aggregate_id", aggregateID, "new_event_count", len(newEvents), "new_version", newVersion)
 
-	return nil
+	return newEvents, nil
 }
 
 // loadAggregate restores the aggregate from a snapshot (if available) plus
