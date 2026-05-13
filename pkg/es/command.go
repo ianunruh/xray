@@ -140,6 +140,13 @@ func (h *Handler[A]) Load(ctx context.Context, aggregateID string) (A, error) {
 	return agg, nil
 }
 
+// pendingSnapshot holds snapshot data captured under the lock so that the
+// expensive proto.Marshal + SaveSnapshot can happen outside the lock.
+type pendingSnapshot struct {
+	msg     proto.Message
+	version int
+}
+
 // Handle loads the aggregate, calls execute to produce new events, and appends
 // them to the store. On optimistic concurrency conflicts the entire cycle is
 // retried up to maxRetries times.
@@ -147,36 +154,78 @@ func (h *Handler[A]) Handle(ctx context.Context, cmd Command, execute func(A) ([
 	aggregateID := cmd.AggregateID()
 
 	h.locks.Lock(aggregateID)
-	defer h.locks.Unlock(aggregateID)
+	newEvents, snap, err := h.handleLocked(ctx, aggregateID, execute)
+	h.locks.Unlock(aggregateID)
 
+	if err != nil {
+		return err
+	}
+
+	// Both happen outside the per-aggregate lock:
+	h.saveSnapshot(ctx, aggregateID, snap)
+	h.publishEvents(ctx, aggregateID, newEvents)
+	return nil
+}
+
+// handleLocked runs the retry loop while holding the per-aggregate lock.
+func (h *Handler[A]) handleLocked(ctx context.Context, aggregateID string, execute func(A) ([]Event, error)) ([]Event, *pendingSnapshot, error) {
 	for attempt := range maxRetries {
 		if attempt > 0 {
 			h.log.Info("retrying command", "aggregate_id", aggregateID, "attempt", attempt+1)
 		}
 
-		newEvents, err := h.tryHandle(ctx, aggregateID, execute)
+		newEvents, snap, err := h.tryHandle(ctx, aggregateID, execute)
 		if errors.Is(err, ErrOptimisticConcurrency) {
 			h.log.Warn("optimistic concurrency conflict, will retry", "aggregate_id", aggregateID, "attempt", attempt+1)
 			continue
 		}
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 
-		if h.publisher != nil && len(newEvents) > 0 {
-			if err := h.publisher.Publish(ctx, newEvents); err != nil {
-				h.log.Error("failed to publish events", "aggregate_id", aggregateID, "error", err)
-			}
-		}
-
-		return nil
+		return newEvents, snap, nil
 	}
 
-	return fmt.Errorf("append events: %w", ErrOptimisticConcurrency)
+	return nil, nil, fmt.Errorf("append events: %w", ErrOptimisticConcurrency)
+}
+
+// saveSnapshot marshals and persists a pending snapshot if one was captured.
+func (h *Handler[A]) saveSnapshot(ctx context.Context, aggregateID string, snap *pendingSnapshot) {
+	if snap == nil {
+		return
+	}
+
+	data, err := proto.Marshal(snap.msg)
+	if err != nil {
+		h.log.Error("failed to marshal snapshot", "aggregate_id", aggregateID, "error", err)
+		return
+	}
+
+	s := Snapshot{
+		AggregateID: aggregateID,
+		Version:     snap.version,
+		Data:        data,
+	}
+
+	if err := h.snapshots.SaveSnapshot(ctx, s); err != nil {
+		h.log.Error("failed to save snapshot", "aggregate_id", aggregateID, "error", err)
+		return
+	}
+
+	h.log.Info("snapshot saved", "aggregate_id", aggregateID, "version", snap.version)
+}
+
+// publishEvents publishes new events if a publisher is configured.
+func (h *Handler[A]) publishEvents(ctx context.Context, aggregateID string, newEvents []Event) {
+	if h.publisher != nil && len(newEvents) > 0 {
+		if err := h.publisher.Publish(ctx, newEvents); err != nil {
+			h.log.Error("failed to publish events", "aggregate_id", aggregateID, "error", err)
+		}
+	}
 }
 
 // tryHandle performs a single load→execute→append attempt.
-func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute func(A) ([]Event, error)) ([]Event, error) {
+func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute func(A) ([]Event, error)) ([]Event, *pendingSnapshot, error) {
 	h.log.Debug("handling command", "aggregate_id", aggregateID)
 
 	var agg A
@@ -193,49 +242,52 @@ func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute 
 
 		lr, err := h.loadAggregate(ctx, agg, aggregateID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		expectedVersion = lr.expectedVersion
 		snapshotVersion = lr.snapshotVersion
 	}
 
-	// Save a snapshot after loading if the aggregate has crossed the threshold.
-	// This captures consistent, committed state before execute may mutate the aggregate.
-	snapshotVersion = h.maybeSaveSnapshot(ctx, agg, aggregateID, expectedVersion, snapshotVersion)
-
 	newEvents, err := execute(agg)
 	if err != nil {
 		h.log.Warn("command execution failed", "aggregate_id", aggregateID, "error", err)
-		return nil, fmt.Errorf("execute command: %w", err)
+		return nil, nil, fmt.Errorf("execute command: %w", err)
 	}
 
 	if len(newEvents) == 0 {
 		// No mutation occurred, safe to put back unchanged.
 		h.cache.Put(aggregateID, agg, expectedVersion, snapshotVersion)
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	rawNew := make([]RawEvent, len(newEvents))
 	for i, evt := range newEvents {
 		raw, err := h.registry.Serialize(evt)
 		if err != nil {
-			return nil, fmt.Errorf("serialize event: %w", err)
+			return nil, nil, fmt.Errorf("serialize event: %w", err)
 		}
 		rawNew[i] = raw
 	}
 
 	if err := h.store.Append(ctx, aggregateID, expectedVersion, rawNew); err != nil {
 		// Append failed — don't cache, aggregate may be partially mutated.
-		return nil, err
+		return nil, nil, err
 	}
 
 	newVersion := expectedVersion + len(newEvents)
 	h.log.Debug("events appended", "aggregate_id", aggregateID, "new_event_count", len(newEvents), "new_version", newVersion)
 
+	// Capture snapshot under the lock (cheap — just creates proto objects).
+	// The expensive marshal + save happens outside the lock in Handle().
+	snap := h.maybeCaptureSnapshot(agg, aggregateID, newVersion, snapshotVersion)
+	if snap != nil {
+		snapshotVersion = snap.version
+	}
+
 	// Cache the aggregate at its new version for the next command.
 	h.cache.Put(aggregateID, agg, newVersion, snapshotVersion)
 
-	return newEvents, nil
+	return newEvents, snap, nil
 }
 
 // loadAggregate restores the aggregate from a snapshot (if available) plus
@@ -324,53 +376,38 @@ func (h *Handler[A]) deserializeSnapshot(sa Snapshotable, data []byte) (proto.Me
 	return msg, nil
 }
 
-// maybeSaveSnapshot saves a snapshot if the aggregate supports it and the
-// current version has crossed a snapshot interval threshold since the last snapshot.
-// It returns the effective snapshot version for caching: currentVersion if a
-// snapshot was saved, or the previous snapshotVersion otherwise.
-func (h *Handler[A]) maybeSaveSnapshot(ctx context.Context, agg A, aggregateID string, currentVersion, snapshotVersion int) int {
+// maybeCaptureSnapshot captures snapshot data if the aggregate supports it and
+// the current version has crossed a snapshot interval threshold since the last
+// snapshot. It returns a pendingSnapshot (cheap — just proto objects, no
+// serialization) or nil if no snapshot is needed.
+func (h *Handler[A]) maybeCaptureSnapshot(agg A, aggregateID string, currentVersion, snapshotVersion int) *pendingSnapshot {
 	if h.snapshots == nil {
-		return snapshotVersion
+		return nil
 	}
 
 	sa, ok := Aggregate(agg).(Snapshotable)
 	if !ok {
-		return snapshotVersion
+		return nil
 	}
 
 	interval := sa.SnapshotInterval()
 	if interval <= 0 {
-		return snapshotVersion
+		return nil
 	}
 
-	// Save a snapshot if we've crossed a threshold boundary since the last snapshot.
+	// Capture a snapshot if we've crossed a threshold boundary since the last snapshot.
 	if currentVersion/interval <= snapshotVersion/interval {
-		return snapshotVersion
+		return nil
 	}
 
 	msg, err := sa.Snapshot()
 	if err != nil {
 		h.log.Error("failed to create snapshot", "aggregate_id", aggregateID, "error", err)
-		return snapshotVersion
+		return nil
 	}
 
-	data, err := proto.Marshal(msg)
-	if err != nil {
-		h.log.Error("failed to marshal snapshot", "aggregate_id", aggregateID, "error", err)
-		return snapshotVersion
+	return &pendingSnapshot{
+		msg:     msg,
+		version: currentVersion,
 	}
-
-	snap := Snapshot{
-		AggregateID: aggregateID,
-		Version:     currentVersion,
-		Data:        data,
-	}
-
-	if err := h.snapshots.SaveSnapshot(ctx, snap); err != nil {
-		h.log.Error("failed to save snapshot", "aggregate_id", aggregateID, "error", err)
-		return snapshotVersion
-	}
-
-	h.log.Info("snapshot saved", "aggregate_id", aggregateID, "version", currentVersion)
-	return currentVersion
 }

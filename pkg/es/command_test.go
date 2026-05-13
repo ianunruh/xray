@@ -174,8 +174,7 @@ func TestHandler_WithSnapshots(t *testing.T) {
 	}
 
 	// Send 3 commands (SnapshotInterval = 3).
-	// Snapshot is saved during load, so it triggers on the NEXT handle after
-	// crossing the threshold.
+	// Snapshot is captured after the 3rd append (version reaches 3).
 	for i := 1; i <= 3; i++ {
 		err := handler.Handle(ctx, cmd, func(agg *snapshotAggregate) ([]es.Event, error) {
 			evt := makeEvent(fmt.Sprintf("order-%d", i))
@@ -185,34 +184,20 @@ func TestHandler_WithSnapshots(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// No snapshot yet — the snapshot is saved on the next load that sees 3 events.
+	// Snapshot was saved after the 3rd handle at version 3.
 	snap, err := store.LoadSnapshot(ctx, "orderbook:AAPL")
 	require.NoError(t, err)
-	assert.Nil(t, snap, "snapshot is saved lazily on next load")
-
-	// 4th handle: sees version 3 (from cache), which crosses the threshold → saves snapshot.
-	err = handler.Handle(ctx, cmd, func(agg *snapshotAggregate) ([]es.Event, error) {
-		assert.Equal(t, 3, agg.orderCount, "loaded from 3 events")
-		evt := makeEvent("order-4")
-		require.NoError(t, agg.Apply(evt))
-		return []es.Event{evt}, nil
-	})
-	require.NoError(t, err)
-
-	// Verify snapshot was saved at version 3.
-	snap, err = store.LoadSnapshot(ctx, "orderbook:AAPL")
-	require.NoError(t, err)
-	require.NotNil(t, snap, "snapshot should exist after 4th handle")
+	require.NotNil(t, snap, "snapshot should exist after 3rd handle")
 	assert.Equal(t, 3, snap.Version)
 
-	// Verify 4 events in store.
+	// Verify 3 events in store.
 	raw, err := store.Load(ctx, "orderbook:AAPL")
 	require.NoError(t, err)
-	assert.Len(t, raw, 4)
+	assert.Len(t, raw, 3)
 
-	// 5th handle: uses cached aggregate (version 4, orderCount 4).
+	// 4th handle: uses cached aggregate (version 3, orderCount 3).
 	err = handler.Handle(ctx, cmd, func(agg *snapshotAggregate) ([]es.Event, error) {
-		assert.Equal(t, 4, agg.orderCount, "cached aggregate with 4 events applied")
+		assert.Equal(t, 3, agg.orderCount, "cached aggregate with 3 events applied")
 		return nil, nil
 	})
 	require.NoError(t, err)
