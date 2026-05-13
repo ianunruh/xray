@@ -14,6 +14,7 @@ type Event struct {
 	AggregateID string
 	Type        string
 	Version     int
+	Position    int64
 	Timestamp   time.Time
 	Data        proto.Message
 }
@@ -24,6 +25,7 @@ type RawEvent struct {
 	AggregateID string
 	Type        string
 	Version     int
+	Position    int64
 	Timestamp   time.Time
 	Data        []byte
 }
@@ -87,6 +89,7 @@ func (r *Registry) Deserialize(raw RawEvent) (Event, error) {
 		AggregateID: raw.AggregateID,
 		Type:        raw.Type,
 		Version:     raw.Version,
+		Position:    raw.Position,
 		Timestamp:   raw.Timestamp,
 		Data:        msg,
 	}, nil

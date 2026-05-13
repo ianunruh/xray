@@ -19,20 +19,32 @@ var migration001SQL string
 //go:embed migrations/000002.sql
 var migration002SQL string
 
+//go:embed migrations/000003.sql
+var migration003SQL string
+
 const (
-	queryLoad = `SELECT id, aggregate_id, type, version, data, timestamp
+	queryLoad = `SELECT id, aggregate_id, type, version, data, timestamp, position
 		FROM events
 		WHERE aggregate_id = $1
 		ORDER BY version`
 
-	queryLoadFrom = `SELECT id, aggregate_id, type, version, data, timestamp
+	queryLoadFrom = `SELECT id, aggregate_id, type, version, data, timestamp, position
 		FROM events
 		WHERE aggregate_id = $1 AND version >= $2
 		ORDER BY version`
 
-	queryLoadAll = `SELECT id, aggregate_id, type, version, data, timestamp
+	queryLoadAll = `SELECT id, aggregate_id, type, version, data, timestamp, position
 		FROM events
-		ORDER BY aggregate_id, version`
+		ORDER BY position`
+
+	queryLoadAfter = `SELECT id, aggregate_id, type, version, data, timestamp, position
+		FROM events
+		WHERE position > $1
+		ORDER BY position
+		LIMIT $2`
+
+	queryAppend = `INSERT INTO events (aggregate_id, type, version, data, timestamp)
+		VALUES ($1, $2, $3, $4, $5)`
 
 	queryLoadSnapshot = `SELECT aggregate_id, version, data
 		FROM snapshots
@@ -45,9 +57,10 @@ const (
 
 // compile-time checks
 var (
-	_ es.EventStore       = (*Store)(nil)
-	_ es.SnapshotStore    = (*Store)(nil)
+	_ es.EventStore        = (*Store)(nil)
+	_ es.SnapshotStore     = (*Store)(nil)
 	_ es.GlobalEventLoader = (*Store)(nil)
+	_ es.GlobalEventPoller = (*Store)(nil)
 )
 
 // Store is a PostgreSQL-backed EventStore and SnapshotStore using pgxpool.
@@ -70,9 +83,14 @@ func (s *Store) LoadFrom(ctx context.Context, aggregateID string, fromVersion in
 	return s.queryEvents(ctx, queryLoadFrom, aggregateID, fromVersion)
 }
 
-// LoadAll returns all events across all aggregates, ordered by (aggregate_id, version).
+// LoadAll returns all events across all aggregates, ordered by position.
 func (s *Store) LoadAll(ctx context.Context) ([]es.RawEvent, error) {
 	return s.queryEvents(ctx, queryLoadAll)
+}
+
+// LoadAfter returns up to limit events with position > afterPosition, ordered by position.
+func (s *Store) LoadAfter(ctx context.Context, afterPosition int64, limit int) ([]es.RawEvent, error) {
+	return s.queryEvents(ctx, queryLoadAfter, afterPosition, limit)
 }
 
 func (s *Store) queryEvents(ctx context.Context, query string, args ...any) ([]es.RawEvent, error) {
@@ -85,7 +103,7 @@ func (s *Store) queryEvents(ctx context.Context, query string, args ...any) ([]e
 	var events []es.RawEvent
 	for rows.Next() {
 		var evt es.RawEvent
-		if err := rows.Scan(&evt.ID, &evt.AggregateID, &evt.Type, &evt.Version, &evt.Data, &evt.Timestamp); err != nil {
+		if err := rows.Scan(&evt.ID, &evt.AggregateID, &evt.Type, &evt.Version, &evt.Data, &evt.Timestamp, &evt.Position); err != nil {
 			return nil, fmt.Errorf("scan event: %w", err)
 		}
 		events = append(events, evt)
@@ -94,26 +112,26 @@ func (s *Store) queryEvents(ctx context.Context, query string, args ...any) ([]e
 	return events, rows.Err()
 }
 
-// Append inserts new events in a single batch INSERT. A unique constraint
+// Append inserts new events using a batch INSERT. A unique constraint
 // violation on (aggregate_id, version) is mapped to ErrOptimisticConcurrency.
 func (s *Store) Append(ctx context.Context, aggregateID string, expectedVersion int, events []es.RawEvent) error {
-	rows := make([][]any, len(events))
+	batch := &pgx.Batch{}
 	for i, evt := range events {
 		version := expectedVersion + i + 1
-		rows[i] = []any{aggregateID, evt.Type, version, evt.Data, evt.Timestamp}
+		batch.Queue(queryAppend, aggregateID, evt.Type, version, evt.Data, evt.Timestamp)
 	}
 
-	_, err := s.pool.CopyFrom(ctx,
-		pgx.Identifier{"events"},
-		[]string{"aggregate_id", "type", "version", "data", "timestamp"},
-		pgx.CopyFromRows(rows),
-	)
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return es.ErrOptimisticConcurrency
+	br := s.pool.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for range events {
+		if _, err := br.Exec(); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				return es.ErrOptimisticConcurrency
+			}
+			return fmt.Errorf("insert events: %w", err)
 		}
-		return fmt.Errorf("insert events: %w", err)
 	}
 
 	return nil
@@ -145,9 +163,10 @@ func (s *Store) SaveSnapshot(ctx context.Context, snap es.Snapshot) error {
 
 // Migrate runs the schema migrations. Call this on startup.
 func (s *Store) Migrate(ctx context.Context) error {
-	if _, err := s.pool.Exec(ctx, migration001SQL); err != nil {
-		return err
+	for _, sql := range []string{migration001SQL, migration002SQL, migration003SQL} {
+		if _, err := s.pool.Exec(ctx, sql); err != nil {
+			return err
+		}
 	}
-	_, err := s.pool.Exec(ctx, migration002SQL)
-	return err
+	return nil
 }

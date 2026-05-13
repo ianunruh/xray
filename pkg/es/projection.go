@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 )
 
 // Projection consumes deserialized events to build read models.
@@ -89,4 +90,112 @@ func HydrateProjections(ctx context.Context, loader GlobalEventLoader, registry 
 
 	log.Info("projections hydrated", "event_count", len(events))
 	return nil
+}
+
+const (
+	defaultPollInterval = 100 * time.Millisecond
+	defaultPollBatch    = 256
+)
+
+// ProjectionRunner polls the event store for new events and dispatches them to
+// projections. It replaces both HydrateProjections (initial catch-up) and
+// FanOutPublisher (ongoing updates) with a single pull-based mechanism.
+type ProjectionRunner struct {
+	poller       GlobalEventPoller
+	registry     *Registry
+	projections  []Projection
+	log          *slog.Logger
+	pollInterval time.Duration
+	pollBatch    int
+	position     int64
+}
+
+// NewProjectionRunner creates a runner that polls the given store for new events.
+func NewProjectionRunner(poller GlobalEventPoller, registry *Registry, log *slog.Logger, projections ...Projection) *ProjectionRunner {
+	return &ProjectionRunner{
+		poller:       poller,
+		registry:     registry,
+		projections:  projections,
+		log:          log,
+		pollInterval: defaultPollInterval,
+		pollBatch:    defaultPollBatch,
+	}
+}
+
+// Start catches up from position 0 to the current head, then polls for new
+// events in the background. The background goroutine stops when ctx is cancelled.
+func (r *ProjectionRunner) Start(ctx context.Context) error {
+	if err := r.catchUp(ctx); err != nil {
+		return fmt.Errorf("projection catch-up: %w", err)
+	}
+
+	go r.run(ctx)
+	return nil
+}
+
+// catchUp polls in a tight loop until no more events are returned.
+func (r *ProjectionRunner) catchUp(ctx context.Context) error {
+	total := 0
+	for {
+		n, err := r.poll(ctx)
+		if err != nil {
+			return err
+		}
+		total += n
+		if n < r.pollBatch {
+			break
+		}
+	}
+	r.log.Info("projections caught up", "event_count", total, "position", r.position)
+	return nil
+}
+
+// run polls on an interval until ctx is cancelled.
+func (r *ProjectionRunner) run(ctx context.Context) {
+	ticker := time.NewTicker(r.pollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if _, err := r.poll(ctx); err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				r.log.Error("projection poll failed", "error", err)
+			}
+		}
+	}
+}
+
+// poll fetches and dispatches one batch of events. Returns the number of events processed.
+func (r *ProjectionRunner) poll(ctx context.Context) (int, error) {
+	rawEvents, err := r.poller.LoadAfter(ctx, r.position, r.pollBatch)
+	if err != nil {
+		return 0, fmt.Errorf("load events after position %d: %w", r.position, err)
+	}
+
+	if len(rawEvents) == 0 {
+		return 0, nil
+	}
+
+	events := make([]Event, 0, len(rawEvents))
+	for _, raw := range rawEvents {
+		evt, err := r.registry.Deserialize(raw)
+		if err != nil {
+			return 0, fmt.Errorf("deserialize event: %w", err)
+		}
+		events = append(events, evt)
+	}
+
+	for _, proj := range r.projections {
+		if err := proj.HandleEvents(ctx, events); err != nil {
+			r.log.Error("projection failed to handle events", "error", err)
+		}
+	}
+
+	r.position = rawEvents[len(rawEvents)-1].Position
+	return len(events), nil
 }

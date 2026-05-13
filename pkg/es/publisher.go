@@ -14,3 +14,10 @@ type EventPublisher interface {
 type GlobalEventLoader interface {
 	LoadAll(ctx context.Context) ([]RawEvent, error)
 }
+
+// GlobalEventPoller is an opt-in interface for incrementally polling new events
+// by global position. Used by projection runners to consume events independently
+// of the write path.
+type GlobalEventPoller interface {
+	LoadAfter(ctx context.Context, afterPosition int64, limit int) ([]RawEvent, error)
+}

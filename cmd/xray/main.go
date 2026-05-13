@@ -72,18 +72,16 @@ func main() {
 	orderProjection := orderbook.NewOrderProjection()
 	depthProjection := orderbook.NewDepthProjection()
 
-	// Hydrate projections from stored events.
-	if err := es.HydrateProjections(ctx, store, registry, log, tradeProjection, orderProjection, depthProjection); err != nil {
-		log.Error("failed to hydrate projections", "error", err)
+	// Start projection runner: catches up from stored events, then polls for new ones.
+	runner := es.NewProjectionRunner(store, registry, log, tradeProjection, orderProjection, depthProjection)
+	if err := runner.Start(ctx); err != nil {
+		log.Error("failed to start projection runner", "error", err)
 		os.Exit(1)
 	}
 
-	publisher := es.NewFanOutPublisher(log, tradeProjection, orderProjection, depthProjection)
-	defer publisher.Close()
-
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
-	}, log).WithSnapshots(store).WithPublisher(publisher)
+	}, log).WithSnapshots(store)
 
 	srv := orderbook.NewServer(handler, log, tradeProjection, orderProjection, depthProjection)
 

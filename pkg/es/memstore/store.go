@@ -4,15 +4,17 @@ import (
 	"context"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ianunruh/xray/pkg/es"
 )
 
 // Store is an in-memory EventStore and SnapshotStore implementation, suitable for testing.
 type Store struct {
-	mu        sync.Mutex
-	streams   map[string][]es.RawEvent
-	snapshots map[string]es.Snapshot
+	mu           sync.Mutex
+	streams      map[string][]es.RawEvent
+	snapshots    map[string]es.Snapshot
+	nextPosition atomic.Int64
 }
 
 // New creates a new in-memory event store.
@@ -70,6 +72,7 @@ func (s *Store) Append(_ context.Context, aggregateID string, expectedVersion in
 	for i, evt := range events {
 		evt.AggregateID = aggregateID
 		evt.Version = expectedVersion + i + 1
+		evt.Position = s.nextPosition.Add(1)
 		stream = append(stream, evt)
 	}
 
@@ -77,7 +80,7 @@ func (s *Store) Append(_ context.Context, aggregateID string, expectedVersion in
 	return nil
 }
 
-// LoadAll returns all events across all aggregates, sorted by (AggregateID, Version).
+// LoadAll returns all events across all aggregates, sorted by position.
 func (s *Store) LoadAll(_ context.Context) ([]es.RawEvent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -88,13 +91,35 @@ func (s *Store) LoadAll(_ context.Context) ([]es.RawEvent, error) {
 	}
 
 	sort.Slice(all, func(i, j int) bool {
-		if all[i].AggregateID != all[j].AggregateID {
-			return all[i].AggregateID < all[j].AggregateID
-		}
-		return all[i].Version < all[j].Version
+		return all[i].Position < all[j].Position
 	})
 
 	return all, nil
+}
+
+// LoadAfter returns up to limit events with position > afterPosition, sorted by position.
+func (s *Store) LoadAfter(_ context.Context, afterPosition int64, limit int) ([]es.RawEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var matching []es.RawEvent
+	for _, events := range s.streams {
+		for _, evt := range events {
+			if evt.Position > afterPosition {
+				matching = append(matching, evt)
+			}
+		}
+	}
+
+	sort.Slice(matching, func(i, j int) bool {
+		return matching[i].Position < matching[j].Position
+	})
+
+	if limit > 0 && len(matching) > limit {
+		matching = matching[:limit]
+	}
+
+	return matching, nil
 }
 
 // LoadSnapshot returns the most recent snapshot for the aggregate, or nil if none exists.
