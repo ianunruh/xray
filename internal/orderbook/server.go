@@ -63,7 +63,7 @@ func (s *Server) PlaceOrder(ctx context.Context, req *connect.Request[orderbookv
 		return events, nil
 	})
 	if err != nil {
-		s.log.Error("PlaceOrder failed", "symbol", msg.Symbol, "error", err)
+		s.log.Warn("PlaceOrder failed", "symbol", msg.Symbol, "error", err)
 		return nil, mapError(err)
 	}
 
@@ -94,7 +94,7 @@ func (s *Server) CancelOrder(ctx context.Context, req *connect.Request[orderbook
 		return ExecuteCancelOrder(book, cmd)
 	})
 	if err != nil {
-		s.log.Error("CancelOrder failed", "symbol", msg.Symbol, "order_id", msg.OrderId, "error", err)
+		s.log.Warn("CancelOrder failed", "symbol", msg.Symbol, "order_id", msg.OrderId, "error", err)
 		return nil, mapError(err)
 	}
 
@@ -149,7 +149,7 @@ func (s *Server) GetOrder(ctx context.Context, req *connect.Request[orderbookv1.
 
 	order, ok := book.Orders[req.Msg.OrderId]
 	if !ok {
-		s.log.Error("GetOrder not found", "symbol", req.Msg.Symbol, "order_id", req.Msg.OrderId)
+		s.log.Warn("GetOrder not found", "symbol", req.Msg.Symbol, "order_id", req.Msg.OrderId)
 		return nil, connect.NewError(connect.CodeNotFound, ErrOrderNotFound)
 	}
 

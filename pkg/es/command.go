@@ -87,7 +87,7 @@ func (h *Handler[A]) Handle(ctx context.Context, cmd Command, execute func(A) ([
 
 	newEvents, err := execute(agg)
 	if err != nil {
-		h.log.Error("command execution failed", "aggregate_id", aggregateID, "error", err)
+		h.log.Warn("command execution failed", "aggregate_id", aggregateID, "error", err)
 		return fmt.Errorf("execute command: %w", err)
 	}
 
@@ -105,7 +105,7 @@ func (h *Handler[A]) Handle(ctx context.Context, cmd Command, execute func(A) ([
 	}
 
 	if err := h.store.Append(ctx, aggregateID, lr.expectedVersion, rawNew); err != nil {
-		h.log.Error("failed to append events", "aggregate_id", aggregateID, "expected_version", lr.expectedVersion, "error", err)
+		h.log.Warn("failed to append events", "aggregate_id", aggregateID, "expected_version", lr.expectedVersion, "error", err)
 		return fmt.Errorf("append events: %w", err)
 	}
 
