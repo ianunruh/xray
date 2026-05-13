@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package orderbook.v1;
+
+option go_package = "github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1";
+
+import "google/protobuf/timestamp.proto";
+
+enum Side {
+  SIDE_UNSPECIFIED = 0;
+  SIDE_BUY = 1;
+  SIDE_SELL = 2;
+}
+
+message OrderPlaced {
+  string order_id = 1;
+  string symbol = 2;
+  Side side = 3;
+  int64 price = 4;
+  int64 quantity = 5;
+  google.protobuf.Timestamp placed_at = 6;
+}
+
+message OrderCancelled {
+  string order_id = 1;
+  string symbol = 2;
+}
+
+message TradeExecuted {
+  string trade_id = 1;
+  string buy_order_id = 2;
+  string sell_order_id = 3;
+  string symbol = 4;
+  int64 price = 5;
+  int64 quantity = 6;
+  google.protobuf.Timestamp executed_at = 7;
+}
