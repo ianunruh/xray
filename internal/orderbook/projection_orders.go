@@ -1,0 +1,110 @@
+package orderbook
+
+import (
+	"context"
+	"sync"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
+	"github.com/ianunruh/xray/pkg/es"
+)
+
+// OrderProjection builds an in-memory order status view from order lifecycle events.
+type OrderProjection struct {
+	mu     sync.RWMutex
+	orders map[string]map[string]*orderbookv1.OrderSummary // symbol -> orderID -> summary
+}
+
+// NewOrderProjection creates a new OrderProjection.
+func NewOrderProjection() *OrderProjection {
+	return &OrderProjection{
+		orders: make(map[string]map[string]*orderbookv1.OrderSummary),
+	}
+}
+
+// HandleEvents processes events to track order lifecycle.
+func (p *OrderProjection) HandleEvents(_ context.Context, events []es.Event) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	for _, evt := range events {
+		switch data := evt.Data.(type) {
+		case *orderbookv1.OrderPlaced:
+			p.applyOrderPlaced(data)
+		case *orderbookv1.TradeExecuted:
+			p.applyTradeExecuted(data)
+		case *orderbookv1.OrderCancelled:
+			p.applyOrderCancelled(data)
+		}
+	}
+
+	return nil
+}
+
+func (p *OrderProjection) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
+	byID := p.orders[data.Symbol]
+	if byID == nil {
+		byID = make(map[string]*orderbookv1.OrderSummary)
+		p.orders[data.Symbol] = byID
+	}
+
+	byID[data.OrderId] = &orderbookv1.OrderSummary{
+		OrderId:           data.OrderId,
+		Symbol:            data.Symbol,
+		Side:              data.Side,
+		Price:             data.Price,
+		Quantity:          data.Quantity,
+		RemainingQuantity: data.Quantity,
+		Status:            orderbookv1.OrderStatus_ORDER_STATUS_OPEN,
+		PlacedAt:          timestamppb.New(data.PlacedAt.AsTime()),
+		OrderType:         data.OrderType,
+		TimeInForce:       data.TimeInForce,
+	}
+}
+
+func (p *OrderProjection) applyTradeExecuted(data *orderbookv1.TradeExecuted) {
+	byID := p.orders[data.Symbol]
+	if byID == nil {
+		return
+	}
+
+	for _, orderID := range []string{data.BuyOrderId, data.SellOrderId} {
+		summary := byID[orderID]
+		if summary == nil {
+			continue
+		}
+		summary.RemainingQuantity -= data.Quantity
+		if summary.RemainingQuantity <= 0 {
+			summary.Status = orderbookv1.OrderStatus_ORDER_STATUS_FILLED
+		} else {
+			summary.Status = orderbookv1.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED
+		}
+	}
+}
+
+func (p *OrderProjection) applyOrderCancelled(data *orderbookv1.OrderCancelled) {
+	byID := p.orders[data.Symbol]
+	if byID == nil {
+		return
+	}
+
+	summary := byID[data.OrderId]
+	if summary == nil {
+		return
+	}
+	summary.Status = orderbookv1.OrderStatus_ORDER_STATUS_CANCELLED
+}
+
+// ListOrders returns all orders for the given symbol.
+func (p *OrderProjection) ListOrders(symbol string) []*orderbookv1.OrderSummary {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	byID := p.orders[symbol]
+	out := make([]*orderbookv1.OrderSummary, 0, len(byID))
+	for _, summary := range byID {
+		out = append(out, summary)
+	}
+	return out
+}

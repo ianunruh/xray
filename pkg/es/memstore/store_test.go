@@ -136,6 +136,38 @@ func TestStore_SaveAndLoadSnapshot(t *testing.T) {
 	assert.Nil(t, other)
 }
 
+func TestStore_LoadAll(t *testing.T) {
+	store := memstore.New()
+	ctx := context.Background()
+
+	require.NoError(t, store.Append(ctx, "orderbook:AAPL", 0, []es.RawEvent{
+		{Type: "A", Data: []byte("a1")},
+		{Type: "B", Data: []byte("a2")},
+	}))
+	require.NoError(t, store.Append(ctx, "orderbook:GOOG", 0, []es.RawEvent{
+		{Type: "C", Data: []byte("g1")},
+	}))
+
+	all, err := store.LoadAll(ctx)
+	require.NoError(t, err)
+	require.Len(t, all, 3)
+
+	// Sorted by (AggregateID, Version).
+	assert.Equal(t, "orderbook:AAPL", all[0].AggregateID)
+	assert.Equal(t, 1, all[0].Version)
+	assert.Equal(t, "orderbook:AAPL", all[1].AggregateID)
+	assert.Equal(t, 2, all[1].Version)
+	assert.Equal(t, "orderbook:GOOG", all[2].AggregateID)
+	assert.Equal(t, 1, all[2].Version)
+}
+
+func TestStore_LoadAll_Empty(t *testing.T) {
+	store := memstore.New()
+	all, err := store.LoadAll(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, all)
+}
+
 func TestStore_IsolatedStreams(t *testing.T) {
 	store := memstore.New()
 	ctx := context.Background()

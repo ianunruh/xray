@@ -23,11 +23,17 @@ func newTestServer(t *testing.T) (orderbookv1connect.OrderBookServiceClient, *ht
 
 	registry := newTestRegistry()
 	store := memstore.New()
+
+	tradeProjection := orderbook.NewTradeProjection()
+	orderProjection := orderbook.NewOrderProjection()
+
+	publisher := es.NewFanOutPublisher(slog.Default(), tradeProjection, orderProjection)
+
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
-	}, slog.Default())
+	}, slog.Default()).WithPublisher(publisher)
 
-	srv := orderbook.NewServer(handler, slog.Default())
+	srv := orderbook.NewServer(handler, slog.Default(), tradeProjection, orderProjection)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
@@ -336,4 +342,72 @@ func TestServer_PlaceOrder_MarketGTC_Rejected(t *testing.T) {
 	}))
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestServer_ListTrades(t *testing.T) {
+	client, _ := newTestServer(t)
+	ctx := context.Background()
+
+	// Place a sell then a matching buy to generate a trade.
+	_, err := client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_SELL,
+		Price:    1500000,
+		Quantity: 100,
+	}))
+	require.NoError(t, err)
+
+	_, err = client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_BUY,
+		Price:    1500000,
+		Quantity: 60,
+	}))
+	require.NoError(t, err)
+
+	resp, err := client.ListTrades(ctx, connect.NewRequest(&orderbookv1.ListTradesRequest{
+		Symbol: "AAPL",
+	}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Trades, 1)
+	assert.Equal(t, int64(1500000), resp.Msg.Trades[0].Price)
+	assert.Equal(t, int64(60), resp.Msg.Trades[0].Quantity)
+	assert.Equal(t, "AAPL", resp.Msg.Trades[0].Symbol)
+
+	// Different symbol has no trades.
+	resp, err = client.ListTrades(ctx, connect.NewRequest(&orderbookv1.ListTradesRequest{
+		Symbol: "GOOG",
+	}))
+	require.NoError(t, err)
+	assert.Empty(t, resp.Msg.Trades)
+}
+
+func TestServer_ListOrders(t *testing.T) {
+	client, _ := newTestServer(t)
+	ctx := context.Background()
+
+	// Place an order.
+	placeResp, err := client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_SELL,
+		Price:    1505000,
+		Quantity: 100,
+	}))
+	require.NoError(t, err)
+
+	resp, err := client.ListOrders(ctx, connect.NewRequest(&orderbookv1.ListOrdersRequest{
+		Symbol: "AAPL",
+	}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Orders, 1)
+	assert.Equal(t, placeResp.Msg.OrderId, resp.Msg.Orders[0].OrderId)
+	assert.Equal(t, orderbookv1.OrderStatus_ORDER_STATUS_OPEN, resp.Msg.Orders[0].Status)
+	assert.Equal(t, int64(100), resp.Msg.Orders[0].RemainingQuantity)
+
+	// Different symbol has no orders.
+	resp, err = client.ListOrders(ctx, connect.NewRequest(&orderbookv1.ListOrdersRequest{
+		Symbol: "GOOG",
+	}))
+	require.NoError(t, err)
+	assert.Empty(t, resp.Msg.Orders)
 }

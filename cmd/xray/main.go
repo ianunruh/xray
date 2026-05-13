@@ -59,11 +59,23 @@ func main() {
 	registry.Register("TradeExecuted", func() proto.Message { return new(orderbookv1.TradeExecuted) })
 	registry.Register("OrderCancelled", func() proto.Message { return new(orderbookv1.OrderCancelled) })
 
+	// Create projections.
+	tradeProjection := orderbook.NewTradeProjection()
+	orderProjection := orderbook.NewOrderProjection()
+
+	// Hydrate projections from stored events.
+	if err := es.HydrateProjections(ctx, store, registry, log, tradeProjection, orderProjection); err != nil {
+		log.Error("failed to hydrate projections", "error", err)
+		os.Exit(1)
+	}
+
+	publisher := es.NewFanOutPublisher(log, tradeProjection, orderProjection)
+
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
-	}, log).WithSnapshots(store)
+	}, log).WithSnapshots(store).WithPublisher(publisher)
 
-	srv := orderbook.NewServer(handler, log)
+	srv := orderbook.NewServer(handler, log, tradeProjection, orderProjection)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)

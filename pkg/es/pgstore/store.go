@@ -33,6 +33,10 @@ const (
 	queryInsert = `INSERT INTO events (aggregate_id, type, version, data, timestamp)
 		VALUES ($1, $2, $3, $4, $5)`
 
+	queryLoadAll = `SELECT id, aggregate_id, type, version, data, timestamp
+		FROM events
+		ORDER BY aggregate_id, version`
+
 	queryLoadSnapshot = `SELECT aggregate_id, version, data
 		FROM snapshots
 		WHERE aggregate_id = $1`
@@ -44,8 +48,9 @@ const (
 
 // compile-time checks
 var (
-	_ es.EventStore    = (*Store)(nil)
-	_ es.SnapshotStore = (*Store)(nil)
+	_ es.EventStore       = (*Store)(nil)
+	_ es.SnapshotStore    = (*Store)(nil)
+	_ es.GlobalEventLoader = (*Store)(nil)
 )
 
 // Store is a PostgreSQL-backed EventStore and SnapshotStore using pgxpool.
@@ -66,6 +71,11 @@ func (s *Store) Load(ctx context.Context, aggregateID string) ([]es.RawEvent, er
 // LoadFrom returns events for the given aggregate starting from fromVersion (inclusive).
 func (s *Store) LoadFrom(ctx context.Context, aggregateID string, fromVersion int) ([]es.RawEvent, error) {
 	return s.queryEvents(ctx, queryLoadFrom, aggregateID, fromVersion)
+}
+
+// LoadAll returns all events across all aggregates, ordered by (aggregate_id, version).
+func (s *Store) LoadAll(ctx context.Context) ([]es.RawEvent, error) {
+	return s.queryEvents(ctx, queryLoadAll)
 }
 
 func (s *Store) queryEvents(ctx context.Context, query string, args ...any) ([]es.RawEvent, error) {

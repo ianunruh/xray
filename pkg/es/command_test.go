@@ -213,3 +213,52 @@ func TestHandler_WithSnapshots(t *testing.T) {
 	})
 	require.NoError(t, err)
 }
+
+type recordingPublisher struct {
+	published []es.Event
+}
+
+func (p *recordingPublisher) Publish(_ context.Context, events []es.Event) error {
+	p.published = append(p.published, events...)
+	return nil
+}
+
+func TestHandler_WithPublisher(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	pub := &recordingPublisher{}
+
+	handler := es.NewHandler(store, registry, func(id string) *testAggregate {
+		a := &testAggregate{}
+		a.SetID(id)
+		return a
+	}, slog.Default()).WithPublisher(pub)
+
+	ctx := context.Background()
+	now := time.Now()
+	cmd := testCommand{aggregateID: "orderbook:AAPL"}
+
+	err := handler.Handle(ctx, cmd, func(agg *testAggregate) ([]es.Event, error) {
+		return []es.Event{
+			{
+				AggregateID: agg.AggregateID(),
+				Type:        "OrderPlaced",
+				Timestamp:   now,
+				Data: &orderbookv1.OrderPlaced{
+					OrderId:  "order-1",
+					Symbol:   "AAPL",
+					Side:     orderbookv1.Side_SIDE_BUY,
+					Price:    1500000,
+					Quantity: 50,
+					PlacedAt: timestamppb.New(now),
+				},
+			},
+		}, nil
+	})
+	require.NoError(t, err)
+
+	require.Len(t, pub.published, 1)
+	placed, ok := pub.published[0].Data.(*orderbookv1.OrderPlaced)
+	require.True(t, ok)
+	assert.Equal(t, "order-1", placed.OrderId)
+}

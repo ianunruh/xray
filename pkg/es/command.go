@@ -21,6 +21,7 @@ type Handler[A Aggregate] struct {
 	factory   func(id string) A
 	log       *slog.Logger
 	snapshots SnapshotStore
+	publisher EventPublisher
 }
 
 // NewHandler creates a Handler for the given aggregate type.
@@ -37,6 +38,13 @@ func NewHandler[A Aggregate](store EventStore, registry *Registry, factory func(
 func (h *Handler[A]) WithSnapshots(s SnapshotStore) *Handler[A] {
 	cp := *h
 	cp.snapshots = s
+	return &cp
+}
+
+// WithPublisher returns a copy of the handler with event publishing enabled.
+func (h *Handler[A]) WithPublisher(p EventPublisher) *Handler[A] {
+	cp := *h
+	cp.publisher = p
 	return &cp
 }
 
@@ -99,6 +107,12 @@ func (h *Handler[A]) Handle(ctx context.Context, cmd Command, execute func(A) ([
 	if err := h.store.Append(ctx, aggregateID, lr.expectedVersion, rawNew); err != nil {
 		h.log.Error("failed to append events", "aggregate_id", aggregateID, "expected_version", lr.expectedVersion, "error", err)
 		return fmt.Errorf("append events: %w", err)
+	}
+
+	if h.publisher != nil {
+		if err := h.publisher.Publish(ctx, newEvents); err != nil {
+			h.log.Error("failed to publish events", "aggregate_id", aggregateID, "error", err)
+		}
 	}
 
 	newVersion := lr.expectedVersion + len(newEvents)

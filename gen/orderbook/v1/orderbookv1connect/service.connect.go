@@ -45,6 +45,12 @@ const (
 	// OrderBookServiceGetOrderProcedure is the fully-qualified name of the OrderBookService's GetOrder
 	// RPC.
 	OrderBookServiceGetOrderProcedure = "/orderbook.v1.OrderBookService/GetOrder"
+	// OrderBookServiceListTradesProcedure is the fully-qualified name of the OrderBookService's
+	// ListTrades RPC.
+	OrderBookServiceListTradesProcedure = "/orderbook.v1.OrderBookService/ListTrades"
+	// OrderBookServiceListOrdersProcedure is the fully-qualified name of the OrderBookService's
+	// ListOrders RPC.
+	OrderBookServiceListOrdersProcedure = "/orderbook.v1.OrderBookService/ListOrders"
 )
 
 // OrderBookServiceClient is a client for the orderbook.v1.OrderBookService service.
@@ -53,6 +59,8 @@ type OrderBookServiceClient interface {
 	CancelOrder(context.Context, *connect.Request[v1.CancelOrderRequest]) (*connect.Response[v1.CancelOrderResponse], error)
 	GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error)
 	GetOrder(context.Context, *connect.Request[v1.GetOrderRequest]) (*connect.Response[v1.GetOrderResponse], error)
+	ListTrades(context.Context, *connect.Request[v1.ListTradesRequest]) (*connect.Response[v1.ListTradesResponse], error)
+	ListOrders(context.Context, *connect.Request[v1.ListOrdersRequest]) (*connect.Response[v1.ListOrdersResponse], error)
 }
 
 // NewOrderBookServiceClient constructs a client for the orderbook.v1.OrderBookService service. By
@@ -90,6 +98,18 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(orderBookServiceMethods.ByName("GetOrder")),
 			connect.WithClientOptions(opts...),
 		),
+		listTrades: connect.NewClient[v1.ListTradesRequest, v1.ListTradesResponse](
+			httpClient,
+			baseURL+OrderBookServiceListTradesProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("ListTrades")),
+			connect.WithClientOptions(opts...),
+		),
+		listOrders: connect.NewClient[v1.ListOrdersRequest, v1.ListOrdersResponse](
+			httpClient,
+			baseURL+OrderBookServiceListOrdersProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("ListOrders")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -99,6 +119,8 @@ type orderBookServiceClient struct {
 	cancelOrder  *connect.Client[v1.CancelOrderRequest, v1.CancelOrderResponse]
 	getOrderBook *connect.Client[v1.GetOrderBookRequest, v1.GetOrderBookResponse]
 	getOrder     *connect.Client[v1.GetOrderRequest, v1.GetOrderResponse]
+	listTrades   *connect.Client[v1.ListTradesRequest, v1.ListTradesResponse]
+	listOrders   *connect.Client[v1.ListOrdersRequest, v1.ListOrdersResponse]
 }
 
 // PlaceOrder calls orderbook.v1.OrderBookService.PlaceOrder.
@@ -121,12 +143,24 @@ func (c *orderBookServiceClient) GetOrder(ctx context.Context, req *connect.Requ
 	return c.getOrder.CallUnary(ctx, req)
 }
 
+// ListTrades calls orderbook.v1.OrderBookService.ListTrades.
+func (c *orderBookServiceClient) ListTrades(ctx context.Context, req *connect.Request[v1.ListTradesRequest]) (*connect.Response[v1.ListTradesResponse], error) {
+	return c.listTrades.CallUnary(ctx, req)
+}
+
+// ListOrders calls orderbook.v1.OrderBookService.ListOrders.
+func (c *orderBookServiceClient) ListOrders(ctx context.Context, req *connect.Request[v1.ListOrdersRequest]) (*connect.Response[v1.ListOrdersResponse], error) {
+	return c.listOrders.CallUnary(ctx, req)
+}
+
 // OrderBookServiceHandler is an implementation of the orderbook.v1.OrderBookService service.
 type OrderBookServiceHandler interface {
 	PlaceOrder(context.Context, *connect.Request[v1.PlaceOrderRequest]) (*connect.Response[v1.PlaceOrderResponse], error)
 	CancelOrder(context.Context, *connect.Request[v1.CancelOrderRequest]) (*connect.Response[v1.CancelOrderResponse], error)
 	GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error)
 	GetOrder(context.Context, *connect.Request[v1.GetOrderRequest]) (*connect.Response[v1.GetOrderResponse], error)
+	ListTrades(context.Context, *connect.Request[v1.ListTradesRequest]) (*connect.Response[v1.ListTradesResponse], error)
+	ListOrders(context.Context, *connect.Request[v1.ListOrdersRequest]) (*connect.Response[v1.ListOrdersResponse], error)
 }
 
 // NewOrderBookServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -160,6 +194,18 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 		connect.WithSchema(orderBookServiceMethods.ByName("GetOrder")),
 		connect.WithHandlerOptions(opts...),
 	)
+	orderBookServiceListTradesHandler := connect.NewUnaryHandler(
+		OrderBookServiceListTradesProcedure,
+		svc.ListTrades,
+		connect.WithSchema(orderBookServiceMethods.ByName("ListTrades")),
+		connect.WithHandlerOptions(opts...),
+	)
+	orderBookServiceListOrdersHandler := connect.NewUnaryHandler(
+		OrderBookServiceListOrdersProcedure,
+		svc.ListOrders,
+		connect.WithSchema(orderBookServiceMethods.ByName("ListOrders")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/orderbook.v1.OrderBookService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case OrderBookServicePlaceOrderProcedure:
@@ -170,6 +216,10 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 			orderBookServiceGetOrderBookHandler.ServeHTTP(w, r)
 		case OrderBookServiceGetOrderProcedure:
 			orderBookServiceGetOrderHandler.ServeHTTP(w, r)
+		case OrderBookServiceListTradesProcedure:
+			orderBookServiceListTradesHandler.ServeHTTP(w, r)
+		case OrderBookServiceListOrdersProcedure:
+			orderBookServiceListOrdersHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -193,4 +243,12 @@ func (UnimplementedOrderBookServiceHandler) GetOrderBook(context.Context, *conne
 
 func (UnimplementedOrderBookServiceHandler) GetOrder(context.Context, *connect.Request[v1.GetOrderRequest]) (*connect.Response[v1.GetOrderResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.GetOrder is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) ListTrades(context.Context, *connect.Request[v1.ListTradesRequest]) (*connect.Response[v1.ListTradesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.ListTrades is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) ListOrders(context.Context, *connect.Request[v1.ListOrdersRequest]) (*connect.Response[v1.ListOrdersResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.ListOrders is not implemented"))
 }

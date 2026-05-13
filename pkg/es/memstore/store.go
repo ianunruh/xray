@@ -2,6 +2,7 @@ package memstore
 
 import (
 	"context"
+	"sort"
 	"sync"
 
 	"github.com/ianunruh/xray/pkg/es"
@@ -74,6 +75,26 @@ func (s *Store) Append(_ context.Context, aggregateID string, expectedVersion in
 
 	s.streams[aggregateID] = stream
 	return nil
+}
+
+// LoadAll returns all events across all aggregates, sorted by (AggregateID, Version).
+func (s *Store) LoadAll(_ context.Context) ([]es.RawEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var all []es.RawEvent
+	for _, events := range s.streams {
+		all = append(all, events...)
+	}
+
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].AggregateID != all[j].AggregateID {
+			return all[i].AggregateID < all[j].AggregateID
+		}
+		return all[i].Version < all[j].Version
+	})
+
+	return all, nil
 }
 
 // LoadSnapshot returns the most recent snapshot for the aggregate, or nil if none exists.

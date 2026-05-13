@@ -7,11 +7,21 @@ option go_package = "github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1";
 import "google/protobuf/timestamp.proto";
 import "orderbook/v1/events.proto";
 
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_OPEN = 1;
+  ORDER_STATUS_PARTIALLY_FILLED = 2;
+  ORDER_STATUS_FILLED = 3;
+  ORDER_STATUS_CANCELLED = 4;
+}
+
 service OrderBookService {
   rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
   rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
   rpc GetOrderBook(GetOrderBookRequest) returns (GetOrderBookResponse);
   rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+  rpc ListTrades(ListTradesRequest) returns (ListTradesResponse);
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
 }
 
 message PlaceOrderRequest {
@@ -68,4 +78,43 @@ message GetOrderResponse {
   google.protobuf.Timestamp placed_at = 7;
   OrderType order_type = 8;
   TimeInForce time_in_force = 9;
+}
+
+message ListTradesRequest {
+  string symbol = 1;
+}
+
+message ListTradesResponse {
+  repeated Trade trades = 1;
+}
+
+message Trade {
+  string trade_id = 1;
+  string symbol = 2;
+  string buy_order_id = 3;
+  string sell_order_id = 4;
+  int64 price = 5;
+  int64 quantity = 6;
+  google.protobuf.Timestamp executed_at = 7;
+}
+
+message ListOrdersRequest {
+  string symbol = 1;
+}
+
+message ListOrdersResponse {
+  repeated OrderSummary orders = 1;
+}
+
+message OrderSummary {
+  string order_id = 1;
+  string symbol = 2;
+  Side side = 3;
+  int64 price = 4;
+  int64 quantity = 5;
+  int64 remaining_quantity = 6;
+  OrderStatus status = 7;
+  google.protobuf.Timestamp placed_at = 8;
+  OrderType order_type = 9;
+  TimeInForce time_in_force = 10;
 }

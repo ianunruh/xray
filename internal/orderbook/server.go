@@ -19,13 +19,17 @@ type Server struct {
 
 	handler *es.Handler[*OrderBook]
 	log     *slog.Logger
+	trades  TradeReader
+	orders  OrderReader
 }
 
 // NewServer creates a new Server with the given dependencies.
-func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger) *Server {
+func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeReader, orders OrderReader) *Server {
 	return &Server{
 		handler: handler,
 		log:     log,
+		trades:  trades,
+		orders:  orders,
 	}
 }
 
@@ -148,6 +152,26 @@ func (s *Server) GetOrder(ctx context.Context, req *connect.Request[orderbookv1.
 	s.log.Info("GetOrder", "symbol", req.Msg.Symbol, "order_id", req.Msg.OrderId)
 
 	return connect.NewResponse(resp), nil
+}
+
+func (s *Server) ListTrades(ctx context.Context, req *connect.Request[orderbookv1.ListTradesRequest]) (*connect.Response[orderbookv1.ListTradesResponse], error) {
+	trades := s.trades.ListTrades(req.Msg.Symbol)
+
+	s.log.Info("ListTrades", "symbol", req.Msg.Symbol, "count", len(trades))
+
+	return connect.NewResponse(&orderbookv1.ListTradesResponse{
+		Trades: trades,
+	}), nil
+}
+
+func (s *Server) ListOrders(ctx context.Context, req *connect.Request[orderbookv1.ListOrdersRequest]) (*connect.Response[orderbookv1.ListOrdersResponse], error) {
+	orders := s.orders.ListOrders(req.Msg.Symbol)
+
+	s.log.Info("ListOrders", "symbol", req.Msg.Symbol, "count", len(orders))
+
+	return connect.NewResponse(&orderbookv1.ListOrdersResponse{
+		Orders: orders,
+	}), nil
 }
 
 // replayAggregate loads an OrderBook aggregate, using a snapshot if available
