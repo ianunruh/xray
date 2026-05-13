@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 )
 
 // Projection consumes deserialized events to build read models.
@@ -11,30 +12,55 @@ type Projection interface {
 	HandleEvents(ctx context.Context, events []Event) error
 }
 
-// FanOutPublisher dispatches events synchronously to all registered projections.
-// Individual projection errors are logged but do not propagate.
+// FanOutPublisher dispatches events asynchronously to all registered projections.
+// A buffered channel absorbs bursts; under extreme load, Publish blocks to apply
+// back-pressure. Events are never dropped.
 type FanOutPublisher struct {
 	log         *slog.Logger
 	projections []Projection
+	ch          chan []Event
+	done        chan struct{}
+	closeOnce   sync.Once
 }
 
 // NewFanOutPublisher creates a FanOutPublisher that dispatches to the given projections.
+// A background goroutine drains the channel and fans events out to each projection.
 func NewFanOutPublisher(log *slog.Logger, projections ...Projection) *FanOutPublisher {
-	return &FanOutPublisher{
+	p := &FanOutPublisher{
 		log:         log,
 		projections: projections,
+		ch:          make(chan []Event, 64),
+		done:        make(chan struct{}),
 	}
+	go p.loop()
+	return p
 }
 
-// Publish dispatches events to all projections. Errors from individual projections
-// are logged but do not fail the call.
-func (p *FanOutPublisher) Publish(ctx context.Context, events []Event) error {
-	for _, proj := range p.projections {
-		if err := proj.HandleEvents(ctx, events); err != nil {
-			p.log.Error("projection failed to handle events", "error", err)
+// Publish enqueues events for async dispatch. It blocks only if the internal
+// buffer is full, providing back-pressure under extreme load.
+func (p *FanOutPublisher) Publish(_ context.Context, events []Event) error {
+	p.ch <- events
+	return nil
+}
+
+// Close stops the background goroutine and waits for all buffered events to be
+// dispatched. It is safe to call multiple times.
+func (p *FanOutPublisher) Close() {
+	p.closeOnce.Do(func() {
+		close(p.ch)
+		<-p.done
+	})
+}
+
+func (p *FanOutPublisher) loop() {
+	defer close(p.done)
+	for events := range p.ch {
+		for _, proj := range p.projections {
+			if err := proj.HandleEvents(context.Background(), events); err != nil {
+				p.log.Error("projection failed to handle events", "error", err)
+			}
 		}
 	}
-	return nil
 }
 
 // HydrateProjections loads all events from the store, deserializes them, and

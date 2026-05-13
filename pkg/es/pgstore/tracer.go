@@ -53,5 +53,5 @@ func (t *QueryTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.T
 		attrs = append(attrs, slog.String("error", data.Err.Error()))
 	}
 
-	t.log.LogAttrs(ctx, slog.LevelInfo, "query", attrs...)
+	t.log.LogAttrs(ctx, slog.LevelDebug, "query", attrs...)
 }

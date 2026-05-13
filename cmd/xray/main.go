@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"fmt"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -79,6 +79,7 @@ func main() {
 	}
 
 	publisher := es.NewFanOutPublisher(log, tradeProjection, orderProjection, depthProjection)
+	defer publisher.Close()
 
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
@@ -91,8 +92,8 @@ func main() {
 	mux.Handle(path, h)
 
 	httpServer := &http.Server{
-		Addr:    listenAddr,
-		Handler: mux,
+		Addr:      listenAddr,
+		Handler:   mux,
 		Protocols: &http.Protocols{},
 	}
 	httpServer.Protocols.SetHTTP1(true)

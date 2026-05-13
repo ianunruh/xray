@@ -50,6 +50,8 @@ func TestFanOutPublisher_DispatchesToAll(t *testing.T) {
 	err := publisher.Publish(context.Background(), events)
 	require.NoError(t, err)
 
+	publisher.Close()
+
 	assert.Len(t, p1.events, 1)
 	assert.Len(t, p2.events, 1)
 	assert.Equal(t, "order-1", p1.events[0].Data.(*orderbookv1.OrderPlaced).OrderId)
@@ -73,8 +75,16 @@ func TestFanOutPublisher_FailingProjectionDoesNotBlockOthers(t *testing.T) {
 	err := publisher.Publish(context.Background(), events)
 	require.NoError(t, err)
 
+	publisher.Close()
+
 	// The recording projection still received the events.
 	assert.Len(t, recording.events, 1)
+}
+
+func TestFanOutPublisher_CloseIsIdempotent(t *testing.T) {
+	publisher := es.NewFanOutPublisher(slog.Default())
+	publisher.Close()
+	publisher.Close() // should not panic
 }
 
 func TestHydrateProjections(t *testing.T) {

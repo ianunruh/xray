@@ -177,7 +177,7 @@ func (h *Handler[A]) Handle(ctx context.Context, cmd Command, execute func(A) ([
 
 // tryHandle performs a single load→execute→append attempt.
 func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute func(A) ([]Event, error)) ([]Event, error) {
-	h.log.Info("handling command", "aggregate_id", aggregateID)
+	h.log.Debug("handling command", "aggregate_id", aggregateID)
 
 	var agg A
 	var expectedVersion int
@@ -187,7 +187,7 @@ func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute 
 		agg = cached.agg
 		expectedVersion = cached.version
 		snapshotVersion = cached.snapshotVersion
-		h.log.Info("using cached aggregate", "aggregate_id", aggregateID, "version", expectedVersion)
+		h.log.Debug("using cached aggregate", "aggregate_id", aggregateID, "version", expectedVersion)
 	} else {
 		agg = h.factory(aggregateID)
 
@@ -230,7 +230,7 @@ func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute 
 	}
 
 	newVersion := expectedVersion + len(newEvents)
-	h.log.Info("events appended", "aggregate_id", aggregateID, "new_event_count", len(newEvents), "new_version", newVersion)
+	h.log.Debug("events appended", "aggregate_id", aggregateID, "new_event_count", len(newEvents), "new_version", newVersion)
 
 	// Cache the aggregate at its new version for the next command.
 	h.cache.Put(aggregateID, agg, newVersion, snapshotVersion)
