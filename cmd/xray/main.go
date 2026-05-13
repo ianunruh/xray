@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/proto"
@@ -29,7 +31,8 @@ func main() {
 
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	poolConfig, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -76,8 +79,21 @@ func main() {
 	httpServer.Protocols.SetUnencryptedHTTP2(true)
 
 	log.Info("listening", "addr", listenAddr)
-	if err := httpServer.ListenAndServe(); err != nil {
-		log.Error("listen failed", "error", err)
+
+	go func() {
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("listen failed", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-ctx.Done()
+	log.Info("shutting down")
+
+	if err := httpServer.Shutdown(context.Background()); err != nil {
+		log.Error("shutdown failed", "error", err)
 		os.Exit(1)
 	}
+
+	log.Info("shutdown complete")
 }
