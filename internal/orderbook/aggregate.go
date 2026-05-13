@@ -11,6 +11,12 @@ import (
 	"github.com/ianunruh/xray/pkg/es"
 )
 
+const AggregateType = "orderbook"
+
+func AggregateID(symbol string) string {
+	return AggregateType + ":" + symbol
+}
+
 // OrderBook is the event-sourced aggregate for a single symbol's order book.
 type OrderBook struct {
 	es.AggregateBase

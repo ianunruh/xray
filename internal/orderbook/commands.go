@@ -28,7 +28,7 @@ type PlaceOrder struct {
 }
 
 func (c PlaceOrder) AggregateID() string {
-	return "orderbook:" + c.Symbol
+	return AggregateID(c.Symbol)
 }
 
 // CancelOrder is a command to cancel an existing order.
@@ -38,7 +38,7 @@ type CancelOrder struct {
 }
 
 func (c CancelOrder) AggregateID() string {
-	return "orderbook:" + c.Symbol
+	return AggregateID(c.Symbol)
 }
 
 // ExecutePlaceOrder produces events for placing and matching a new order.

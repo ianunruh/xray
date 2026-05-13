@@ -143,7 +143,7 @@ func (s *Server) GetOrder(ctx context.Context, req *connect.Request[orderbookv1.
 // replayAggregate loads an OrderBook aggregate, using a snapshot if available
 // to avoid replaying the full event stream.
 func (s *Server) replayAggregate(ctx context.Context, symbol string) (*OrderBook, error) {
-	return s.handler.Load(ctx, "orderbook:"+symbol)
+	return s.handler.Load(ctx, AggregateID(symbol))
 }
 
 func orderToLevel(o *Order) *orderbookv1.OrderBookLevel {
