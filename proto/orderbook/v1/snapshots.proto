@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package orderbook.v1;
+
+option go_package = "github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1";
+
+import "google/protobuf/timestamp.proto";
+import "orderbook/v1/events.proto";
+
+message OrderBookSnapshot {
+  string symbol = 1;
+  repeated OrderSnapshot orders = 2;
+}
+
+message OrderSnapshot {
+  string order_id = 1;
+  Side side = 2;
+  int64 price = 3;
+  int64 quantity = 4;
+  int64 remaining_quantity = 5;
+  google.protobuf.Timestamp placed_at = 6;
+}

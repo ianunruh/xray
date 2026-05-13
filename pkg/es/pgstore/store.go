@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -13,7 +14,10 @@ import (
 )
 
 //go:embed migrations/000001.sql
-var migrationSQL string
+var migration001SQL string
+
+//go:embed migrations/000002.sql
+var migration002SQL string
 
 const (
 	queryLoad = `SELECT id, aggregate_id, type, version, data, timestamp
@@ -21,14 +25,30 @@ const (
 		WHERE aggregate_id = $1
 		ORDER BY version`
 
+	queryLoadFrom = `SELECT id, aggregate_id, type, version, data, timestamp
+		FROM events
+		WHERE aggregate_id = $1 AND version >= $2
+		ORDER BY version`
+
 	queryInsert = `INSERT INTO events (aggregate_id, type, version, data, timestamp)
 		VALUES ($1, $2, $3, $4, $5)`
+
+	queryLoadSnapshot = `SELECT aggregate_id, version, data
+		FROM snapshots
+		WHERE aggregate_id = $1`
+
+	querySaveSnapshot = `INSERT INTO snapshots (aggregate_id, version, data)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (aggregate_id) DO UPDATE SET version = $2, data = $3, updated_at = now()`
 )
 
-// compile-time check
-var _ es.EventStore = (*Store)(nil)
+// compile-time checks
+var (
+	_ es.EventStore    = (*Store)(nil)
+	_ es.SnapshotStore = (*Store)(nil)
+)
 
-// Store is a PostgreSQL-backed EventStore using pgxpool.
+// Store is a PostgreSQL-backed EventStore and SnapshotStore using pgxpool.
 type Store struct {
 	pool *pgxpool.Pool
 }
@@ -40,7 +60,16 @@ func New(pool *pgxpool.Pool) *Store {
 
 // Load returns all events for the given aggregate ID, ordered by version.
 func (s *Store) Load(ctx context.Context, aggregateID string) ([]es.RawEvent, error) {
-	rows, err := s.pool.Query(ctx, queryLoad, aggregateID)
+	return s.queryEvents(ctx, queryLoad, aggregateID)
+}
+
+// LoadFrom returns events for the given aggregate starting from fromVersion (inclusive).
+func (s *Store) LoadFrom(ctx context.Context, aggregateID string, fromVersion int) ([]es.RawEvent, error) {
+	return s.queryEvents(ctx, queryLoadFrom, aggregateID, fromVersion)
+}
+
+func (s *Store) queryEvents(ctx context.Context, query string, args ...any) ([]es.RawEvent, error) {
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query events: %w", err)
 	}
@@ -83,8 +112,35 @@ func (s *Store) Append(ctx context.Context, aggregateID string, expectedVersion 
 	return tx.Commit(ctx)
 }
 
-// Migrate runs the schema migration. Call this on startup.
+// LoadSnapshot returns the most recent snapshot for the aggregate, or nil if none exists.
+func (s *Store) LoadSnapshot(ctx context.Context, aggregateID string) (*es.Snapshot, error) {
+	var snap es.Snapshot
+	err := s.pool.QueryRow(ctx, queryLoadSnapshot, aggregateID).Scan(
+		&snap.AggregateID, &snap.Version, &snap.Data,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query snapshot: %w", err)
+	}
+	return &snap, nil
+}
+
+// SaveSnapshot persists a snapshot, replacing any existing one for the aggregate.
+func (s *Store) SaveSnapshot(ctx context.Context, snap es.Snapshot) error {
+	_, err := s.pool.Exec(ctx, querySaveSnapshot, snap.AggregateID, snap.Version, snap.Data)
+	if err != nil {
+		return fmt.Errorf("save snapshot: %w", err)
+	}
+	return nil
+}
+
+// Migrate runs the schema migrations. Call this on startup.
 func (s *Store) Migrate(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, migrationSQL)
+	if _, err := s.pool.Exec(ctx, migration001SQL); err != nil {
+		return err
+	}
+	_, err := s.pool.Exec(ctx, migration002SQL)
 	return err
 }

@@ -28,6 +28,11 @@ func (b *AggregateBase) Version() int {
 	return b.version
 }
 
+// SetVersion sets the version directly. Used when restoring from a snapshot.
+func (b *AggregateBase) SetVersion(v int) {
+	b.version = v
+}
+
 // IncrementVersion bumps the version by one. Called after each event is applied.
 func (b *AggregateBase) IncrementVersion() {
 	b.version++

@@ -14,6 +14,10 @@ type EventStore interface {
 	// Load returns all raw events for the given aggregate, ordered by version.
 	Load(ctx context.Context, aggregateID string) ([]RawEvent, error)
 
+	// LoadFrom returns raw events for the given aggregate starting from the
+	// specified version (inclusive), ordered by version.
+	LoadFrom(ctx context.Context, aggregateID string, fromVersion int) ([]RawEvent, error)
+
 	// Append persists new events to the stream. It must reject the append
 	// if the stream's current version does not match expectedVersion.
 	Append(ctx context.Context, aggregateID string, expectedVersion int, events []RawEvent) error

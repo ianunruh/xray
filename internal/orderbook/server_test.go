@@ -28,7 +28,7 @@ func newTestServer(t *testing.T) (orderbookv1connect.OrderBookServiceClient, *ht
 		return orderbook.NewOrderBook(id)
 	}, slog.Default())
 
-	srv := orderbook.NewServer(handler, store, registry, slog.Default())
+	srv := orderbook.NewServer(handler, store, registry, store, slog.Default())
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)

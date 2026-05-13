@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
@@ -17,19 +18,21 @@ import (
 type Server struct {
 	orderbookv1connect.UnimplementedOrderBookServiceHandler
 
-	handler  *es.Handler[*OrderBook]
-	store    es.EventStore
-	registry *es.Registry
-	log      *slog.Logger
+	handler   *es.Handler[*OrderBook]
+	store     es.EventStore
+	registry  *es.Registry
+	snapshots es.SnapshotStore
+	log       *slog.Logger
 }
 
 // NewServer creates a new Server with the given dependencies.
-func NewServer(handler *es.Handler[*OrderBook], store es.EventStore, registry *es.Registry, log *slog.Logger) *Server {
+func NewServer(handler *es.Handler[*OrderBook], store es.EventStore, registry *es.Registry, snapshots es.SnapshotStore, log *slog.Logger) *Server {
 	return &Server{
-		handler:  handler,
-		store:    store,
-		registry: registry,
-		log:      log,
+		handler:   handler,
+		store:     store,
+		registry:  registry,
+		snapshots: snapshots,
+		log:       log,
 	}
 }
 
@@ -144,17 +147,45 @@ func (s *Server) GetOrder(ctx context.Context, req *connect.Request[orderbookv1.
 	return connect.NewResponse(resp), nil
 }
 
-// replayAggregate loads all events for the given symbol and replays them
-// into a fresh OrderBook aggregate.
+// replayAggregate loads an OrderBook aggregate, using a snapshot if available
+// to avoid replaying the full event stream.
 func (s *Server) replayAggregate(ctx context.Context, symbol string) (*OrderBook, error) {
 	aggregateID := "orderbook:" + symbol
+	book := NewOrderBook(aggregateID)
 
-	rawEvents, err := s.store.Load(ctx, aggregateID)
-	if err != nil {
-		return nil, err
+	var rawEvents []es.RawEvent
+
+	if s.snapshots != nil {
+		snap, err := s.snapshots.LoadSnapshot(ctx, aggregateID)
+		if err != nil {
+			return nil, err
+		}
+
+		if snap != nil {
+			msg := new(orderbookv1.OrderBookSnapshot)
+			if err := proto.Unmarshal(snap.Data, msg); err != nil {
+				return nil, err
+			}
+			if err := book.RestoreSnapshot(msg); err != nil {
+				return nil, err
+			}
+			book.SetVersion(snap.Version)
+
+			rawEvents, err = s.store.LoadFrom(ctx, aggregateID, snap.Version+1)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
-	book := NewOrderBook(aggregateID)
+	if rawEvents == nil {
+		var err error
+		rawEvents, err = s.store.Load(ctx, aggregateID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	for _, raw := range rawEvents {
 		evt, err := s.registry.Deserialize(raw)
 		if err != nil {

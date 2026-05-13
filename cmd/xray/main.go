@@ -51,9 +51,9 @@ func main() {
 
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
-	}, log)
+	}, log).WithSnapshots(store)
 
-	srv := orderbook.NewServer(handler, store, registry, log)
+	srv := orderbook.NewServer(handler, store, registry, store, log)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
