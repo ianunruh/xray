@@ -109,9 +109,13 @@ func TestOrderBook_Snapshot_RoundTrip(t *testing.T) {
 
 	// Bids should be sorted: buy-1 (1500000) then buy-2 (1490000).
 	// Note: buy-1 has remaining=50 so it's still on the book (removed only when <=0 in applyTrade).
-	require.Len(t, restored.Bids, 2)
-	assert.Equal(t, "buy-1", restored.Bids[0].ID)
-	assert.Equal(t, "buy-2", restored.Bids[1].ID)
+	var bids []*orderbook.Order
+	for bid := range restored.Bids.All() {
+		bids = append(bids, bid)
+	}
+	require.Len(t, bids, 2)
+	assert.Equal(t, "buy-1", bids[0].ID)
+	assert.Equal(t, "buy-2", bids[1].ID)
 
 	// Asks: sell-1 was fully filled but still in Orders map and on the ask list
 	// because applyTradeExecuted only removes when RemainingQty <= 0.

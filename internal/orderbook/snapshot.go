@@ -38,8 +38,8 @@ func (ob *OrderBook) RestoreSnapshot(msg proto.Message) error {
 
 	ob.Symbol = snap.Symbol
 	ob.Orders = make(map[string]*Order, len(snap.Orders))
-	ob.Bids = nil
-	ob.Asks = nil
+	ob.Bids.Reset()
+	ob.Asks.Reset()
 
 	for _, os := range snap.Orders {
 		order := &Order{
@@ -56,9 +56,9 @@ func (ob *OrderBook) RestoreSnapshot(msg proto.Message) error {
 
 		switch order.Side {
 		case Buy:
-			ob.Bids = insertSorted(ob.Bids, order, bidLess)
+			ob.Bids.Insert(order)
 		case Sell:
-			ob.Asks = insertSorted(ob.Asks, order, askLess)
+			ob.Asks.Insert(order)
 		}
 	}
 

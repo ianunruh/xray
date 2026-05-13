@@ -114,10 +114,10 @@ func (s *Server) GetOrderBook(ctx context.Context, req *connect.Request[orderboo
 		Symbol: req.Msg.Symbol,
 	}
 
-	for _, bid := range book.Bids {
+	for bid := range book.Bids.All() {
 		resp.Bids = append(resp.Bids, orderToLevel(bid))
 	}
-	for _, ask := range book.Asks {
+	for ask := range book.Asks.All() {
 		resp.Asks = append(resp.Asks, orderToLevel(ask))
 	}
 

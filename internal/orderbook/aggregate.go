@@ -2,7 +2,6 @@ package orderbook
 
 import (
 	"fmt"
-	"sort"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/pkg/es"
@@ -20,8 +19,8 @@ type OrderBook struct {
 
 	Symbol     string
 	PriceScale int
-	Bids       []*Order // highest price first, then earliest time
-	Asks       []*Order // lowest price first, then earliest time
+	Bids       *priceSide
+	Asks       *priceSide
 	Orders     map[string]*Order
 }
 
@@ -29,6 +28,8 @@ type OrderBook struct {
 func NewOrderBook(id string) *OrderBook {
 	ob := &OrderBook{
 		PriceScale: 4,
+		Bids:       newBidSide(),
+		Asks:       newAskSide(),
 		Orders:     make(map[string]*Order),
 	}
 	ob.SetID(id)
@@ -69,9 +70,9 @@ func (ob *OrderBook) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 
 	switch order.Side {
 	case Buy:
-		ob.Bids = insertSorted(ob.Bids, order, bidLess)
+		ob.Bids.Insert(order)
 	case Sell:
-		ob.Asks = insertSorted(ob.Asks, order, askLess)
+		ob.Asks.Insert(order)
 	}
 }
 
@@ -82,14 +83,14 @@ func (ob *OrderBook) applyTradeExecuted(data *orderbookv1.TradeExecuted) {
 	if buyOrder != nil {
 		buyOrder.RemainingQty -= data.Quantity
 		if buyOrder.RemainingQty <= 0 {
-			ob.removeBid(buyOrder.ID)
+			ob.Bids.Remove(buyOrder)
 		}
 	}
 
 	if sellOrder != nil {
 		sellOrder.RemainingQty -= data.Quantity
 		if sellOrder.RemainingQty <= 0 {
-			ob.removeAsk(sellOrder.ID)
+			ob.Asks.Remove(sellOrder)
 		}
 	}
 }
@@ -102,58 +103,11 @@ func (ob *OrderBook) applyOrderCancelled(data *orderbookv1.OrderCancelled) {
 
 	switch order.Side {
 	case Buy:
-		ob.removeBid(order.ID)
+		ob.Bids.Remove(order)
 	case Sell:
-		ob.removeAsk(order.ID)
+		ob.Asks.Remove(order)
 	}
 
 	delete(ob.Orders, order.ID)
 }
 
-func (ob *OrderBook) removeBid(id string) {
-	for i, o := range ob.Bids {
-		if o.ID == id {
-			ob.Bids = append(ob.Bids[:i], ob.Bids[i+1:]...)
-			return
-		}
-	}
-}
-
-func (ob *OrderBook) removeAsk(id string) {
-	for i, o := range ob.Asks {
-		if o.ID == id {
-			ob.Asks = append(ob.Asks[:i], ob.Asks[i+1:]...)
-			return
-		}
-	}
-}
-
-// bidLess returns true if a should appear before b in the bids slice
-// (highest price first, then earliest time).
-func bidLess(a, b *Order) bool {
-	if a.Price != b.Price {
-		return a.Price > b.Price
-	}
-	return a.PlacedAt.Before(b.PlacedAt)
-}
-
-// askLess returns true if a should appear before b in the asks slice
-// (lowest price first, then earliest time).
-func askLess(a, b *Order) bool {
-	if a.Price != b.Price {
-		return a.Price < b.Price
-	}
-	return a.PlacedAt.Before(b.PlacedAt)
-}
-
-// insertSorted inserts order into the slice at the position determined by
-// binary search using the provided less function. O(log n) search + O(n) shift.
-func insertSorted(orders []*Order, order *Order, less func(a, b *Order) bool) []*Order {
-	i := sort.Search(len(orders), func(i int) bool {
-		return !less(orders[i], order)
-	})
-	orders = append(orders, nil)
-	copy(orders[i+1:], orders[i:])
-	orders[i] = order
-	return orders
-}

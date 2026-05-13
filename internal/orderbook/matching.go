@@ -28,7 +28,7 @@ func Match(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.Trade
 func matchBuy(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.TradeExecuted {
 	var trades []*orderbookv1.TradeExecuted
 
-	for _, ask := range book.Asks {
+	for ask := range book.Asks.All() {
 		if incoming.RemainingQty <= 0 {
 			break
 		}
@@ -57,7 +57,7 @@ func matchBuy(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.Tr
 func matchSell(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.TradeExecuted {
 	var trades []*orderbookv1.TradeExecuted
 
-	for _, bid := range book.Bids {
+	for bid := range book.Bids.All() {
 		if incoming.RemainingQty <= 0 {
 			break
 		}
@@ -91,7 +91,7 @@ func AvailableQty(book *OrderBook, side Side, price int64, isMarket bool) int64 
 	switch side {
 	case Buy:
 		// Buying: count asks at or below the price
-		for _, ask := range book.Asks {
+		for ask := range book.Asks.All() {
 			if !isMarket && ask.Price > price {
 				break
 			}
@@ -99,7 +99,7 @@ func AvailableQty(book *OrderBook, side Side, price int64, isMarket bool) int64 
 		}
 	case Sell:
 		// Selling: count bids at or above the price
-		for _, bid := range book.Bids {
+		for bid := range book.Bids.All() {
 			if !isMarket && bid.Price < price {
 				break
 			}
