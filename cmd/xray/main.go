@@ -71,23 +71,26 @@ func main() {
 	tradeProjection := orderbook.NewPgTradeProjection(pool)
 	orderProjection := orderbook.NewPgOrderProjection(pool)
 	depthProjection := orderbook.NewDepthProjection()
+	broker := orderbook.NewBroker()
 
 	// Start projection runner: catches up from stored events, then polls for new ones.
-	runner := es.NewProjectionRunner(store, registry, log, tradeProjection, orderProjection, depthProjection)
+	runner := es.NewProjectionRunner(store, registry, log, tradeProjection, orderProjection, depthProjection, broker)
 	if err := runner.Start(ctx); err != nil {
 		log.Error("failed to start projection runner", "error", err)
 		os.Exit(1)
 	}
+	broker.SetReady()
 
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
 	}, log).WithSnapshots(store)
 
-	srv := orderbook.NewServer(handler, log, tradeProjection, orderProjection, depthProjection)
+	srv := orderbook.NewServer(handler, log, tradeProjection, orderProjection, depthProjection, broker)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
 	mux.Handle(path, h)
+	mux.Handle("/", orderbook.WebHandler())
 
 	httpServer := &http.Server{
 		Addr:      listenAddr,

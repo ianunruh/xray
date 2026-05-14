@@ -22,16 +22,18 @@ type Server struct {
 	trades  TradeReader
 	orders  OrderReader
 	depth   DepthReader
+	broker  *Broker
 }
 
 // NewServer creates a new Server with the given dependencies.
-func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeReader, orders OrderReader, depth DepthReader) *Server {
+func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeReader, orders OrderReader, depth DepthReader, broker *Broker) *Server {
 	return &Server{
 		handler: handler,
 		log:     log,
 		trades:  trades,
 		orders:  orders,
 		depth:   depth,
+		broker:  broker,
 	}
 }
 
@@ -182,6 +184,77 @@ func (s *Server) ListOrders(ctx context.Context, req *connect.Request[orderbookv
 	return connect.NewResponse(&orderbookv1.ListOrdersResponse{
 		Orders: orders,
 	}), nil
+}
+
+func (s *Server) StreamMarketDepth(ctx context.Context, req *connect.Request[orderbookv1.StreamMarketDepthRequest], stream *connect.ServerStream[orderbookv1.GetMarketDepthResponse]) error {
+	symbol := req.Msg.Symbol
+	depth := req.Msg.Depth
+
+	bids, asks := s.depth.GetDepth(symbol, depth)
+	if err := stream.Send(&orderbookv1.GetMarketDepthResponse{
+		Symbol: symbol,
+		Bids:   bids,
+		Asks:   asks,
+	}); err != nil {
+		return err
+	}
+
+	id, ch := s.broker.Subscribe(symbol)
+	defer s.broker.Unsubscribe(id)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case _, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			bids, asks := s.depth.GetDepth(symbol, depth)
+			if err := stream.Send(&orderbookv1.GetMarketDepthResponse{
+				Symbol: symbol,
+				Bids:   bids,
+				Asks:   asks,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (s *Server) StreamTrades(ctx context.Context, req *connect.Request[orderbookv1.StreamTradesRequest], stream *connect.ServerStream[orderbookv1.Trade]) error {
+	symbol := req.Msg.Symbol
+
+	id, ch := s.broker.Subscribe(symbol)
+	defer s.broker.Unsubscribe(id)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case events, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			for _, evt := range events {
+				data, ok := evt.Data.(*orderbookv1.TradeExecuted)
+				if !ok || data.Symbol != symbol {
+					continue
+				}
+				if err := stream.Send(&orderbookv1.Trade{
+					TradeId:     data.TradeId,
+					Symbol:      data.Symbol,
+					BuyOrderId:  data.BuyOrderId,
+					SellOrderId: data.SellOrderId,
+					Price:       data.Price,
+					Quantity:    data.Quantity,
+					ExecutedAt:  data.ExecutedAt,
+				}); err != nil {
+					return err
+				}
+			}
+		}
+	}
 }
 
 // replayAggregate loads an OrderBook aggregate, using a snapshot if available

@@ -54,6 +54,12 @@ const (
 	// OrderBookServiceListOrdersProcedure is the fully-qualified name of the OrderBookService's
 	// ListOrders RPC.
 	OrderBookServiceListOrdersProcedure = "/orderbook.v1.OrderBookService/ListOrders"
+	// OrderBookServiceStreamMarketDepthProcedure is the fully-qualified name of the OrderBookService's
+	// StreamMarketDepth RPC.
+	OrderBookServiceStreamMarketDepthProcedure = "/orderbook.v1.OrderBookService/StreamMarketDepth"
+	// OrderBookServiceStreamTradesProcedure is the fully-qualified name of the OrderBookService's
+	// StreamTrades RPC.
+	OrderBookServiceStreamTradesProcedure = "/orderbook.v1.OrderBookService/StreamTrades"
 )
 
 // OrderBookServiceClient is a client for the orderbook.v1.OrderBookService service.
@@ -65,6 +71,8 @@ type OrderBookServiceClient interface {
 	GetOrder(context.Context, *connect.Request[v1.GetOrderRequest]) (*connect.Response[v1.GetOrderResponse], error)
 	ListTrades(context.Context, *connect.Request[v1.ListTradesRequest]) (*connect.Response[v1.ListTradesResponse], error)
 	ListOrders(context.Context, *connect.Request[v1.ListOrdersRequest]) (*connect.Response[v1.ListOrdersResponse], error)
+	StreamMarketDepth(context.Context, *connect.Request[v1.StreamMarketDepthRequest]) (*connect.ServerStreamForClient[v1.GetMarketDepthResponse], error)
+	StreamTrades(context.Context, *connect.Request[v1.StreamTradesRequest]) (*connect.ServerStreamForClient[v1.Trade], error)
 }
 
 // NewOrderBookServiceClient constructs a client for the orderbook.v1.OrderBookService service. By
@@ -120,18 +128,32 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(orderBookServiceMethods.ByName("ListOrders")),
 			connect.WithClientOptions(opts...),
 		),
+		streamMarketDepth: connect.NewClient[v1.StreamMarketDepthRequest, v1.GetMarketDepthResponse](
+			httpClient,
+			baseURL+OrderBookServiceStreamMarketDepthProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("StreamMarketDepth")),
+			connect.WithClientOptions(opts...),
+		),
+		streamTrades: connect.NewClient[v1.StreamTradesRequest, v1.Trade](
+			httpClient,
+			baseURL+OrderBookServiceStreamTradesProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("StreamTrades")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // orderBookServiceClient implements OrderBookServiceClient.
 type orderBookServiceClient struct {
-	placeOrder     *connect.Client[v1.PlaceOrderRequest, v1.PlaceOrderResponse]
-	cancelOrder    *connect.Client[v1.CancelOrderRequest, v1.CancelOrderResponse]
-	getOrderBook   *connect.Client[v1.GetOrderBookRequest, v1.GetOrderBookResponse]
-	getMarketDepth *connect.Client[v1.GetMarketDepthRequest, v1.GetMarketDepthResponse]
-	getOrder       *connect.Client[v1.GetOrderRequest, v1.GetOrderResponse]
-	listTrades     *connect.Client[v1.ListTradesRequest, v1.ListTradesResponse]
-	listOrders     *connect.Client[v1.ListOrdersRequest, v1.ListOrdersResponse]
+	placeOrder        *connect.Client[v1.PlaceOrderRequest, v1.PlaceOrderResponse]
+	cancelOrder       *connect.Client[v1.CancelOrderRequest, v1.CancelOrderResponse]
+	getOrderBook      *connect.Client[v1.GetOrderBookRequest, v1.GetOrderBookResponse]
+	getMarketDepth    *connect.Client[v1.GetMarketDepthRequest, v1.GetMarketDepthResponse]
+	getOrder          *connect.Client[v1.GetOrderRequest, v1.GetOrderResponse]
+	listTrades        *connect.Client[v1.ListTradesRequest, v1.ListTradesResponse]
+	listOrders        *connect.Client[v1.ListOrdersRequest, v1.ListOrdersResponse]
+	streamMarketDepth *connect.Client[v1.StreamMarketDepthRequest, v1.GetMarketDepthResponse]
+	streamTrades      *connect.Client[v1.StreamTradesRequest, v1.Trade]
 }
 
 // PlaceOrder calls orderbook.v1.OrderBookService.PlaceOrder.
@@ -169,6 +191,16 @@ func (c *orderBookServiceClient) ListOrders(ctx context.Context, req *connect.Re
 	return c.listOrders.CallUnary(ctx, req)
 }
 
+// StreamMarketDepth calls orderbook.v1.OrderBookService.StreamMarketDepth.
+func (c *orderBookServiceClient) StreamMarketDepth(ctx context.Context, req *connect.Request[v1.StreamMarketDepthRequest]) (*connect.ServerStreamForClient[v1.GetMarketDepthResponse], error) {
+	return c.streamMarketDepth.CallServerStream(ctx, req)
+}
+
+// StreamTrades calls orderbook.v1.OrderBookService.StreamTrades.
+func (c *orderBookServiceClient) StreamTrades(ctx context.Context, req *connect.Request[v1.StreamTradesRequest]) (*connect.ServerStreamForClient[v1.Trade], error) {
+	return c.streamTrades.CallServerStream(ctx, req)
+}
+
 // OrderBookServiceHandler is an implementation of the orderbook.v1.OrderBookService service.
 type OrderBookServiceHandler interface {
 	PlaceOrder(context.Context, *connect.Request[v1.PlaceOrderRequest]) (*connect.Response[v1.PlaceOrderResponse], error)
@@ -178,6 +210,8 @@ type OrderBookServiceHandler interface {
 	GetOrder(context.Context, *connect.Request[v1.GetOrderRequest]) (*connect.Response[v1.GetOrderResponse], error)
 	ListTrades(context.Context, *connect.Request[v1.ListTradesRequest]) (*connect.Response[v1.ListTradesResponse], error)
 	ListOrders(context.Context, *connect.Request[v1.ListOrdersRequest]) (*connect.Response[v1.ListOrdersResponse], error)
+	StreamMarketDepth(context.Context, *connect.Request[v1.StreamMarketDepthRequest], *connect.ServerStream[v1.GetMarketDepthResponse]) error
+	StreamTrades(context.Context, *connect.Request[v1.StreamTradesRequest], *connect.ServerStream[v1.Trade]) error
 }
 
 // NewOrderBookServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -229,6 +263,18 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 		connect.WithSchema(orderBookServiceMethods.ByName("ListOrders")),
 		connect.WithHandlerOptions(opts...),
 	)
+	orderBookServiceStreamMarketDepthHandler := connect.NewServerStreamHandler(
+		OrderBookServiceStreamMarketDepthProcedure,
+		svc.StreamMarketDepth,
+		connect.WithSchema(orderBookServiceMethods.ByName("StreamMarketDepth")),
+		connect.WithHandlerOptions(opts...),
+	)
+	orderBookServiceStreamTradesHandler := connect.NewServerStreamHandler(
+		OrderBookServiceStreamTradesProcedure,
+		svc.StreamTrades,
+		connect.WithSchema(orderBookServiceMethods.ByName("StreamTrades")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/orderbook.v1.OrderBookService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case OrderBookServicePlaceOrderProcedure:
@@ -245,6 +291,10 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 			orderBookServiceListTradesHandler.ServeHTTP(w, r)
 		case OrderBookServiceListOrdersProcedure:
 			orderBookServiceListOrdersHandler.ServeHTTP(w, r)
+		case OrderBookServiceStreamMarketDepthProcedure:
+			orderBookServiceStreamMarketDepthHandler.ServeHTTP(w, r)
+		case OrderBookServiceStreamTradesProcedure:
+			orderBookServiceStreamTradesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -280,4 +330,12 @@ func (UnimplementedOrderBookServiceHandler) ListTrades(context.Context, *connect
 
 func (UnimplementedOrderBookServiceHandler) ListOrders(context.Context, *connect.Request[v1.ListOrdersRequest]) (*connect.Response[v1.ListOrdersResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.ListOrders is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) StreamMarketDepth(context.Context, *connect.Request[v1.StreamMarketDepthRequest], *connect.ServerStream[v1.GetMarketDepthResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.StreamMarketDepth is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) StreamTrades(context.Context, *connect.Request[v1.StreamTradesRequest], *connect.ServerStream[v1.Trade]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.StreamTrades is not implemented"))
 }

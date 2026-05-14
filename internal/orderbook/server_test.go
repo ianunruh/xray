@@ -34,7 +34,9 @@ func newTestServer(t *testing.T) (orderbookv1connect.OrderBookServiceClient, *ht
 		return orderbook.NewOrderBook(id)
 	}, slog.Default()).WithPublisher(publisher)
 
-	srv := orderbook.NewServer(handler, slog.Default(), tradeProjection, orderProjection, depthProjection)
+	broker := orderbook.NewBroker()
+
+	srv := orderbook.NewServer(handler, slog.Default(), tradeProjection, orderProjection, depthProjection, broker)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)

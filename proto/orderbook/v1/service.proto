@@ -23,6 +23,8 @@ service OrderBookService {
   rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
   rpc ListTrades(ListTradesRequest) returns (ListTradesResponse);
   rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+  rpc StreamMarketDepth(StreamMarketDepthRequest) returns (stream GetMarketDepthResponse);
+  rpc StreamTrades(StreamTradesRequest) returns (stream Trade);
 }
 
 message PlaceOrderRequest {
@@ -117,6 +119,15 @@ message Trade {
 }
 
 message ListOrdersRequest {
+  string symbol = 1;
+}
+
+message StreamMarketDepthRequest {
+  string symbol = 1;
+  int32 depth = 2;
+}
+
+message StreamTradesRequest {
   string symbol = 1;
 }
 
