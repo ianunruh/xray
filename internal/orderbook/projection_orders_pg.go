@@ -32,10 +32,10 @@ func (p *PgOrderProjection) HandleEvents(ctx context.Context, events []es.Event)
 		switch data := evt.Data.(type) {
 		case *orderbookv1.OrderPlaced:
 			batch.Queue(
-				`INSERT INTO projection_orders (symbol, order_id, side, price, quantity, remaining_quantity, status, placed_at, order_type, time_in_force)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				`INSERT INTO projection_orders (symbol, order_id, side, price, stop_price, quantity, remaining_quantity, status, placed_at, order_type, time_in_force)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 				ON CONFLICT DO NOTHING`,
-				data.Symbol, data.OrderId, int32(data.Side), data.Price, data.Quantity, data.Quantity,
+				data.Symbol, data.OrderId, int32(data.Side), data.Price, data.StopPrice, data.Quantity, data.Quantity,
 				int32(orderbookv1.OrderStatus_ORDER_STATUS_OPEN), data.PlacedAt.AsTime(),
 				int32(data.OrderType), int32(data.TimeInForce),
 			)
@@ -79,7 +79,7 @@ func (p *PgOrderProjection) HandleEvents(ctx context.Context, events []es.Event)
 
 func (p *PgOrderProjection) GetOrder(symbol, orderID string) (*orderbookv1.OrderSummary, bool) {
 	row := p.pool.QueryRow(context.Background(),
-		`SELECT order_id, symbol, side, price, quantity, remaining_quantity, status, placed_at, order_type, time_in_force
+		`SELECT order_id, symbol, side, price, stop_price, quantity, remaining_quantity, status, placed_at, order_type, time_in_force
 		FROM projection_orders WHERE symbol = $1 AND order_id = $2`,
 		symbol, orderID,
 	)
@@ -96,7 +96,7 @@ func (p *PgOrderProjection) GetOrder(symbol, orderID string) (*orderbookv1.Order
 
 func (p *PgOrderProjection) ListOrders(symbol string) []*orderbookv1.OrderSummary {
 	rows, err := p.pool.Query(context.Background(),
-		`SELECT order_id, symbol, side, price, quantity, remaining_quantity, status, placed_at, order_type, time_in_force
+		`SELECT order_id, symbol, side, price, stop_price, quantity, remaining_quantity, status, placed_at, order_type, time_in_force
 		FROM projection_orders WHERE symbol = $1`,
 		symbol,
 	)
@@ -131,7 +131,7 @@ func scanOrderSummary(s orderScannable) (*orderbookv1.OrderSummary, error) {
 	)
 
 	if err := s.Scan(
-		&o.OrderId, &o.Symbol, &side, &o.Price, &o.Quantity, &o.RemainingQuantity,
+		&o.OrderId, &o.Symbol, &side, &o.Price, &o.StopPrice, &o.Quantity, &o.RemainingQuantity,
 		&status, &placedAt, &orderType, &timeInForce,
 	); err != nil {
 		return nil, err

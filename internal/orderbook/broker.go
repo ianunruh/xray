@@ -49,6 +49,8 @@ func (b *Broker) HandleEvents(_ context.Context, events []es.Event) error {
 			symbols[data.Symbol] = true
 		case *orderbookv1.OrderCancelled:
 			symbols[data.Symbol] = true
+		case *orderbookv1.StopTriggered:
+			symbols[data.Symbol] = true
 		}
 	}
 

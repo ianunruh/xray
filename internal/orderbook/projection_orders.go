@@ -54,6 +54,7 @@ func (p *OrderProjection) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 		Symbol:            data.Symbol,
 		Side:              data.Side,
 		Price:             data.Price,
+		StopPrice:         data.StopPrice,
 		Quantity:          data.Quantity,
 		RemainingQuantity: data.Quantity,
 		Status:            orderbookv1.OrderStatus_ORDER_STATUS_OPEN,

@@ -31,18 +31,20 @@ func depthPrice(price int64) int64 {
 // incrementally from order lifecycle events. Prices are rounded to 2 decimal
 // places for aggregation.
 type DepthProjection struct {
-	mu     sync.RWMutex
-	orders map[string]*depthOrder                            // orderID -> tracked order
-	bids   map[string]map[int64]*depthLevel                  // symbol -> price -> level
-	asks   map[string]map[int64]*depthLevel                  // symbol -> price -> level
+	mu           sync.RWMutex
+	orders       map[string]*depthOrder       // orderID -> tracked order
+	pendingStops map[string]*depthOrder       // stop orders awaiting trigger
+	bids         map[string]map[int64]*depthLevel // symbol -> price -> level
+	asks         map[string]map[int64]*depthLevel // symbol -> price -> level
 }
 
 // NewDepthProjection creates a new DepthProjection.
 func NewDepthProjection() *DepthProjection {
 	return &DepthProjection{
-		orders: make(map[string]*depthOrder),
-		bids:   make(map[string]map[int64]*depthLevel),
-		asks:   make(map[string]map[int64]*depthLevel),
+		orders:       make(map[string]*depthOrder),
+		pendingStops: make(map[string]*depthOrder),
+		bids:         make(map[string]map[int64]*depthLevel),
+		asks:         make(map[string]map[int64]*depthLevel),
 	}
 }
 
@@ -59,6 +61,8 @@ func (p *DepthProjection) HandleEvents(_ context.Context, events []es.Event) err
 			p.applyTradeExecuted(data)
 		case *orderbookv1.OrderCancelled:
 			p.applyOrderCancelled(data)
+		case *orderbookv1.StopTriggered:
+			p.applyStopTriggered(data)
 		}
 	}
 
@@ -66,6 +70,17 @@ func (p *DepthProjection) HandleEvents(_ context.Context, events []es.Event) err
 }
 
 func (p *DepthProjection) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
+	if data.OrderType == orderbookv1.OrderType_ORDER_TYPE_STOP_MARKET ||
+		data.OrderType == orderbookv1.OrderType_ORDER_TYPE_STOP_LIMIT {
+		p.pendingStops[data.OrderId] = &depthOrder{
+			symbol:       data.Symbol,
+			side:         data.Side,
+			price:        depthPrice(data.Price),
+			remainingQty: data.Quantity,
+		}
+		return
+	}
+
 	price := depthPrice(data.Price)
 	p.orders[data.OrderId] = &depthOrder{
 		symbol:       data.Symbol,
@@ -111,6 +126,11 @@ func (p *DepthProjection) applyTradeExecuted(data *orderbookv1.TradeExecuted) {
 }
 
 func (p *DepthProjection) applyOrderCancelled(data *orderbookv1.OrderCancelled) {
+	if _, ok := p.pendingStops[data.OrderId]; ok {
+		delete(p.pendingStops, data.OrderId)
+		return
+	}
+
 	o := p.orders[data.OrderId]
 	if o == nil {
 		return
@@ -127,6 +147,30 @@ func (p *DepthProjection) applyOrderCancelled(data *orderbookv1.OrderCancelled) 
 	}
 
 	delete(p.orders, data.OrderId)
+}
+
+func (p *DepthProjection) applyStopTriggered(data *orderbookv1.StopTriggered) {
+	pending, ok := p.pendingStops[data.OrderId]
+	if !ok {
+		return
+	}
+	delete(p.pendingStops, data.OrderId)
+
+	// Only add to depth if activated as limit (it may rest on the book).
+	// Stop-market activates as IOC — fills immediately and remainder is cancelled.
+	if data.ActivatedAs != orderbookv1.OrderType_ORDER_TYPE_LIMIT {
+		return
+	}
+
+	p.orders[data.OrderId] = pending
+	levels := p.levelsFor(pending.symbol, pending.side)
+	lvl := levels[pending.price]
+	if lvl == nil {
+		lvl = &depthLevel{}
+		levels[pending.price] = lvl
+	}
+	lvl.quantity += pending.remainingQty
+	lvl.orderCount++
 }
 
 func (p *DepthProjection) levelsFor(symbol string, side orderbookv1.Side) map[int64]*depthLevel {

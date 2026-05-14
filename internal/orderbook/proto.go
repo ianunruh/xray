@@ -28,6 +28,10 @@ func orderTypeFromProto(ot orderbookv1.OrderType) OrderType {
 	switch ot {
 	case orderbookv1.OrderType_ORDER_TYPE_MARKET:
 		return Market
+	case orderbookv1.OrderType_ORDER_TYPE_STOP_MARKET:
+		return StopMarket
+	case orderbookv1.OrderType_ORDER_TYPE_STOP_LIMIT:
+		return StopLimit
 	default:
 		return Limit
 	}
@@ -37,6 +41,10 @@ func orderTypeToProto(ot OrderType) orderbookv1.OrderType {
 	switch ot {
 	case Market:
 		return orderbookv1.OrderType_ORDER_TYPE_MARKET
+	case StopMarket:
+		return orderbookv1.OrderType_ORDER_TYPE_STOP_MARKET
+	case StopLimit:
+		return orderbookv1.OrderType_ORDER_TYPE_STOP_LIMIT
 	case Limit:
 		return orderbookv1.OrderType_ORDER_TYPE_LIMIT
 	default:

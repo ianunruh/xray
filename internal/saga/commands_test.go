@@ -20,6 +20,7 @@ func newTestRegistry() *es.Registry {
 	r.Register("OrderPlaced", func() proto.Message { return new(orderbookv1.OrderPlaced) })
 	r.Register("TradeExecuted", func() proto.Message { return new(orderbookv1.TradeExecuted) })
 	r.Register("OrderCancelled", func() proto.Message { return new(orderbookv1.OrderCancelled) })
+	r.Register("StopTriggered", func() proto.Message { return new(orderbookv1.StopTriggered) })
 	r.Register("SagaStarted", func() proto.Message { return new(orderbookv1.SagaStarted) })
 	r.Register("EntryFilled", func() proto.Message { return new(orderbookv1.EntryFilled) })
 	r.Register("ExitFilled", func() proto.Message { return new(orderbookv1.ExitFilled) })

@@ -13,13 +13,16 @@ import (
 )
 
 var (
-	ErrInvalidPrice          = errors.New("price must be positive")
-	ErrInvalidQuantity       = errors.New("quantity must be positive")
-	ErrOrderNotFound         = errors.New("order not found")
-	ErrNoRemainingQty        = errors.New("order has no remaining quantity")
-	ErrMarketGTC             = errors.New("market orders cannot use GTC time-in-force")
-	ErrInsufficientLiquidity = errors.New("insufficient liquidity for FOK order")
-	ErrMarketRequiresZeroPrice = errors.New("market orders must have zero price")
+	ErrInvalidPrice              = errors.New("price must be positive")
+	ErrInvalidQuantity           = errors.New("quantity must be positive")
+	ErrOrderNotFound             = errors.New("order not found")
+	ErrNoRemainingQty            = errors.New("order has no remaining quantity")
+	ErrMarketGTC                 = errors.New("market orders cannot use GTC time-in-force")
+	ErrInsufficientLiquidity     = errors.New("insufficient liquidity for FOK order")
+	ErrMarketRequiresZeroPrice   = errors.New("market orders must have zero price")
+	ErrStopRequiresStopPrice     = errors.New("stop orders require a positive stop price")
+	ErrStopMarketRequiresZeroPrice = errors.New("stop-market orders must have zero price")
+	ErrStopLimitRequiresPrice    = errors.New("stop-limit orders require a positive limit price")
 )
 
 // PlaceOrder is a command to place a new order on the book.
@@ -27,6 +30,7 @@ type PlaceOrder struct {
 	Symbol      string
 	Side        Side
 	Price       int64
+	StopPrice   int64
 	Quantity    int64
 	OrderType   OrderType
 	TimeInForce TimeInForce
@@ -52,7 +56,6 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 		return nil, ErrInvalidQuantity
 	}
 
-	// Validate order type / TIF / price combinations.
 	switch cmd.OrderType {
 	case Market:
 		if cmd.TimeInForce == GTC {
@@ -60,6 +63,20 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 		}
 		if cmd.Price != 0 {
 			return nil, ErrMarketRequiresZeroPrice
+		}
+	case StopMarket:
+		if cmd.StopPrice <= 0 {
+			return nil, ErrStopRequiresStopPrice
+		}
+		if cmd.Price != 0 {
+			return nil, ErrStopMarketRequiresZeroPrice
+		}
+	case StopLimit:
+		if cmd.StopPrice <= 0 {
+			return nil, ErrStopRequiresStopPrice
+		}
+		if cmd.Price <= 0 {
+			return nil, ErrStopLimitRequiresPrice
 		}
 	default: // Limit
 		if cmd.Price <= 0 {
@@ -89,6 +106,7 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 			Symbol:      cmd.Symbol,
 			Side:        SideToProto(cmd.Side),
 			Price:       cmd.Price,
+			StopPrice:   cmd.StopPrice,
 			Quantity:    cmd.Quantity,
 			PlacedAt:    timestamppb.New(now),
 			OrderType:   orderTypeToProto(cmd.OrderType),
@@ -96,15 +114,32 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 		},
 	}
 
-	// Apply the placement so the order is on the book for matching.
 	if err := book.Apply(placedEvt); err != nil {
 		return nil, fmt.Errorf("apply order placed: %w", err)
 	}
 
-	incoming := book.Orders[orderID]
-	tradeProtos := Match(book, incoming, now)
-
 	events := []es.Event{placedEvt}
+
+	// Stop orders rest until triggered — no immediate matching.
+	if cmd.OrderType == StopMarket || cmd.OrderType == StopLimit {
+		return events, nil
+	}
+
+	incoming := book.Orders[orderID]
+	events = matchAndAppend(book, incoming, events, now)
+
+	// IOC / Market: cancel any unfilled remainder.
+	if tif == IOC || cmd.OrderType == Market {
+		events = cancelUnfilled(book, incoming, events, now)
+	}
+
+	events = triggerStops(book, events, now)
+
+	return events, nil
+}
+
+func matchAndAppend(book *OrderBook, incoming *Order, events []es.Event, now time.Time) []es.Event {
+	tradeProtos := Match(book, incoming, now)
 	for _, trade := range tradeProtos {
 		tradeEvt := es.Event{
 			AggregateID: book.AggregateID(),
@@ -112,36 +147,96 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 			Timestamp:   now,
 			Data:        trade,
 		}
-		if err := book.Apply(tradeEvt); err != nil {
-			return nil, fmt.Errorf("apply trade executed: %w", err)
-		}
+		book.Apply(tradeEvt)
 		events = append(events, tradeEvt)
 	}
+	return events
+}
 
-	// IOC / Market: cancel any unfilled remainder.
-	if tif == IOC || cmd.OrderType == Market {
-		var filledQty int64
-		for _, trade := range tradeProtos {
-			filledQty += trade.Quantity
+func cancelUnfilled(book *OrderBook, order *Order, events []es.Event, now time.Time) []es.Event {
+	if order.RemainingQty <= 0 {
+		return events
+	}
+	if _, ok := book.Orders[order.ID]; !ok {
+		return events
+	}
+	cancelEvt := es.Event{
+		AggregateID: book.AggregateID(),
+		Type:        "OrderCancelled",
+		Timestamp:   now,
+		Data: &orderbookv1.OrderCancelled{
+			OrderId: order.ID,
+			Symbol:  book.Symbol,
+		},
+	}
+	book.Apply(cancelEvt)
+	events = append(events, cancelEvt)
+	return events
+}
+
+func triggerStops(book *OrderBook, events []es.Event, now time.Time) []es.Event {
+	for {
+		lastTradePrice, ok := lastTradePriceFrom(events)
+		if !ok {
+			break
 		}
-		if remaining := cmd.Quantity - filledQty; remaining > 0 {
-			cancelEvt := es.Event{
+
+		triggered := collectTriggeredStops(book, lastTradePrice)
+		if len(triggered) == 0 {
+			break
+		}
+
+		for _, stopOrder := range triggered {
+			triggerEvt := es.Event{
 				AggregateID: book.AggregateID(),
-				Type:        "OrderCancelled",
+				Type:        "StopTriggered",
 				Timestamp:   now,
-				Data: &orderbookv1.OrderCancelled{
-					OrderId: orderID,
-					Symbol:  cmd.Symbol,
+				Data: &orderbookv1.StopTriggered{
+					OrderId:      stopOrder.ID,
+					Symbol:       book.Symbol,
+					StopPrice:    stopOrder.StopPrice,
+					TriggerPrice: lastTradePrice,
+					ActivatedAs:  activatedOrderType(stopOrder.OrderType),
 				},
 			}
-			if err := book.Apply(cancelEvt); err != nil {
-				return nil, fmt.Errorf("apply order cancelled: %w", err)
+			book.Apply(triggerEvt)
+			events = append(events, triggerEvt)
+
+			activated := book.Orders[stopOrder.ID]
+			events = matchAndAppend(book, activated, events, now)
+
+			if stopOrder.OrderType == StopMarket {
+				events = cancelUnfilled(book, activated, events, now)
 			}
-			events = append(events, cancelEvt)
 		}
 	}
+	return events
+}
 
-	return events, nil
+func lastTradePriceFrom(events []es.Event) (int64, bool) {
+	for i := len(events) - 1; i >= 0; i-- {
+		if trade, ok := events[i].Data.(*orderbookv1.TradeExecuted); ok {
+			return trade.Price, true
+		}
+	}
+	return 0, false
+}
+
+func collectTriggeredStops(book *OrderBook, tradePrice int64) []*Order {
+	triggered := book.SellStops.Triggered(tradePrice)
+	triggered = append(triggered, book.BuyStops.Triggered(tradePrice)...)
+	return triggered
+}
+
+func activatedOrderType(ot OrderType) orderbookv1.OrderType {
+	switch ot {
+	case StopMarket:
+		return orderbookv1.OrderType_ORDER_TYPE_MARKET
+	case StopLimit:
+		return orderbookv1.OrderType_ORDER_TYPE_LIMIT
+	default:
+		return orderbookv1.OrderType_ORDER_TYPE_UNSPECIFIED
+	}
 }
 
 // ExecuteCancelOrder produces an OrderCancelled event if the order exists.

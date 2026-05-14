@@ -16,6 +16,8 @@ enum OrderType {
   ORDER_TYPE_UNSPECIFIED = 0;
   ORDER_TYPE_LIMIT = 1;
   ORDER_TYPE_MARKET = 2;
+  ORDER_TYPE_STOP_MARKET = 3;
+  ORDER_TYPE_STOP_LIMIT = 4;
 }
 
 enum TimeInForce {
@@ -34,6 +36,7 @@ message OrderPlaced {
   google.protobuf.Timestamp placed_at = 6;
   OrderType order_type = 7;
   TimeInForce time_in_force = 8;
+  int64 stop_price = 9;
 }
 
 message OrderCancelled {
@@ -49,6 +52,14 @@ message TradeExecuted {
   int64 price = 5;
   int64 quantity = 6;
   google.protobuf.Timestamp executed_at = 7;
+}
+
+message StopTriggered {
+  string order_id = 1;
+  string symbol = 2;
+  int64 stop_price = 3;
+  int64 trigger_price = 4;
+  OrderType activated_as = 5;
 }
 
 // Saga lifecycle events — stored under aggregate ID "saga:{uuid}".

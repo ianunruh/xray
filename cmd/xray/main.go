@@ -75,6 +75,7 @@ func main() {
 	registry.Register("OrderPlaced", func() proto.Message { return new(orderbookv1.OrderPlaced) })
 	registry.Register("TradeExecuted", func() proto.Message { return new(orderbookv1.TradeExecuted) })
 	registry.Register("OrderCancelled", func() proto.Message { return new(orderbookv1.OrderCancelled) })
+	registry.Register("StopTriggered", func() proto.Message { return new(orderbookv1.StopTriggered) })
 	registry.Register("SagaStarted", func() proto.Message { return new(orderbookv1.SagaStarted) })
 	registry.Register("EntryFilled", func() proto.Message { return new(orderbookv1.EntryFilled) })
 	registry.Register("ExitFilled", func() proto.Message { return new(orderbookv1.ExitFilled) })

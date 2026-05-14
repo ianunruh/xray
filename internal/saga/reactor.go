@@ -191,13 +191,13 @@ func (r *Reactor) handleEntryTrade(ctx context.Context, state *reactorState, qty
 		exitSide = orderbookv1.Side_SIDE_BUY
 	}
 
-	tpOrderID, err := r.placeExitOrder(ctx, state.symbol, exitSide, state.takeProfitPrice, state.entryQty)
+	tpOrderID, err := r.placeExitOrder(ctx, state.symbol, exitSide, state.takeProfitPrice, state.entryQty, orderbook.Limit, 0)
 	if err != nil {
 		r.log.Error("failed to place take-profit order", "saga_id", state.sagaID, "error", err)
 		return
 	}
 
-	slOrderID, err := r.placeExitOrder(ctx, state.symbol, exitSide, state.stopLossPrice, state.entryQty)
+	slOrderID, err := r.placeExitOrder(ctx, state.symbol, exitSide, 0, state.entryQty, orderbook.StopMarket, state.stopLossPrice)
 	if err != nil {
 		r.log.Error("failed to place stop-loss order", "saga_id", state.sagaID, "error", err)
 		return
@@ -317,13 +317,14 @@ func (r *Reactor) onOrderCancelled(ctx context.Context, data *orderbookv1.OrderC
 	r.log.Info("bracket saga failed — entry cancelled", "saga_id", state.sagaID)
 }
 
-func (r *Reactor) placeExitOrder(ctx context.Context, symbol string, side orderbookv1.Side, price, qty int64) (string, error) {
+func (r *Reactor) placeExitOrder(ctx context.Context, symbol string, side orderbookv1.Side, price, qty int64, orderType orderbook.OrderType, stopPrice int64) (string, error) {
 	cmd := orderbook.PlaceOrder{
 		Symbol:      symbol,
 		Side:        orderbook.SideFromProto(side),
 		Price:       price,
+		StopPrice:   stopPrice,
 		Quantity:    qty,
-		OrderType:   orderbook.Limit,
+		OrderType:   orderType,
 		TimeInForce: orderbook.GTC,
 	}
 

@@ -14,8 +14,10 @@ const (
 type OrderType int
 
 const (
-	Limit  OrderType = 0
-	Market OrderType = 1
+	Limit      OrderType = 0
+	Market     OrderType = 1
+	StopMarket OrderType = 2
+	StopLimit  OrderType = 3
 )
 
 // TimeInForce controls how long an order remains active.
@@ -32,6 +34,7 @@ type Order struct {
 	ID           string
 	Side         Side
 	Price        int64
+	StopPrice    int64
 	Quantity     int64
 	RemainingQty int64
 	PlacedAt     time.Time

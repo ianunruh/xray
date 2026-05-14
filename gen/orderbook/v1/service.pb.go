@@ -186,6 +186,7 @@ type PlaceOrderRequest struct {
 	Quantity      int64                  `protobuf:"varint,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	OrderType     OrderType              `protobuf:"varint,5,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
 	TimeInForce   TimeInForce            `protobuf:"varint,6,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
+	StopPrice     int64                  `protobuf:"varint,7,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -260,6 +261,13 @@ func (x *PlaceOrderRequest) GetTimeInForce() TimeInForce {
 		return x.TimeInForce
 	}
 	return TimeInForce_TIME_IN_FORCE_UNSPECIFIED
+}
+
+func (x *PlaceOrderRequest) GetStopPrice() int64 {
+	if x != nil {
+		return x.StopPrice
+	}
+	return 0
 }
 
 type PlaceOrderResponse struct {
@@ -817,6 +825,7 @@ type GetOrderResponse struct {
 	PlacedAt          *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=placed_at,json=placedAt,proto3" json:"placed_at,omitempty"`
 	OrderType         OrderType              `protobuf:"varint,8,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
 	TimeInForce       TimeInForce            `protobuf:"varint,9,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
+	StopPrice         int64                  `protobuf:"varint,10,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -912,6 +921,13 @@ func (x *GetOrderResponse) GetTimeInForce() TimeInForce {
 		return x.TimeInForce
 	}
 	return TimeInForce_TIME_IN_FORCE_UNSPECIFIED
+}
+
+func (x *GetOrderResponse) GetStopPrice() int64 {
+	if x != nil {
+		return x.StopPrice
+	}
+	return 0
 }
 
 type ListTradesRequest struct {
@@ -1290,6 +1306,7 @@ type OrderSummary struct {
 	PlacedAt          *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=placed_at,json=placedAt,proto3" json:"placed_at,omitempty"`
 	OrderType         OrderType              `protobuf:"varint,9,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
 	TimeInForce       TimeInForce            `protobuf:"varint,10,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
+	StopPrice         int64                  `protobuf:"varint,11,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1392,6 +1409,13 @@ func (x *OrderSummary) GetTimeInForce() TimeInForce {
 		return x.TimeInForce
 	}
 	return TimeInForce_TIME_IN_FORCE_UNSPECIFIED
+}
+
+func (x *OrderSummary) GetStopPrice() int64 {
+	if x != nil {
+		return x.StopPrice
+	}
+	return 0
 }
 
 type PlaceBracketOrderRequest struct {
@@ -1807,7 +1831,7 @@ var File_orderbook_v1_service_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1aorderbook/v1/service.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"\xfc\x01\n" +
+	"\x1aorderbook/v1/service.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"\x9b\x02\n" +
 	"\x11PlaceOrderRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +
@@ -1815,7 +1839,9 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\bquantity\x18\x04 \x01(\x03R\bquantity\x126\n" +
 	"\n" +
 	"order_type\x18\x05 \x01(\x0e2\x17.orderbook.v1.OrderTypeR\torderType\x12=\n" +
-	"\rtime_in_force\x18\x06 \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\"d\n" +
+	"\rtime_in_force\x18\x06 \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\x12\x1d\n" +
+	"\n" +
+	"stop_price\x18\a \x01(\x03R\tstopPrice\"d\n" +
 	"\x12PlaceOrderResponse\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x123\n" +
 	"\x06trades\x18\x02 \x03(\v2\x1b.orderbook.v1.TradeExecutedR\x06trades\"G\n" +
@@ -1850,7 +1876,7 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"orderCount\"D\n" +
 	"\x0fGetOrderRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x19\n" +
-	"\border_id\x18\x02 \x01(\tR\aorderId\"\xfe\x02\n" +
+	"\border_id\x18\x02 \x01(\tR\aorderId\"\x9d\x03\n" +
 	"\x10GetOrderResponse\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12&\n" +
@@ -1861,7 +1887,10 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\tplaced_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\bplacedAt\x126\n" +
 	"\n" +
 	"order_type\x18\b \x01(\x0e2\x17.orderbook.v1.OrderTypeR\torderType\x12=\n" +
-	"\rtime_in_force\x18\t \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\"+\n" +
+	"\rtime_in_force\x18\t \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\x12\x1d\n" +
+	"\n" +
+	"stop_price\x18\n" +
+	" \x01(\x03R\tstopPrice\"+\n" +
 	"\x11ListTradesRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"A\n" +
 	"\x12ListTradesResponse\x12+\n" +
@@ -1884,7 +1913,7 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\x13StreamTradesRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"H\n" +
 	"\x12ListOrdersResponse\x122\n" +
-	"\x06orders\x18\x01 \x03(\v2\x1a.orderbook.v1.OrderSummaryR\x06orders\"\xad\x03\n" +
+	"\x06orders\x18\x01 \x03(\v2\x1a.orderbook.v1.OrderSummaryR\x06orders\"\xcc\x03\n" +
 	"\fOrderSummary\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12&\n" +
@@ -1897,7 +1926,9 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\n" +
 	"order_type\x18\t \x01(\x0e2\x17.orderbook.v1.OrderTypeR\torderType\x12=\n" +
 	"\rtime_in_force\x18\n" +
-	" \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\"\xe0\x01\n" +
+	" \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\x12\x1d\n" +
+	"\n" +
+	"stop_price\x18\v \x01(\x03R\tstopPrice\"\xe0\x01\n" +
 	"\x18PlaceBracketOrderRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +

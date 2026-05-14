@@ -21,4 +21,5 @@ message OrderSnapshot {
   google.protobuf.Timestamp placed_at = 6;
   OrderType order_type = 7;
   TimeInForce time_in_force = 8;
+  int64 stop_price = 9;
 }

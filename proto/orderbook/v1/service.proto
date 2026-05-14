@@ -34,6 +34,7 @@ message PlaceOrderRequest {
   int64 quantity = 4;
   OrderType order_type = 5;
   TimeInForce time_in_force = 6;
+  int64 stop_price = 7;
 }
 
 message PlaceOrderResponse {
@@ -98,6 +99,7 @@ message GetOrderResponse {
   google.protobuf.Timestamp placed_at = 7;
   OrderType order_type = 8;
   TimeInForce time_in_force = 9;
+  int64 stop_price = 10;
 }
 
 message ListTradesRequest {
@@ -146,6 +148,7 @@ message OrderSummary {
   google.protobuf.Timestamp placed_at = 8;
   OrderType order_type = 9;
   TimeInForce time_in_force = 10;
+  int64 stop_price = 11;
 }
 
 // Saga service — generic service for all saga types.

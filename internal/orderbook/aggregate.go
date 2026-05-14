@@ -22,6 +22,8 @@ type OrderBook struct {
 	Bids       *priceSide
 	Asks       *priceSide
 	Orders     map[string]*Order
+	BuyStops   *stopSide
+	SellStops  *stopSide
 }
 
 // NewOrderBook creates a new OrderBook aggregate with the given ID.
@@ -31,6 +33,8 @@ func NewOrderBook(id string) *OrderBook {
 		Bids:       newBidSide(),
 		Asks:       newAskSide(),
 		Orders:     make(map[string]*Order),
+		BuyStops:   newBuyStopSide(),
+		SellStops:  newSellStopSide(),
 	}
 	ob.SetID(id)
 	return ob
@@ -45,6 +49,8 @@ func (ob *OrderBook) Apply(evt es.Event) error {
 		ob.applyTradeExecuted(data)
 	case *orderbookv1.OrderCancelled:
 		ob.applyOrderCancelled(data)
+	case *orderbookv1.StopTriggered:
+		ob.applyStopTriggered(data)
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}
@@ -59,6 +65,7 @@ func (ob *OrderBook) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 		ID:           data.OrderId,
 		Side:         SideFromProto(data.Side),
 		Price:        data.Price,
+		StopPrice:    data.StopPrice,
 		Quantity:     data.Quantity,
 		RemainingQty: data.Quantity,
 		PlacedAt:     data.PlacedAt.AsTime(),
@@ -67,6 +74,16 @@ func (ob *OrderBook) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 	}
 
 	ob.Orders[order.ID] = order
+
+	if order.OrderType == StopMarket || order.OrderType == StopLimit {
+		switch order.Side {
+		case Buy:
+			ob.BuyStops.Insert(order)
+		case Sell:
+			ob.SellStops.Insert(order)
+		}
+		return
+	}
 
 	switch order.Side {
 	case Buy:
@@ -101,13 +118,52 @@ func (ob *OrderBook) applyOrderCancelled(data *orderbookv1.OrderCancelled) {
 		return
 	}
 
-	switch order.Side {
-	case Buy:
-		ob.Bids.Remove(order)
-	case Sell:
-		ob.Asks.Remove(order)
+	if order.OrderType == StopMarket || order.OrderType == StopLimit {
+		switch order.Side {
+		case Buy:
+			ob.BuyStops.Remove(order.ID)
+		case Sell:
+			ob.SellStops.Remove(order.ID)
+		}
+	} else {
+		switch order.Side {
+		case Buy:
+			ob.Bids.Remove(order)
+		case Sell:
+			ob.Asks.Remove(order)
+		}
 	}
 
 	delete(ob.Orders, order.ID)
 }
+
+func (ob *OrderBook) applyStopTriggered(data *orderbookv1.StopTriggered) {
+	order, ok := ob.Orders[data.OrderId]
+	if !ok {
+		return
+	}
+
+	switch order.Side {
+	case Buy:
+		ob.BuyStops.Remove(order.ID)
+	case Sell:
+		ob.SellStops.Remove(order.ID)
+	}
+
+	switch order.OrderType {
+	case StopMarket:
+		order.OrderType = Market
+		order.Price = 0
+	case StopLimit:
+		order.OrderType = Limit
+	}
+
+	switch order.Side {
+	case Buy:
+		ob.Bids.Insert(order)
+	case Sell:
+		ob.Asks.Insert(order)
+	}
+}
+
 

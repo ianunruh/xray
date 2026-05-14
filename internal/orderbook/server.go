@@ -50,6 +50,7 @@ func (s *Server) PlaceOrder(ctx context.Context, req *connect.Request[orderbookv
 		Symbol:      msg.Symbol,
 		Side:        SideFromProto(msg.Side),
 		Price:       msg.Price,
+		StopPrice:   msg.StopPrice,
 		Quantity:    msg.Quantity,
 		OrderType:   orderTypeFromProto(msg.OrderType),
 		TimeInForce: tif,
@@ -154,6 +155,7 @@ func (s *Server) GetOrder(ctx context.Context, req *connect.Request[orderbookv1.
 		Symbol:            order.Symbol,
 		Side:              order.Side,
 		Price:             order.Price,
+		StopPrice:         order.StopPrice,
 		Quantity:          order.Quantity,
 		RemainingQuantity: order.RemainingQuantity,
 		PlacedAt:          order.PlacedAt,
@@ -285,7 +287,8 @@ func mapError(err error) *connect.Error {
 	}
 
 	switch unwrapped {
-	case ErrInvalidPrice, ErrInvalidQuantity, ErrMarketGTC, ErrMarketRequiresZeroPrice:
+	case ErrInvalidPrice, ErrInvalidQuantity, ErrMarketGTC, ErrMarketRequiresZeroPrice,
+		ErrStopRequiresStopPrice, ErrStopMarketRequiresZeroPrice, ErrStopLimitRequiresPrice:
 		return connect.NewError(connect.CodeInvalidArgument, unwrapped)
 	case ErrInsufficientLiquidity:
 		return connect.NewError(connect.CodeFailedPrecondition, unwrapped)

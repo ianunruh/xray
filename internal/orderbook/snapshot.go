@@ -19,6 +19,7 @@ func (ob *OrderBook) Snapshot() (proto.Message, error) {
 			OrderId:           order.ID,
 			Side:              SideToProto(order.Side),
 			Price:             order.Price,
+			StopPrice:         order.StopPrice,
 			Quantity:          order.Quantity,
 			RemainingQuantity: order.RemainingQty,
 			PlacedAt:          timestamppb.New(order.PlacedAt),
@@ -40,12 +41,15 @@ func (ob *OrderBook) RestoreSnapshot(msg proto.Message) error {
 	ob.Orders = make(map[string]*Order, len(snap.Orders))
 	ob.Bids.Reset()
 	ob.Asks.Reset()
+	ob.BuyStops.Reset()
+	ob.SellStops.Reset()
 
 	for _, os := range snap.Orders {
 		order := &Order{
 			ID:           os.OrderId,
 			Side:         SideFromProto(os.Side),
 			Price:        os.Price,
+			StopPrice:    os.StopPrice,
 			Quantity:     os.Quantity,
 			RemainingQty: os.RemainingQuantity,
 			PlacedAt:     os.PlacedAt.AsTime(),
@@ -53,6 +57,16 @@ func (ob *OrderBook) RestoreSnapshot(msg proto.Message) error {
 			TimeInForce:  tifFromProto(os.TimeInForce),
 		}
 		ob.Orders[order.ID] = order
+
+		if order.OrderType == StopMarket || order.OrderType == StopLimit {
+			switch order.Side {
+			case Buy:
+				ob.BuyStops.Insert(order)
+			case Sell:
+				ob.SellStops.Insert(order)
+			}
+			continue
+		}
 
 		switch order.Side {
 		case Buy:
