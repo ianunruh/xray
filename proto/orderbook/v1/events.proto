@@ -100,3 +100,10 @@ message SagaFailed {
   string reason = 2;
   google.protobuf.Timestamp failed_at = 3;
 }
+
+message SagaActionFailed {
+  string saga_id = 1;
+  string action = 2;
+  int32 attempts = 3;
+  google.protobuf.Timestamp failed_at = 4;
+}

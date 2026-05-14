@@ -39,6 +39,7 @@ type BracketSaga struct {
 	StopLossOrderID   string
 	Status            Status
 	EntryFilledQty    int64
+	ActionAttempts    int
 }
 
 func NewBracketSaga(id string) *BracketSaga {
@@ -59,6 +60,8 @@ func (s *BracketSaga) Apply(evt es.Event) error {
 		s.applySagaCompleted()
 	case *orderbookv1.SagaFailed:
 		s.applySagaFailed()
+	case *orderbookv1.SagaActionFailed:
+		s.applySagaActionFailed(data)
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}
@@ -82,6 +85,7 @@ func (s *BracketSaga) applyEntryFilled(data *orderbookv1.EntryFilled) {
 	s.TakeProfitOrderID = data.TakeProfitOrderId
 	s.StopLossOrderID = data.StopLossOrderId
 	s.Status = PendingExit
+	s.ActionAttempts = 0
 }
 
 func (s *BracketSaga) applyExitFilled(_ *orderbookv1.ExitFilled) {
@@ -93,4 +97,8 @@ func (s *BracketSaga) applySagaCompleted() {
 
 func (s *BracketSaga) applySagaFailed() {
 	s.Status = Failed
+}
+
+func (s *BracketSaga) applySagaActionFailed(data *orderbookv1.SagaActionFailed) {
+	s.ActionAttempts = int(data.Attempts)
 }

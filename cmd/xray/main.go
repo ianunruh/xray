@@ -81,6 +81,7 @@ func main() {
 	registry.Register("ExitFilled", func() proto.Message { return new(orderbookv1.ExitFilled) })
 	registry.Register("SagaCompleted", func() proto.Message { return new(orderbookv1.SagaCompleted) })
 	registry.Register("SagaFailed", func() proto.Message { return new(orderbookv1.SagaFailed) })
+	registry.Register("SagaActionFailed", func() proto.Message { return new(orderbookv1.SagaActionFailed) })
 
 	// Connect to NATS.
 	nc, err := nats.Connect(natsURL)
@@ -135,7 +136,7 @@ func main() {
 		os.Exit(1)
 	}
 	broker.SetReady()
-	sagaReactor.SetReady()
+	sagaReactor.SetReady(ctx)
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, depthProjection, broker)
 	sagaSrv := saga.NewServer(sagaHandler, obHandler, log)

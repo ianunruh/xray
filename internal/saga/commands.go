@@ -2,6 +2,7 @@ package saga
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,6 +11,8 @@ import (
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/pkg/es"
 )
+
+const MaxActionAttempts = 3
 
 var (
 	ErrInvalidPrice    = errors.New("price must be positive")
@@ -164,6 +167,58 @@ func ExecuteRecordSagaFailed(saga *BracketSaga, cmd RecordSagaFailed) ([]es.Even
 		Data: &orderbookv1.SagaFailed{
 			SagaId:   cmd.SagaID,
 			Reason:   cmd.Reason,
+			FailedAt: timestamppb.New(now),
+		},
+	}
+
+	if err := saga.Apply(evt); err != nil {
+		return nil, err
+	}
+	return []es.Event{evt}, nil
+}
+
+type RecordActionFailed struct {
+	SagaID string
+	Action string
+}
+
+func (c RecordActionFailed) AggregateID() string {
+	return AggregateID(c.SagaID)
+}
+
+func ExecuteRecordActionFailed(saga *BracketSaga, cmd RecordActionFailed) ([]es.Event, error) {
+	if saga.Status != PendingEntry && saga.Status != PendingExit {
+		return nil, ErrInvalidState
+	}
+
+	attempts := saga.ActionAttempts + 1
+	now := time.Now()
+
+	if attempts >= MaxActionAttempts {
+		evt := es.Event{
+			AggregateID: saga.AggregateID(),
+			Type:        "SagaFailed",
+			Timestamp:   now,
+			Data: &orderbookv1.SagaFailed{
+				SagaId:   cmd.SagaID,
+				Reason:   fmt.Sprintf("max retries exceeded for action: %s", cmd.Action),
+				FailedAt: timestamppb.New(now),
+			},
+		}
+		if err := saga.Apply(evt); err != nil {
+			return nil, err
+		}
+		return []es.Event{evt}, nil
+	}
+
+	evt := es.Event{
+		AggregateID: saga.AggregateID(),
+		Type:        "SagaActionFailed",
+		Timestamp:   now,
+		Data: &orderbookv1.SagaActionFailed{
+			SagaId:   cmd.SagaID,
+			Action:   cmd.Action,
+			Attempts: int32(attempts),
 			FailedAt: timestamppb.New(now),
 		},
 	}
