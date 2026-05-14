@@ -416,6 +416,362 @@ func (x *TradeExecuted) GetExecutedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type SagaStarted struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	SagaId          string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	Symbol          string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	EntrySide       Side                   `protobuf:"varint,3,opt,name=entry_side,json=entrySide,proto3,enum=orderbook.v1.Side" json:"entry_side,omitempty"`
+	EntryPrice      int64                  `protobuf:"varint,4,opt,name=entry_price,json=entryPrice,proto3" json:"entry_price,omitempty"`
+	EntryQuantity   int64                  `protobuf:"varint,5,opt,name=entry_quantity,json=entryQuantity,proto3" json:"entry_quantity,omitempty"`
+	TakeProfitPrice int64                  `protobuf:"varint,6,opt,name=take_profit_price,json=takeProfitPrice,proto3" json:"take_profit_price,omitempty"`
+	StopLossPrice   int64                  `protobuf:"varint,7,opt,name=stop_loss_price,json=stopLossPrice,proto3" json:"stop_loss_price,omitempty"`
+	EntryOrderId    string                 `protobuf:"bytes,8,opt,name=entry_order_id,json=entryOrderId,proto3" json:"entry_order_id,omitempty"`
+	StartedAt       *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *SagaStarted) Reset() {
+	*x = SagaStarted{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SagaStarted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SagaStarted) ProtoMessage() {}
+
+func (x *SagaStarted) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SagaStarted.ProtoReflect.Descriptor instead.
+func (*SagaStarted) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *SagaStarted) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+func (x *SagaStarted) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *SagaStarted) GetEntrySide() Side {
+	if x != nil {
+		return x.EntrySide
+	}
+	return Side_SIDE_UNSPECIFIED
+}
+
+func (x *SagaStarted) GetEntryPrice() int64 {
+	if x != nil {
+		return x.EntryPrice
+	}
+	return 0
+}
+
+func (x *SagaStarted) GetEntryQuantity() int64 {
+	if x != nil {
+		return x.EntryQuantity
+	}
+	return 0
+}
+
+func (x *SagaStarted) GetTakeProfitPrice() int64 {
+	if x != nil {
+		return x.TakeProfitPrice
+	}
+	return 0
+}
+
+func (x *SagaStarted) GetStopLossPrice() int64 {
+	if x != nil {
+		return x.StopLossPrice
+	}
+	return 0
+}
+
+func (x *SagaStarted) GetEntryOrderId() string {
+	if x != nil {
+		return x.EntryOrderId
+	}
+	return ""
+}
+
+func (x *SagaStarted) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+type EntryFilled struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	SagaId            string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	TakeProfitOrderId string                 `protobuf:"bytes,2,opt,name=take_profit_order_id,json=takeProfitOrderId,proto3" json:"take_profit_order_id,omitempty"`
+	StopLossOrderId   string                 `protobuf:"bytes,3,opt,name=stop_loss_order_id,json=stopLossOrderId,proto3" json:"stop_loss_order_id,omitempty"`
+	FilledAt          *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=filled_at,json=filledAt,proto3" json:"filled_at,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *EntryFilled) Reset() {
+	*x = EntryFilled{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EntryFilled) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EntryFilled) ProtoMessage() {}
+
+func (x *EntryFilled) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EntryFilled.ProtoReflect.Descriptor instead.
+func (*EntryFilled) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *EntryFilled) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+func (x *EntryFilled) GetTakeProfitOrderId() string {
+	if x != nil {
+		return x.TakeProfitOrderId
+	}
+	return ""
+}
+
+func (x *EntryFilled) GetStopLossOrderId() string {
+	if x != nil {
+		return x.StopLossOrderId
+	}
+	return ""
+}
+
+func (x *EntryFilled) GetFilledAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FilledAt
+	}
+	return nil
+}
+
+type ExitFilled struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	SagaId           string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	FilledOrderId    string                 `protobuf:"bytes,2,opt,name=filled_order_id,json=filledOrderId,proto3" json:"filled_order_id,omitempty"`
+	CancelledOrderId string                 `protobuf:"bytes,3,opt,name=cancelled_order_id,json=cancelledOrderId,proto3" json:"cancelled_order_id,omitempty"`
+	FilledAt         *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=filled_at,json=filledAt,proto3" json:"filled_at,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ExitFilled) Reset() {
+	*x = ExitFilled{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExitFilled) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExitFilled) ProtoMessage() {}
+
+func (x *ExitFilled) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExitFilled.ProtoReflect.Descriptor instead.
+func (*ExitFilled) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ExitFilled) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+func (x *ExitFilled) GetFilledOrderId() string {
+	if x != nil {
+		return x.FilledOrderId
+	}
+	return ""
+}
+
+func (x *ExitFilled) GetCancelledOrderId() string {
+	if x != nil {
+		return x.CancelledOrderId
+	}
+	return ""
+}
+
+func (x *ExitFilled) GetFilledAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FilledAt
+	}
+	return nil
+}
+
+type SagaCompleted struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SagaId        string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	CompletedAt   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SagaCompleted) Reset() {
+	*x = SagaCompleted{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SagaCompleted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SagaCompleted) ProtoMessage() {}
+
+func (x *SagaCompleted) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SagaCompleted.ProtoReflect.Descriptor instead.
+func (*SagaCompleted) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *SagaCompleted) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+func (x *SagaCompleted) GetCompletedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CompletedAt
+	}
+	return nil
+}
+
+type SagaFailed struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SagaId        string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	FailedAt      *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=failed_at,json=failedAt,proto3" json:"failed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SagaFailed) Reset() {
+	*x = SagaFailed{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SagaFailed) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SagaFailed) ProtoMessage() {}
+
+func (x *SagaFailed) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SagaFailed.ProtoReflect.Descriptor instead.
+func (*SagaFailed) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *SagaFailed) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+func (x *SagaFailed) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *SagaFailed) GetFailedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FailedAt
+	}
+	return nil
+}
+
 var File_orderbook_v1_events_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_events_proto_rawDesc = "" +
@@ -443,7 +799,39 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\x05price\x18\x05 \x01(\x03R\x05price\x12\x1a\n" +
 	"\bquantity\x18\x06 \x01(\x03R\bquantity\x12;\n" +
 	"\vexecuted_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"executedAt*9\n" +
+	"executedAt\"\xee\x02\n" +
+	"\vSagaStarted\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
+	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x121\n" +
+	"\n" +
+	"entry_side\x18\x03 \x01(\x0e2\x12.orderbook.v1.SideR\tentrySide\x12\x1f\n" +
+	"\ventry_price\x18\x04 \x01(\x03R\n" +
+	"entryPrice\x12%\n" +
+	"\x0eentry_quantity\x18\x05 \x01(\x03R\rentryQuantity\x12*\n" +
+	"\x11take_profit_price\x18\x06 \x01(\x03R\x0ftakeProfitPrice\x12&\n" +
+	"\x0fstop_loss_price\x18\a \x01(\x03R\rstopLossPrice\x12$\n" +
+	"\x0eentry_order_id\x18\b \x01(\tR\fentryOrderId\x129\n" +
+	"\n" +
+	"started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\"\xbd\x01\n" +
+	"\vEntryFilled\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12/\n" +
+	"\x14take_profit_order_id\x18\x02 \x01(\tR\x11takeProfitOrderId\x12+\n" +
+	"\x12stop_loss_order_id\x18\x03 \x01(\tR\x0fstopLossOrderId\x127\n" +
+	"\tfilled_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bfilledAt\"\xb4\x01\n" +
+	"\n" +
+	"ExitFilled\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12&\n" +
+	"\x0ffilled_order_id\x18\x02 \x01(\tR\rfilledOrderId\x12,\n" +
+	"\x12cancelled_order_id\x18\x03 \x01(\tR\x10cancelledOrderId\x127\n" +
+	"\tfilled_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bfilledAt\"g\n" +
+	"\rSagaCompleted\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12=\n" +
+	"\fcompleted_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\"v\n" +
+	"\n" +
+	"SagaFailed\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\x127\n" +
+	"\tfailed_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bfailedAt*9\n" +
 	"\x04Side\x12\x14\n" +
 	"\x10SIDE_UNSPECIFIED\x10\x00\x12\f\n" +
 	"\bSIDE_BUY\x10\x01\x12\r\n" +
@@ -471,7 +859,7 @@ func file_orderbook_v1_events_proto_rawDescGZIP() []byte {
 }
 
 var file_orderbook_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_orderbook_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_orderbook_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_orderbook_v1_events_proto_goTypes = []any{
 	(Side)(0),                     // 0: orderbook.v1.Side
 	(OrderType)(0),                // 1: orderbook.v1.OrderType
@@ -479,19 +867,30 @@ var file_orderbook_v1_events_proto_goTypes = []any{
 	(*OrderPlaced)(nil),           // 3: orderbook.v1.OrderPlaced
 	(*OrderCancelled)(nil),        // 4: orderbook.v1.OrderCancelled
 	(*TradeExecuted)(nil),         // 5: orderbook.v1.TradeExecuted
-	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
+	(*SagaStarted)(nil),           // 6: orderbook.v1.SagaStarted
+	(*EntryFilled)(nil),           // 7: orderbook.v1.EntryFilled
+	(*ExitFilled)(nil),            // 8: orderbook.v1.ExitFilled
+	(*SagaCompleted)(nil),         // 9: orderbook.v1.SagaCompleted
+	(*SagaFailed)(nil),            // 10: orderbook.v1.SagaFailed
+	(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
 }
 var file_orderbook_v1_events_proto_depIdxs = []int32{
-	0, // 0: orderbook.v1.OrderPlaced.side:type_name -> orderbook.v1.Side
-	6, // 1: orderbook.v1.OrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
-	1, // 2: orderbook.v1.OrderPlaced.order_type:type_name -> orderbook.v1.OrderType
-	2, // 3: orderbook.v1.OrderPlaced.time_in_force:type_name -> orderbook.v1.TimeInForce
-	6, // 4: orderbook.v1.TradeExecuted.executed_at:type_name -> google.protobuf.Timestamp
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	0,  // 0: orderbook.v1.OrderPlaced.side:type_name -> orderbook.v1.Side
+	11, // 1: orderbook.v1.OrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
+	1,  // 2: orderbook.v1.OrderPlaced.order_type:type_name -> orderbook.v1.OrderType
+	2,  // 3: orderbook.v1.OrderPlaced.time_in_force:type_name -> orderbook.v1.TimeInForce
+	11, // 4: orderbook.v1.TradeExecuted.executed_at:type_name -> google.protobuf.Timestamp
+	0,  // 5: orderbook.v1.SagaStarted.entry_side:type_name -> orderbook.v1.Side
+	11, // 6: orderbook.v1.SagaStarted.started_at:type_name -> google.protobuf.Timestamp
+	11, // 7: orderbook.v1.EntryFilled.filled_at:type_name -> google.protobuf.Timestamp
+	11, // 8: orderbook.v1.ExitFilled.filled_at:type_name -> google.protobuf.Timestamp
+	11, // 9: orderbook.v1.SagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
+	11, // 10: orderbook.v1.SagaFailed.failed_at:type_name -> google.protobuf.Timestamp
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_orderbook_v1_events_proto_init() }
@@ -505,7 +904,7 @@ func file_orderbook_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_orderbook_v1_events_proto_rawDesc), len(file_orderbook_v1_events_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   3,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

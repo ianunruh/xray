@@ -23,6 +23,8 @@ const _ = connect.IsAtLeastVersion1_13_0
 const (
 	// OrderBookServiceName is the fully-qualified name of the OrderBookService service.
 	OrderBookServiceName = "orderbook.v1.OrderBookService"
+	// SagaServiceName is the fully-qualified name of the SagaService service.
+	SagaServiceName = "orderbook.v1.SagaService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -60,6 +62,13 @@ const (
 	// OrderBookServiceStreamTradesProcedure is the fully-qualified name of the OrderBookService's
 	// StreamTrades RPC.
 	OrderBookServiceStreamTradesProcedure = "/orderbook.v1.OrderBookService/StreamTrades"
+	// SagaServicePlaceBracketOrderProcedure is the fully-qualified name of the SagaService's
+	// PlaceBracketOrder RPC.
+	SagaServicePlaceBracketOrderProcedure = "/orderbook.v1.SagaService/PlaceBracketOrder"
+	// SagaServiceGetSagaProcedure is the fully-qualified name of the SagaService's GetSaga RPC.
+	SagaServiceGetSagaProcedure = "/orderbook.v1.SagaService/GetSaga"
+	// SagaServiceListSagasProcedure is the fully-qualified name of the SagaService's ListSagas RPC.
+	SagaServiceListSagasProcedure = "/orderbook.v1.SagaService/ListSagas"
 )
 
 // OrderBookServiceClient is a client for the orderbook.v1.OrderBookService service.
@@ -338,4 +347,126 @@ func (UnimplementedOrderBookServiceHandler) StreamMarketDepth(context.Context, *
 
 func (UnimplementedOrderBookServiceHandler) StreamTrades(context.Context, *connect.Request[v1.StreamTradesRequest], *connect.ServerStream[v1.Trade]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.StreamTrades is not implemented"))
+}
+
+// SagaServiceClient is a client for the orderbook.v1.SagaService service.
+type SagaServiceClient interface {
+	PlaceBracketOrder(context.Context, *connect.Request[v1.PlaceBracketOrderRequest]) (*connect.Response[v1.PlaceBracketOrderResponse], error)
+	GetSaga(context.Context, *connect.Request[v1.GetSagaRequest]) (*connect.Response[v1.GetSagaResponse], error)
+	ListSagas(context.Context, *connect.Request[v1.ListSagasRequest]) (*connect.Response[v1.ListSagasResponse], error)
+}
+
+// NewSagaServiceClient constructs a client for the orderbook.v1.SagaService service. By default, it
+// uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and sends
+// uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or
+// connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewSagaServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) SagaServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	sagaServiceMethods := v1.File_orderbook_v1_service_proto.Services().ByName("SagaService").Methods()
+	return &sagaServiceClient{
+		placeBracketOrder: connect.NewClient[v1.PlaceBracketOrderRequest, v1.PlaceBracketOrderResponse](
+			httpClient,
+			baseURL+SagaServicePlaceBracketOrderProcedure,
+			connect.WithSchema(sagaServiceMethods.ByName("PlaceBracketOrder")),
+			connect.WithClientOptions(opts...),
+		),
+		getSaga: connect.NewClient[v1.GetSagaRequest, v1.GetSagaResponse](
+			httpClient,
+			baseURL+SagaServiceGetSagaProcedure,
+			connect.WithSchema(sagaServiceMethods.ByName("GetSaga")),
+			connect.WithClientOptions(opts...),
+		),
+		listSagas: connect.NewClient[v1.ListSagasRequest, v1.ListSagasResponse](
+			httpClient,
+			baseURL+SagaServiceListSagasProcedure,
+			connect.WithSchema(sagaServiceMethods.ByName("ListSagas")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// sagaServiceClient implements SagaServiceClient.
+type sagaServiceClient struct {
+	placeBracketOrder *connect.Client[v1.PlaceBracketOrderRequest, v1.PlaceBracketOrderResponse]
+	getSaga           *connect.Client[v1.GetSagaRequest, v1.GetSagaResponse]
+	listSagas         *connect.Client[v1.ListSagasRequest, v1.ListSagasResponse]
+}
+
+// PlaceBracketOrder calls orderbook.v1.SagaService.PlaceBracketOrder.
+func (c *sagaServiceClient) PlaceBracketOrder(ctx context.Context, req *connect.Request[v1.PlaceBracketOrderRequest]) (*connect.Response[v1.PlaceBracketOrderResponse], error) {
+	return c.placeBracketOrder.CallUnary(ctx, req)
+}
+
+// GetSaga calls orderbook.v1.SagaService.GetSaga.
+func (c *sagaServiceClient) GetSaga(ctx context.Context, req *connect.Request[v1.GetSagaRequest]) (*connect.Response[v1.GetSagaResponse], error) {
+	return c.getSaga.CallUnary(ctx, req)
+}
+
+// ListSagas calls orderbook.v1.SagaService.ListSagas.
+func (c *sagaServiceClient) ListSagas(ctx context.Context, req *connect.Request[v1.ListSagasRequest]) (*connect.Response[v1.ListSagasResponse], error) {
+	return c.listSagas.CallUnary(ctx, req)
+}
+
+// SagaServiceHandler is an implementation of the orderbook.v1.SagaService service.
+type SagaServiceHandler interface {
+	PlaceBracketOrder(context.Context, *connect.Request[v1.PlaceBracketOrderRequest]) (*connect.Response[v1.PlaceBracketOrderResponse], error)
+	GetSaga(context.Context, *connect.Request[v1.GetSagaRequest]) (*connect.Response[v1.GetSagaResponse], error)
+	ListSagas(context.Context, *connect.Request[v1.ListSagasRequest]) (*connect.Response[v1.ListSagasResponse], error)
+}
+
+// NewSagaServiceHandler builds an HTTP handler from the service implementation. It returns the path
+// on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewSagaServiceHandler(svc SagaServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	sagaServiceMethods := v1.File_orderbook_v1_service_proto.Services().ByName("SagaService").Methods()
+	sagaServicePlaceBracketOrderHandler := connect.NewUnaryHandler(
+		SagaServicePlaceBracketOrderProcedure,
+		svc.PlaceBracketOrder,
+		connect.WithSchema(sagaServiceMethods.ByName("PlaceBracketOrder")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sagaServiceGetSagaHandler := connect.NewUnaryHandler(
+		SagaServiceGetSagaProcedure,
+		svc.GetSaga,
+		connect.WithSchema(sagaServiceMethods.ByName("GetSaga")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sagaServiceListSagasHandler := connect.NewUnaryHandler(
+		SagaServiceListSagasProcedure,
+		svc.ListSagas,
+		connect.WithSchema(sagaServiceMethods.ByName("ListSagas")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/orderbook.v1.SagaService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case SagaServicePlaceBracketOrderProcedure:
+			sagaServicePlaceBracketOrderHandler.ServeHTTP(w, r)
+		case SagaServiceGetSagaProcedure:
+			sagaServiceGetSagaHandler.ServeHTTP(w, r)
+		case SagaServiceListSagasProcedure:
+			sagaServiceListSagasHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedSagaServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedSagaServiceHandler struct{}
+
+func (UnimplementedSagaServiceHandler) PlaceBracketOrder(context.Context, *connect.Request[v1.PlaceBracketOrderRequest]) (*connect.Response[v1.PlaceBracketOrderResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.SagaService.PlaceBracketOrder is not implemented"))
+}
+
+func (UnimplementedSagaServiceHandler) GetSaga(context.Context, *connect.Request[v1.GetSagaRequest]) (*connect.Response[v1.GetSagaResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.SagaService.GetSaga is not implemented"))
+}
+
+func (UnimplementedSagaServiceHandler) ListSagas(context.Context, *connect.Request[v1.ListSagasRequest]) (*connect.Response[v1.ListSagasResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.SagaService.ListSagas is not implemented"))
 }

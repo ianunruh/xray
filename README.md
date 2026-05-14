@@ -11,6 +11,7 @@ Event-sourced order book — a learning project implementing a simple but realis
 - `pkg/es/memstore/` — In-memory EventStore for tests
 - `pkg/es/pgstore/` — PostgreSQL EventStore (pgxpool)
 - `internal/orderbook/` — Order book domain (aggregate, commands, matching engine, gRPC server)
+- `internal/saga/` — Saga orchestration (bracket orders, reactor, gRPC server)
 - `cmd/xray/` — HTTP/gRPC server entry point
 
 ## Key design decisions
@@ -36,12 +37,17 @@ Environment variables:
 
 ## API
 
-The server exposes four RPCs via Connect (gRPC, gRPC-Web, and JSON-over-HTTP on the same port):
+The server exposes RPCs via Connect (gRPC, gRPC-Web, and JSON-over-HTTP on the same port):
 
+**OrderBookService:**
 - `PlaceOrder` — Place a limit order, returns order ID and any immediate trades
 - `CancelOrder` — Cancel an existing order by ID
 - `GetOrderBook` — Get full book state (bids and asks) for a symbol
 - `GetOrder` — Look up a single order by symbol and order ID
+
+**SagaService:**
+- `PlaceBracketOrder` — Place an entry order with automatic take-profit and stop-loss exits
+- `GetSaga` — Look up a saga by ID (status, order IDs, prices)
 
 ### Example usage with buf curl
 
@@ -60,6 +66,16 @@ buf curl --protocol grpc --http2-prior-knowledge \                              
 buf curl --protocol grpc --http2-prior-knowledge \
   --schema proto http://localhost:8080/orderbook.v1.OrderBookService/GetOrderBook \
   -d '{"symbol":"AAPL"}'
+
+# Place a bracket order (entry buy at $150, take-profit at $155, stop-loss at $145)
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/orderbook.v1.SagaService/PlaceBracketOrder \
+  -d '{"symbol":"AAPL","side":"SIDE_BUY","price":"1500000","quantity":"100","take_profit_price":"1550000","stop_loss_price":"1450000"}'
+
+# Check saga status
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/orderbook.v1.SagaService/GetSaga \
+  -d '{"saga_id":"<saga_id from above>"}'
 ```
 
 ## Development

@@ -87,7 +87,7 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 		Data: &orderbookv1.OrderPlaced{
 			OrderId:     orderID,
 			Symbol:      cmd.Symbol,
-			Side:        sideToProto(cmd.Side),
+			Side:        SideToProto(cmd.Side),
 			Price:       cmd.Price,
 			Quantity:    cmd.Quantity,
 			PlacedAt:    timestamppb.New(now),

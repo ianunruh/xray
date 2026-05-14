@@ -50,3 +50,42 @@ message TradeExecuted {
   int64 quantity = 6;
   google.protobuf.Timestamp executed_at = 7;
 }
+
+// Saga lifecycle events — stored under aggregate ID "saga:{uuid}".
+
+message SagaStarted {
+  string saga_id = 1;
+  string symbol = 2;
+  Side entry_side = 3;
+  int64 entry_price = 4;
+  int64 entry_quantity = 5;
+  int64 take_profit_price = 6;
+  int64 stop_loss_price = 7;
+  string entry_order_id = 8;
+  google.protobuf.Timestamp started_at = 9;
+}
+
+message EntryFilled {
+  string saga_id = 1;
+  string take_profit_order_id = 2;
+  string stop_loss_order_id = 3;
+  google.protobuf.Timestamp filled_at = 4;
+}
+
+message ExitFilled {
+  string saga_id = 1;
+  string filled_order_id = 2;
+  string cancelled_order_id = 3;
+  google.protobuf.Timestamp filled_at = 4;
+}
+
+message SagaCompleted {
+  string saga_id = 1;
+  google.protobuf.Timestamp completed_at = 2;
+}
+
+message SagaFailed {
+  string saga_id = 1;
+  string reason = 2;
+  google.protobuf.Timestamp failed_at = 3;
+}

@@ -57,7 +57,7 @@ func (ob *OrderBook) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 
 	order := &Order{
 		ID:           data.OrderId,
-		Side:         sideFromProto(data.Side),
+		Side:         SideFromProto(data.Side),
 		Price:        data.Price,
 		Quantity:     data.Quantity,
 		RemainingQty: data.Quantity,

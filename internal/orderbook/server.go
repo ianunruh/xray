@@ -48,7 +48,7 @@ func (s *Server) PlaceOrder(ctx context.Context, req *connect.Request[orderbookv
 
 	cmd := PlaceOrder{
 		Symbol:      msg.Symbol,
-		Side:        sideFromProto(msg.Side),
+		Side:        SideFromProto(msg.Side),
 		Price:       msg.Price,
 		Quantity:    msg.Quantity,
 		OrderType:   orderTypeFromProto(msg.OrderType),

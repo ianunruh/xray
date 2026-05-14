@@ -77,6 +77,107 @@ func (OrderStatus) EnumDescriptor() ([]byte, []int) {
 	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{0}
 }
 
+type SagaStatus int32
+
+const (
+	SagaStatus_SAGA_STATUS_UNSPECIFIED   SagaStatus = 0
+	SagaStatus_SAGA_STATUS_PENDING_ENTRY SagaStatus = 1
+	SagaStatus_SAGA_STATUS_PENDING_EXIT  SagaStatus = 2
+	SagaStatus_SAGA_STATUS_COMPLETED     SagaStatus = 3
+	SagaStatus_SAGA_STATUS_FAILED        SagaStatus = 4
+)
+
+// Enum value maps for SagaStatus.
+var (
+	SagaStatus_name = map[int32]string{
+		0: "SAGA_STATUS_UNSPECIFIED",
+		1: "SAGA_STATUS_PENDING_ENTRY",
+		2: "SAGA_STATUS_PENDING_EXIT",
+		3: "SAGA_STATUS_COMPLETED",
+		4: "SAGA_STATUS_FAILED",
+	}
+	SagaStatus_value = map[string]int32{
+		"SAGA_STATUS_UNSPECIFIED":   0,
+		"SAGA_STATUS_PENDING_ENTRY": 1,
+		"SAGA_STATUS_PENDING_EXIT":  2,
+		"SAGA_STATUS_COMPLETED":     3,
+		"SAGA_STATUS_FAILED":        4,
+	}
+)
+
+func (x SagaStatus) Enum() *SagaStatus {
+	p := new(SagaStatus)
+	*p = x
+	return p
+}
+
+func (x SagaStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SagaStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_orderbook_v1_service_proto_enumTypes[1].Descriptor()
+}
+
+func (SagaStatus) Type() protoreflect.EnumType {
+	return &file_orderbook_v1_service_proto_enumTypes[1]
+}
+
+func (x SagaStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SagaStatus.Descriptor instead.
+func (SagaStatus) EnumDescriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{1}
+}
+
+type SagaType int32
+
+const (
+	SagaType_SAGA_TYPE_UNSPECIFIED   SagaType = 0
+	SagaType_SAGA_TYPE_BRACKET_ORDER SagaType = 1
+)
+
+// Enum value maps for SagaType.
+var (
+	SagaType_name = map[int32]string{
+		0: "SAGA_TYPE_UNSPECIFIED",
+		1: "SAGA_TYPE_BRACKET_ORDER",
+	}
+	SagaType_value = map[string]int32{
+		"SAGA_TYPE_UNSPECIFIED":   0,
+		"SAGA_TYPE_BRACKET_ORDER": 1,
+	}
+)
+
+func (x SagaType) Enum() *SagaType {
+	p := new(SagaType)
+	*p = x
+	return p
+}
+
+func (x SagaType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SagaType) Descriptor() protoreflect.EnumDescriptor {
+	return file_orderbook_v1_service_proto_enumTypes[2].Descriptor()
+}
+
+func (SagaType) Type() protoreflect.EnumType {
+	return &file_orderbook_v1_service_proto_enumTypes[2]
+}
+
+func (x SagaType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SagaType.Descriptor instead.
+func (SagaType) EnumDescriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{2}
+}
+
 type PlaceOrderRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
@@ -1293,6 +1394,415 @@ func (x *OrderSummary) GetTimeInForce() TimeInForce {
 	return TimeInForce_TIME_IN_FORCE_UNSPECIFIED
 }
 
+type PlaceBracketOrderRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Symbol          string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Side            Side                   `protobuf:"varint,2,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
+	Price           int64                  `protobuf:"varint,3,opt,name=price,proto3" json:"price,omitempty"`
+	Quantity        int64                  `protobuf:"varint,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	TakeProfitPrice int64                  `protobuf:"varint,5,opt,name=take_profit_price,json=takeProfitPrice,proto3" json:"take_profit_price,omitempty"`
+	StopLossPrice   int64                  `protobuf:"varint,6,opt,name=stop_loss_price,json=stopLossPrice,proto3" json:"stop_loss_price,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *PlaceBracketOrderRequest) Reset() {
+	*x = PlaceBracketOrderRequest{}
+	mi := &file_orderbook_v1_service_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlaceBracketOrderRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlaceBracketOrderRequest) ProtoMessage() {}
+
+func (x *PlaceBracketOrderRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_service_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlaceBracketOrderRequest.ProtoReflect.Descriptor instead.
+func (*PlaceBracketOrderRequest) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *PlaceBracketOrderRequest) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *PlaceBracketOrderRequest) GetSide() Side {
+	if x != nil {
+		return x.Side
+	}
+	return Side_SIDE_UNSPECIFIED
+}
+
+func (x *PlaceBracketOrderRequest) GetPrice() int64 {
+	if x != nil {
+		return x.Price
+	}
+	return 0
+}
+
+func (x *PlaceBracketOrderRequest) GetQuantity() int64 {
+	if x != nil {
+		return x.Quantity
+	}
+	return 0
+}
+
+func (x *PlaceBracketOrderRequest) GetTakeProfitPrice() int64 {
+	if x != nil {
+		return x.TakeProfitPrice
+	}
+	return 0
+}
+
+func (x *PlaceBracketOrderRequest) GetStopLossPrice() int64 {
+	if x != nil {
+		return x.StopLossPrice
+	}
+	return 0
+}
+
+type PlaceBracketOrderResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SagaId        string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	EntryOrderId  string                 `protobuf:"bytes,2,opt,name=entry_order_id,json=entryOrderId,proto3" json:"entry_order_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PlaceBracketOrderResponse) Reset() {
+	*x = PlaceBracketOrderResponse{}
+	mi := &file_orderbook_v1_service_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlaceBracketOrderResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlaceBracketOrderResponse) ProtoMessage() {}
+
+func (x *PlaceBracketOrderResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_service_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlaceBracketOrderResponse.ProtoReflect.Descriptor instead.
+func (*PlaceBracketOrderResponse) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *PlaceBracketOrderResponse) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+func (x *PlaceBracketOrderResponse) GetEntryOrderId() string {
+	if x != nil {
+		return x.EntryOrderId
+	}
+	return ""
+}
+
+type GetSagaRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SagaId        string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSagaRequest) Reset() {
+	*x = GetSagaRequest{}
+	mi := &file_orderbook_v1_service_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSagaRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSagaRequest) ProtoMessage() {}
+
+func (x *GetSagaRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_service_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSagaRequest.ProtoReflect.Descriptor instead.
+func (*GetSagaRequest) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *GetSagaRequest) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+type GetSagaResponse struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	SagaId string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	Type   SagaType               `protobuf:"varint,2,opt,name=type,proto3,enum=orderbook.v1.SagaType" json:"type,omitempty"`
+	Status SagaStatus             `protobuf:"varint,3,opt,name=status,proto3,enum=orderbook.v1.SagaStatus" json:"status,omitempty"`
+	Symbol string                 `protobuf:"bytes,4,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	// Bracket order details.
+	EntrySide         Side   `protobuf:"varint,5,opt,name=entry_side,json=entrySide,proto3,enum=orderbook.v1.Side" json:"entry_side,omitempty"`
+	EntryPrice        int64  `protobuf:"varint,6,opt,name=entry_price,json=entryPrice,proto3" json:"entry_price,omitempty"`
+	EntryQuantity     int64  `protobuf:"varint,7,opt,name=entry_quantity,json=entryQuantity,proto3" json:"entry_quantity,omitempty"`
+	TakeProfitPrice   int64  `protobuf:"varint,8,opt,name=take_profit_price,json=takeProfitPrice,proto3" json:"take_profit_price,omitempty"`
+	StopLossPrice     int64  `protobuf:"varint,9,opt,name=stop_loss_price,json=stopLossPrice,proto3" json:"stop_loss_price,omitempty"`
+	EntryOrderId      string `protobuf:"bytes,10,opt,name=entry_order_id,json=entryOrderId,proto3" json:"entry_order_id,omitempty"`
+	TakeProfitOrderId string `protobuf:"bytes,11,opt,name=take_profit_order_id,json=takeProfitOrderId,proto3" json:"take_profit_order_id,omitempty"`
+	StopLossOrderId   string `protobuf:"bytes,12,opt,name=stop_loss_order_id,json=stopLossOrderId,proto3" json:"stop_loss_order_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *GetSagaResponse) Reset() {
+	*x = GetSagaResponse{}
+	mi := &file_orderbook_v1_service_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSagaResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSagaResponse) ProtoMessage() {}
+
+func (x *GetSagaResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_service_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSagaResponse.ProtoReflect.Descriptor instead.
+func (*GetSagaResponse) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *GetSagaResponse) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+func (x *GetSagaResponse) GetType() SagaType {
+	if x != nil {
+		return x.Type
+	}
+	return SagaType_SAGA_TYPE_UNSPECIFIED
+}
+
+func (x *GetSagaResponse) GetStatus() SagaStatus {
+	if x != nil {
+		return x.Status
+	}
+	return SagaStatus_SAGA_STATUS_UNSPECIFIED
+}
+
+func (x *GetSagaResponse) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *GetSagaResponse) GetEntrySide() Side {
+	if x != nil {
+		return x.EntrySide
+	}
+	return Side_SIDE_UNSPECIFIED
+}
+
+func (x *GetSagaResponse) GetEntryPrice() int64 {
+	if x != nil {
+		return x.EntryPrice
+	}
+	return 0
+}
+
+func (x *GetSagaResponse) GetEntryQuantity() int64 {
+	if x != nil {
+		return x.EntryQuantity
+	}
+	return 0
+}
+
+func (x *GetSagaResponse) GetTakeProfitPrice() int64 {
+	if x != nil {
+		return x.TakeProfitPrice
+	}
+	return 0
+}
+
+func (x *GetSagaResponse) GetStopLossPrice() int64 {
+	if x != nil {
+		return x.StopLossPrice
+	}
+	return 0
+}
+
+func (x *GetSagaResponse) GetEntryOrderId() string {
+	if x != nil {
+		return x.EntryOrderId
+	}
+	return ""
+}
+
+func (x *GetSagaResponse) GetTakeProfitOrderId() string {
+	if x != nil {
+		return x.TakeProfitOrderId
+	}
+	return ""
+}
+
+func (x *GetSagaResponse) GetStopLossOrderId() string {
+	if x != nil {
+		return x.StopLossOrderId
+	}
+	return ""
+}
+
+type ListSagasRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Status        SagaStatus             `protobuf:"varint,2,opt,name=status,proto3,enum=orderbook.v1.SagaStatus" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSagasRequest) Reset() {
+	*x = ListSagasRequest{}
+	mi := &file_orderbook_v1_service_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSagasRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSagasRequest) ProtoMessage() {}
+
+func (x *ListSagasRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_service_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSagasRequest.ProtoReflect.Descriptor instead.
+func (*ListSagasRequest) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *ListSagasRequest) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *ListSagasRequest) GetStatus() SagaStatus {
+	if x != nil {
+		return x.Status
+	}
+	return SagaStatus_SAGA_STATUS_UNSPECIFIED
+}
+
+type ListSagasResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Sagas         []*GetSagaResponse     `protobuf:"bytes,1,rep,name=sagas,proto3" json:"sagas,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSagasResponse) Reset() {
+	*x = ListSagasResponse{}
+	mi := &file_orderbook_v1_service_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSagasResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSagasResponse) ProtoMessage() {}
+
+func (x *ListSagasResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_service_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSagasResponse.ProtoReflect.Descriptor instead.
+func (*ListSagasResponse) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *ListSagasResponse) GetSagas() []*GetSagaResponse {
+	if x != nil {
+		return x.Sagas
+	}
+	return nil
+}
+
 var File_orderbook_v1_service_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_service_proto_rawDesc = "" +
@@ -1387,13 +1897,56 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\n" +
 	"order_type\x18\t \x01(\x0e2\x17.orderbook.v1.OrderTypeR\torderType\x12=\n" +
 	"\rtime_in_force\x18\n" +
-	" \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce*\x9a\x01\n" +
+	" \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\"\xe0\x01\n" +
+	"\x18PlaceBracketOrderRequest\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12&\n" +
+	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +
+	"\x05price\x18\x03 \x01(\x03R\x05price\x12\x1a\n" +
+	"\bquantity\x18\x04 \x01(\x03R\bquantity\x12*\n" +
+	"\x11take_profit_price\x18\x05 \x01(\x03R\x0ftakeProfitPrice\x12&\n" +
+	"\x0fstop_loss_price\x18\x06 \x01(\x03R\rstopLossPrice\"Z\n" +
+	"\x19PlaceBracketOrderResponse\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12$\n" +
+	"\x0eentry_order_id\x18\x02 \x01(\tR\fentryOrderId\")\n" +
+	"\x0eGetSagaRequest\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\"\xf3\x03\n" +
+	"\x0fGetSagaResponse\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12*\n" +
+	"\x04type\x18\x02 \x01(\x0e2\x16.orderbook.v1.SagaTypeR\x04type\x120\n" +
+	"\x06status\x18\x03 \x01(\x0e2\x18.orderbook.v1.SagaStatusR\x06status\x12\x16\n" +
+	"\x06symbol\x18\x04 \x01(\tR\x06symbol\x121\n" +
+	"\n" +
+	"entry_side\x18\x05 \x01(\x0e2\x12.orderbook.v1.SideR\tentrySide\x12\x1f\n" +
+	"\ventry_price\x18\x06 \x01(\x03R\n" +
+	"entryPrice\x12%\n" +
+	"\x0eentry_quantity\x18\a \x01(\x03R\rentryQuantity\x12*\n" +
+	"\x11take_profit_price\x18\b \x01(\x03R\x0ftakeProfitPrice\x12&\n" +
+	"\x0fstop_loss_price\x18\t \x01(\x03R\rstopLossPrice\x12$\n" +
+	"\x0eentry_order_id\x18\n" +
+	" \x01(\tR\fentryOrderId\x12/\n" +
+	"\x14take_profit_order_id\x18\v \x01(\tR\x11takeProfitOrderId\x12+\n" +
+	"\x12stop_loss_order_id\x18\f \x01(\tR\x0fstopLossOrderId\"\\\n" +
+	"\x10ListSagasRequest\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x120\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x18.orderbook.v1.SagaStatusR\x06status\"H\n" +
+	"\x11ListSagasResponse\x123\n" +
+	"\x05sagas\x18\x01 \x03(\v2\x1d.orderbook.v1.GetSagaResponseR\x05sagas*\x9a\x01\n" +
 	"\vOrderStatus\x12\x1c\n" +
 	"\x18ORDER_STATUS_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11ORDER_STATUS_OPEN\x10\x01\x12!\n" +
 	"\x1dORDER_STATUS_PARTIALLY_FILLED\x10\x02\x12\x17\n" +
 	"\x13ORDER_STATUS_FILLED\x10\x03\x12\x1a\n" +
-	"\x16ORDER_STATUS_CANCELLED\x10\x042\x87\x06\n" +
+	"\x16ORDER_STATUS_CANCELLED\x10\x04*\x99\x01\n" +
+	"\n" +
+	"SagaStatus\x12\x1b\n" +
+	"\x17SAGA_STATUS_UNSPECIFIED\x10\x00\x12\x1d\n" +
+	"\x19SAGA_STATUS_PENDING_ENTRY\x10\x01\x12\x1c\n" +
+	"\x18SAGA_STATUS_PENDING_EXIT\x10\x02\x12\x19\n" +
+	"\x15SAGA_STATUS_COMPLETED\x10\x03\x12\x16\n" +
+	"\x12SAGA_STATUS_FAILED\x10\x04*B\n" +
+	"\bSagaType\x12\x19\n" +
+	"\x15SAGA_TYPE_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17SAGA_TYPE_BRACKET_ORDER\x10\x012\x87\x06\n" +
 	"\x10OrderBookService\x12O\n" +
 	"\n" +
 	"PlaceOrder\x12\x1f.orderbook.v1.PlaceOrderRequest\x1a .orderbook.v1.PlaceOrderResponse\x12R\n" +
@@ -1406,7 +1959,11 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\n" +
 	"ListOrders\x12\x1f.orderbook.v1.ListOrdersRequest\x1a .orderbook.v1.ListOrdersResponse\x12c\n" +
 	"\x11StreamMarketDepth\x12&.orderbook.v1.StreamMarketDepthRequest\x1a$.orderbook.v1.GetMarketDepthResponse0\x01\x12H\n" +
-	"\fStreamTrades\x12!.orderbook.v1.StreamTradesRequest\x1a\x13.orderbook.v1.Trade0\x01B7Z5github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1b\x06proto3"
+	"\fStreamTrades\x12!.orderbook.v1.StreamTradesRequest\x1a\x13.orderbook.v1.Trade0\x012\x89\x02\n" +
+	"\vSagaService\x12d\n" +
+	"\x11PlaceBracketOrder\x12&.orderbook.v1.PlaceBracketOrderRequest\x1a'.orderbook.v1.PlaceBracketOrderResponse\x12F\n" +
+	"\aGetSaga\x12\x1c.orderbook.v1.GetSagaRequest\x1a\x1d.orderbook.v1.GetSagaResponse\x12L\n" +
+	"\tListSagas\x12\x1e.orderbook.v1.ListSagasRequest\x1a\x1f.orderbook.v1.ListSagasResponseB7Z5github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1b\x06proto3"
 
 var (
 	file_orderbook_v1_service_proto_rawDescOnce sync.Once
@@ -1420,81 +1977,101 @@ func file_orderbook_v1_service_proto_rawDescGZIP() []byte {
 	return file_orderbook_v1_service_proto_rawDescData
 }
 
-var file_orderbook_v1_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_orderbook_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_orderbook_v1_service_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_orderbook_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_orderbook_v1_service_proto_goTypes = []any{
-	(OrderStatus)(0),                 // 0: orderbook.v1.OrderStatus
-	(*PlaceOrderRequest)(nil),        // 1: orderbook.v1.PlaceOrderRequest
-	(*PlaceOrderResponse)(nil),       // 2: orderbook.v1.PlaceOrderResponse
-	(*CancelOrderRequest)(nil),       // 3: orderbook.v1.CancelOrderRequest
-	(*CancelOrderResponse)(nil),      // 4: orderbook.v1.CancelOrderResponse
-	(*GetOrderBookRequest)(nil),      // 5: orderbook.v1.GetOrderBookRequest
-	(*GetOrderBookResponse)(nil),     // 6: orderbook.v1.GetOrderBookResponse
-	(*OrderBookLevel)(nil),           // 7: orderbook.v1.OrderBookLevel
-	(*GetMarketDepthRequest)(nil),    // 8: orderbook.v1.GetMarketDepthRequest
-	(*GetMarketDepthResponse)(nil),   // 9: orderbook.v1.GetMarketDepthResponse
-	(*PriceLevel)(nil),               // 10: orderbook.v1.PriceLevel
-	(*GetOrderRequest)(nil),          // 11: orderbook.v1.GetOrderRequest
-	(*GetOrderResponse)(nil),         // 12: orderbook.v1.GetOrderResponse
-	(*ListTradesRequest)(nil),        // 13: orderbook.v1.ListTradesRequest
-	(*ListTradesResponse)(nil),       // 14: orderbook.v1.ListTradesResponse
-	(*Trade)(nil),                    // 15: orderbook.v1.Trade
-	(*ListOrdersRequest)(nil),        // 16: orderbook.v1.ListOrdersRequest
-	(*StreamMarketDepthRequest)(nil), // 17: orderbook.v1.StreamMarketDepthRequest
-	(*StreamTradesRequest)(nil),      // 18: orderbook.v1.StreamTradesRequest
-	(*ListOrdersResponse)(nil),       // 19: orderbook.v1.ListOrdersResponse
-	(*OrderSummary)(nil),             // 20: orderbook.v1.OrderSummary
-	(Side)(0),                        // 21: orderbook.v1.Side
-	(OrderType)(0),                   // 22: orderbook.v1.OrderType
-	(TimeInForce)(0),                 // 23: orderbook.v1.TimeInForce
-	(*TradeExecuted)(nil),            // 24: orderbook.v1.TradeExecuted
-	(*timestamppb.Timestamp)(nil),    // 25: google.protobuf.Timestamp
+	(OrderStatus)(0),                  // 0: orderbook.v1.OrderStatus
+	(SagaStatus)(0),                   // 1: orderbook.v1.SagaStatus
+	(SagaType)(0),                     // 2: orderbook.v1.SagaType
+	(*PlaceOrderRequest)(nil),         // 3: orderbook.v1.PlaceOrderRequest
+	(*PlaceOrderResponse)(nil),        // 4: orderbook.v1.PlaceOrderResponse
+	(*CancelOrderRequest)(nil),        // 5: orderbook.v1.CancelOrderRequest
+	(*CancelOrderResponse)(nil),       // 6: orderbook.v1.CancelOrderResponse
+	(*GetOrderBookRequest)(nil),       // 7: orderbook.v1.GetOrderBookRequest
+	(*GetOrderBookResponse)(nil),      // 8: orderbook.v1.GetOrderBookResponse
+	(*OrderBookLevel)(nil),            // 9: orderbook.v1.OrderBookLevel
+	(*GetMarketDepthRequest)(nil),     // 10: orderbook.v1.GetMarketDepthRequest
+	(*GetMarketDepthResponse)(nil),    // 11: orderbook.v1.GetMarketDepthResponse
+	(*PriceLevel)(nil),                // 12: orderbook.v1.PriceLevel
+	(*GetOrderRequest)(nil),           // 13: orderbook.v1.GetOrderRequest
+	(*GetOrderResponse)(nil),          // 14: orderbook.v1.GetOrderResponse
+	(*ListTradesRequest)(nil),         // 15: orderbook.v1.ListTradesRequest
+	(*ListTradesResponse)(nil),        // 16: orderbook.v1.ListTradesResponse
+	(*Trade)(nil),                     // 17: orderbook.v1.Trade
+	(*ListOrdersRequest)(nil),         // 18: orderbook.v1.ListOrdersRequest
+	(*StreamMarketDepthRequest)(nil),  // 19: orderbook.v1.StreamMarketDepthRequest
+	(*StreamTradesRequest)(nil),       // 20: orderbook.v1.StreamTradesRequest
+	(*ListOrdersResponse)(nil),        // 21: orderbook.v1.ListOrdersResponse
+	(*OrderSummary)(nil),              // 22: orderbook.v1.OrderSummary
+	(*PlaceBracketOrderRequest)(nil),  // 23: orderbook.v1.PlaceBracketOrderRequest
+	(*PlaceBracketOrderResponse)(nil), // 24: orderbook.v1.PlaceBracketOrderResponse
+	(*GetSagaRequest)(nil),            // 25: orderbook.v1.GetSagaRequest
+	(*GetSagaResponse)(nil),           // 26: orderbook.v1.GetSagaResponse
+	(*ListSagasRequest)(nil),          // 27: orderbook.v1.ListSagasRequest
+	(*ListSagasResponse)(nil),         // 28: orderbook.v1.ListSagasResponse
+	(Side)(0),                         // 29: orderbook.v1.Side
+	(OrderType)(0),                    // 30: orderbook.v1.OrderType
+	(TimeInForce)(0),                  // 31: orderbook.v1.TimeInForce
+	(*TradeExecuted)(nil),             // 32: orderbook.v1.TradeExecuted
+	(*timestamppb.Timestamp)(nil),     // 33: google.protobuf.Timestamp
 }
 var file_orderbook_v1_service_proto_depIdxs = []int32{
-	21, // 0: orderbook.v1.PlaceOrderRequest.side:type_name -> orderbook.v1.Side
-	22, // 1: orderbook.v1.PlaceOrderRequest.order_type:type_name -> orderbook.v1.OrderType
-	23, // 2: orderbook.v1.PlaceOrderRequest.time_in_force:type_name -> orderbook.v1.TimeInForce
-	24, // 3: orderbook.v1.PlaceOrderResponse.trades:type_name -> orderbook.v1.TradeExecuted
-	7,  // 4: orderbook.v1.GetOrderBookResponse.bids:type_name -> orderbook.v1.OrderBookLevel
-	7,  // 5: orderbook.v1.GetOrderBookResponse.asks:type_name -> orderbook.v1.OrderBookLevel
-	25, // 6: orderbook.v1.OrderBookLevel.placed_at:type_name -> google.protobuf.Timestamp
-	10, // 7: orderbook.v1.GetMarketDepthResponse.bids:type_name -> orderbook.v1.PriceLevel
-	10, // 8: orderbook.v1.GetMarketDepthResponse.asks:type_name -> orderbook.v1.PriceLevel
-	21, // 9: orderbook.v1.GetOrderResponse.side:type_name -> orderbook.v1.Side
-	25, // 10: orderbook.v1.GetOrderResponse.placed_at:type_name -> google.protobuf.Timestamp
-	22, // 11: orderbook.v1.GetOrderResponse.order_type:type_name -> orderbook.v1.OrderType
-	23, // 12: orderbook.v1.GetOrderResponse.time_in_force:type_name -> orderbook.v1.TimeInForce
-	15, // 13: orderbook.v1.ListTradesResponse.trades:type_name -> orderbook.v1.Trade
-	25, // 14: orderbook.v1.Trade.executed_at:type_name -> google.protobuf.Timestamp
-	20, // 15: orderbook.v1.ListOrdersResponse.orders:type_name -> orderbook.v1.OrderSummary
-	21, // 16: orderbook.v1.OrderSummary.side:type_name -> orderbook.v1.Side
+	29, // 0: orderbook.v1.PlaceOrderRequest.side:type_name -> orderbook.v1.Side
+	30, // 1: orderbook.v1.PlaceOrderRequest.order_type:type_name -> orderbook.v1.OrderType
+	31, // 2: orderbook.v1.PlaceOrderRequest.time_in_force:type_name -> orderbook.v1.TimeInForce
+	32, // 3: orderbook.v1.PlaceOrderResponse.trades:type_name -> orderbook.v1.TradeExecuted
+	9,  // 4: orderbook.v1.GetOrderBookResponse.bids:type_name -> orderbook.v1.OrderBookLevel
+	9,  // 5: orderbook.v1.GetOrderBookResponse.asks:type_name -> orderbook.v1.OrderBookLevel
+	33, // 6: orderbook.v1.OrderBookLevel.placed_at:type_name -> google.protobuf.Timestamp
+	12, // 7: orderbook.v1.GetMarketDepthResponse.bids:type_name -> orderbook.v1.PriceLevel
+	12, // 8: orderbook.v1.GetMarketDepthResponse.asks:type_name -> orderbook.v1.PriceLevel
+	29, // 9: orderbook.v1.GetOrderResponse.side:type_name -> orderbook.v1.Side
+	33, // 10: orderbook.v1.GetOrderResponse.placed_at:type_name -> google.protobuf.Timestamp
+	30, // 11: orderbook.v1.GetOrderResponse.order_type:type_name -> orderbook.v1.OrderType
+	31, // 12: orderbook.v1.GetOrderResponse.time_in_force:type_name -> orderbook.v1.TimeInForce
+	17, // 13: orderbook.v1.ListTradesResponse.trades:type_name -> orderbook.v1.Trade
+	33, // 14: orderbook.v1.Trade.executed_at:type_name -> google.protobuf.Timestamp
+	22, // 15: orderbook.v1.ListOrdersResponse.orders:type_name -> orderbook.v1.OrderSummary
+	29, // 16: orderbook.v1.OrderSummary.side:type_name -> orderbook.v1.Side
 	0,  // 17: orderbook.v1.OrderSummary.status:type_name -> orderbook.v1.OrderStatus
-	25, // 18: orderbook.v1.OrderSummary.placed_at:type_name -> google.protobuf.Timestamp
-	22, // 19: orderbook.v1.OrderSummary.order_type:type_name -> orderbook.v1.OrderType
-	23, // 20: orderbook.v1.OrderSummary.time_in_force:type_name -> orderbook.v1.TimeInForce
-	1,  // 21: orderbook.v1.OrderBookService.PlaceOrder:input_type -> orderbook.v1.PlaceOrderRequest
-	3,  // 22: orderbook.v1.OrderBookService.CancelOrder:input_type -> orderbook.v1.CancelOrderRequest
-	5,  // 23: orderbook.v1.OrderBookService.GetOrderBook:input_type -> orderbook.v1.GetOrderBookRequest
-	8,  // 24: orderbook.v1.OrderBookService.GetMarketDepth:input_type -> orderbook.v1.GetMarketDepthRequest
-	11, // 25: orderbook.v1.OrderBookService.GetOrder:input_type -> orderbook.v1.GetOrderRequest
-	13, // 26: orderbook.v1.OrderBookService.ListTrades:input_type -> orderbook.v1.ListTradesRequest
-	16, // 27: orderbook.v1.OrderBookService.ListOrders:input_type -> orderbook.v1.ListOrdersRequest
-	17, // 28: orderbook.v1.OrderBookService.StreamMarketDepth:input_type -> orderbook.v1.StreamMarketDepthRequest
-	18, // 29: orderbook.v1.OrderBookService.StreamTrades:input_type -> orderbook.v1.StreamTradesRequest
-	2,  // 30: orderbook.v1.OrderBookService.PlaceOrder:output_type -> orderbook.v1.PlaceOrderResponse
-	4,  // 31: orderbook.v1.OrderBookService.CancelOrder:output_type -> orderbook.v1.CancelOrderResponse
-	6,  // 32: orderbook.v1.OrderBookService.GetOrderBook:output_type -> orderbook.v1.GetOrderBookResponse
-	9,  // 33: orderbook.v1.OrderBookService.GetMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
-	12, // 34: orderbook.v1.OrderBookService.GetOrder:output_type -> orderbook.v1.GetOrderResponse
-	14, // 35: orderbook.v1.OrderBookService.ListTrades:output_type -> orderbook.v1.ListTradesResponse
-	19, // 36: orderbook.v1.OrderBookService.ListOrders:output_type -> orderbook.v1.ListOrdersResponse
-	9,  // 37: orderbook.v1.OrderBookService.StreamMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
-	15, // 38: orderbook.v1.OrderBookService.StreamTrades:output_type -> orderbook.v1.Trade
-	30, // [30:39] is the sub-list for method output_type
-	21, // [21:30] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	33, // 18: orderbook.v1.OrderSummary.placed_at:type_name -> google.protobuf.Timestamp
+	30, // 19: orderbook.v1.OrderSummary.order_type:type_name -> orderbook.v1.OrderType
+	31, // 20: orderbook.v1.OrderSummary.time_in_force:type_name -> orderbook.v1.TimeInForce
+	29, // 21: orderbook.v1.PlaceBracketOrderRequest.side:type_name -> orderbook.v1.Side
+	2,  // 22: orderbook.v1.GetSagaResponse.type:type_name -> orderbook.v1.SagaType
+	1,  // 23: orderbook.v1.GetSagaResponse.status:type_name -> orderbook.v1.SagaStatus
+	29, // 24: orderbook.v1.GetSagaResponse.entry_side:type_name -> orderbook.v1.Side
+	1,  // 25: orderbook.v1.ListSagasRequest.status:type_name -> orderbook.v1.SagaStatus
+	26, // 26: orderbook.v1.ListSagasResponse.sagas:type_name -> orderbook.v1.GetSagaResponse
+	3,  // 27: orderbook.v1.OrderBookService.PlaceOrder:input_type -> orderbook.v1.PlaceOrderRequest
+	5,  // 28: orderbook.v1.OrderBookService.CancelOrder:input_type -> orderbook.v1.CancelOrderRequest
+	7,  // 29: orderbook.v1.OrderBookService.GetOrderBook:input_type -> orderbook.v1.GetOrderBookRequest
+	10, // 30: orderbook.v1.OrderBookService.GetMarketDepth:input_type -> orderbook.v1.GetMarketDepthRequest
+	13, // 31: orderbook.v1.OrderBookService.GetOrder:input_type -> orderbook.v1.GetOrderRequest
+	15, // 32: orderbook.v1.OrderBookService.ListTrades:input_type -> orderbook.v1.ListTradesRequest
+	18, // 33: orderbook.v1.OrderBookService.ListOrders:input_type -> orderbook.v1.ListOrdersRequest
+	19, // 34: orderbook.v1.OrderBookService.StreamMarketDepth:input_type -> orderbook.v1.StreamMarketDepthRequest
+	20, // 35: orderbook.v1.OrderBookService.StreamTrades:input_type -> orderbook.v1.StreamTradesRequest
+	23, // 36: orderbook.v1.SagaService.PlaceBracketOrder:input_type -> orderbook.v1.PlaceBracketOrderRequest
+	25, // 37: orderbook.v1.SagaService.GetSaga:input_type -> orderbook.v1.GetSagaRequest
+	27, // 38: orderbook.v1.SagaService.ListSagas:input_type -> orderbook.v1.ListSagasRequest
+	4,  // 39: orderbook.v1.OrderBookService.PlaceOrder:output_type -> orderbook.v1.PlaceOrderResponse
+	6,  // 40: orderbook.v1.OrderBookService.CancelOrder:output_type -> orderbook.v1.CancelOrderResponse
+	8,  // 41: orderbook.v1.OrderBookService.GetOrderBook:output_type -> orderbook.v1.GetOrderBookResponse
+	11, // 42: orderbook.v1.OrderBookService.GetMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
+	14, // 43: orderbook.v1.OrderBookService.GetOrder:output_type -> orderbook.v1.GetOrderResponse
+	16, // 44: orderbook.v1.OrderBookService.ListTrades:output_type -> orderbook.v1.ListTradesResponse
+	21, // 45: orderbook.v1.OrderBookService.ListOrders:output_type -> orderbook.v1.ListOrdersResponse
+	11, // 46: orderbook.v1.OrderBookService.StreamMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
+	17, // 47: orderbook.v1.OrderBookService.StreamTrades:output_type -> orderbook.v1.Trade
+	24, // 48: orderbook.v1.SagaService.PlaceBracketOrder:output_type -> orderbook.v1.PlaceBracketOrderResponse
+	26, // 49: orderbook.v1.SagaService.GetSaga:output_type -> orderbook.v1.GetSagaResponse
+	28, // 50: orderbook.v1.SagaService.ListSagas:output_type -> orderbook.v1.ListSagasResponse
+	39, // [39:51] is the sub-list for method output_type
+	27, // [27:39] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_orderbook_v1_service_proto_init() }
@@ -1508,10 +2085,10 @@ func file_orderbook_v1_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_orderbook_v1_service_proto_rawDesc), len(file_orderbook_v1_service_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   20,
+			NumEnums:      3,
+			NumMessages:   26,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_orderbook_v1_service_proto_goTypes,
 		DependencyIndexes: file_orderbook_v1_service_proto_depIdxs,

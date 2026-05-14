@@ -2,7 +2,7 @@ package orderbook
 
 import orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 
-func sideFromProto(s orderbookv1.Side) Side {
+func SideFromProto(s orderbookv1.Side) Side {
 	switch s {
 	case orderbookv1.Side_SIDE_BUY:
 		return Buy
@@ -13,7 +13,7 @@ func sideFromProto(s orderbookv1.Side) Side {
 	}
 }
 
-func sideToProto(s Side) orderbookv1.Side {
+func SideToProto(s Side) orderbookv1.Side {
 	switch s {
 	case Buy:
 		return orderbookv1.Side_SIDE_BUY

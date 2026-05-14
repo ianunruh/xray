@@ -18,6 +18,7 @@ import (
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
 	"github.com/ianunruh/xray/internal/orderbook"
+	"github.com/ianunruh/xray/internal/saga"
 	"github.com/ianunruh/xray/pkg/es"
 	"github.com/ianunruh/xray/pkg/es/natsstore"
 	"github.com/ianunruh/xray/pkg/es/pgstore"
@@ -74,6 +75,11 @@ func main() {
 	registry.Register("OrderPlaced", func() proto.Message { return new(orderbookv1.OrderPlaced) })
 	registry.Register("TradeExecuted", func() proto.Message { return new(orderbookv1.TradeExecuted) })
 	registry.Register("OrderCancelled", func() proto.Message { return new(orderbookv1.OrderCancelled) })
+	registry.Register("SagaStarted", func() proto.Message { return new(orderbookv1.SagaStarted) })
+	registry.Register("EntryFilled", func() proto.Message { return new(orderbookv1.EntryFilled) })
+	registry.Register("ExitFilled", func() proto.Message { return new(orderbookv1.ExitFilled) })
+	registry.Register("SagaCompleted", func() proto.Message { return new(orderbookv1.SagaCompleted) })
+	registry.Register("SagaFailed", func() proto.Message { return new(orderbookv1.SagaFailed) })
 
 	// Connect to NATS.
 	nc, err := nats.Connect(natsURL)
@@ -101,33 +107,43 @@ func main() {
 
 	publisher := natsstore.NewPublisher(js, log)
 
+	// Create command handlers.
+	obHandler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
+		return orderbook.NewOrderBook(id)
+	}, log).WithSnapshots(store).WithPublisher(publisher)
+
+	sagaHandler := es.NewHandler(store, registry, func(id string) *saga.BracketSaga {
+		return saga.NewBracketSaga(id)
+	}, log).WithPublisher(publisher)
+
 	// Create projections.
 	tradeProjection := orderbook.NewPgTradeProjection(pool)
 	orderProjection := orderbook.NewPgOrderProjection(pool)
 	depthProjection := orderbook.NewDepthProjection()
 	broker := orderbook.NewBroker()
+	sagaReactor := saga.NewReactor(sagaHandler, obHandler, log)
 
 	// Start NATS consumer: replays from stream, then consumes live events.
 	// Ephemeral projections (in-memory) always replay from the beginning.
 	// Persistent projections (Pg-backed) resume from the last checkpoint.
 	consumer := natsstore.NewProjectionConsumer(js, registry, log).
-		WithEphemeral(depthProjection, broker).
+		WithEphemeral(depthProjection, broker, sagaReactor).
 		WithPersistent(store, tradeProjection, orderProjection)
 	if err := consumer.Start(ctx); err != nil {
 		log.Error("failed to start projection consumer", "error", err)
 		os.Exit(1)
 	}
 	broker.SetReady()
+	sagaReactor.SetReady()
 
-	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
-		return orderbook.NewOrderBook(id)
-	}, log).WithSnapshots(store).WithPublisher(publisher)
-
-	srv := orderbook.NewServer(handler, log, tradeProjection, orderProjection, depthProjection, broker)
+	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, depthProjection, broker)
+	sagaSrv := saga.NewServer(sagaHandler, obHandler, log)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
 	mux.Handle(path, h)
+	sagaPath, sagaH := orderbookv1connect.NewSagaServiceHandler(sagaSrv)
+	mux.Handle(sagaPath, sagaH)
 	mux.Handle("/", orderbook.WebHandler())
 
 	httpServer := &http.Server{

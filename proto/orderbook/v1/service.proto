@@ -147,3 +147,68 @@ message OrderSummary {
   OrderType order_type = 9;
   TimeInForce time_in_force = 10;
 }
+
+// Saga service — generic service for all saga types.
+
+enum SagaStatus {
+  SAGA_STATUS_UNSPECIFIED = 0;
+  SAGA_STATUS_PENDING_ENTRY = 1;
+  SAGA_STATUS_PENDING_EXIT = 2;
+  SAGA_STATUS_COMPLETED = 3;
+  SAGA_STATUS_FAILED = 4;
+}
+
+enum SagaType {
+  SAGA_TYPE_UNSPECIFIED = 0;
+  SAGA_TYPE_BRACKET_ORDER = 1;
+}
+
+service SagaService {
+  rpc PlaceBracketOrder(PlaceBracketOrderRequest) returns (PlaceBracketOrderResponse);
+  rpc GetSaga(GetSagaRequest) returns (GetSagaResponse);
+  rpc ListSagas(ListSagasRequest) returns (ListSagasResponse);
+}
+
+message PlaceBracketOrderRequest {
+  string symbol = 1;
+  Side side = 2;
+  int64 price = 3;
+  int64 quantity = 4;
+  int64 take_profit_price = 5;
+  int64 stop_loss_price = 6;
+}
+
+message PlaceBracketOrderResponse {
+  string saga_id = 1;
+  string entry_order_id = 2;
+}
+
+message GetSagaRequest {
+  string saga_id = 1;
+}
+
+message GetSagaResponse {
+  string saga_id = 1;
+  SagaType type = 2;
+  SagaStatus status = 3;
+  string symbol = 4;
+
+  // Bracket order details.
+  Side entry_side = 5;
+  int64 entry_price = 6;
+  int64 entry_quantity = 7;
+  int64 take_profit_price = 8;
+  int64 stop_loss_price = 9;
+  string entry_order_id = 10;
+  string take_profit_order_id = 11;
+  string stop_loss_order_id = 12;
+}
+
+message ListSagasRequest {
+  string symbol = 1;
+  SagaStatus status = 2;
+}
+
+message ListSagasResponse {
+  repeated GetSagaResponse sagas = 1;
+}
