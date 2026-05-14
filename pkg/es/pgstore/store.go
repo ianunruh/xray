@@ -164,6 +164,13 @@ func (s *Store) SaveSnapshot(ctx context.Context, snap es.Snapshot) error {
 	return nil
 }
 
+// TruncateProjections clears all projection tables so they can be rebuilt
+// from the event stream. Call before replaying events into projections.
+func (s *Store) TruncateProjections(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, `TRUNCATE projection_orders, projection_trades`)
+	return err
+}
+
 // Migrate runs the schema migrations. Call this on startup.
 func (s *Store) Migrate(ctx context.Context) error {
 	for _, sql := range []string{migration001SQL, migration002SQL, migration003SQL, migration004SQL} {

@@ -275,6 +275,11 @@ func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute 
 	}
 
 	newVersion := expectedVersion + len(newEvents)
+
+	for i := range newEvents {
+		newEvents[i].Version = expectedVersion + i + 1
+	}
+
 	h.log.Debug("events appended", "aggregate_id", aggregateID, "new_event_count", len(newEvents), "new_version", newVersion)
 
 	// Capture snapshot under the lock (cheap — just creates proto objects).

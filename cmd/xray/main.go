@@ -11,12 +11,15 @@ import (
 	"syscall"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"google.golang.org/protobuf/proto"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/pkg/es"
+	"github.com/ianunruh/xray/pkg/es/natsstore"
 	"github.com/ianunruh/xray/pkg/es/pgstore"
 )
 
@@ -24,6 +27,11 @@ func main() {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		dsn = "postgres://xray:xray@localhost:5432/xray?sslmode=disable"
+	}
+
+	natsURL := os.Getenv("NATS_URL")
+	if natsURL == "" {
+		natsURL = nats.DefaultURL
 	}
 
 	listenAddr := os.Getenv("LISTEN_ADDR")
@@ -67,23 +75,55 @@ func main() {
 	registry.Register("TradeExecuted", func() proto.Message { return new(orderbookv1.TradeExecuted) })
 	registry.Register("OrderCancelled", func() proto.Message { return new(orderbookv1.OrderCancelled) })
 
+	// Connect to NATS.
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		log.Error("failed to connect to NATS", "url", natsURL, "error", err)
+		os.Exit(1)
+	}
+	defer nc.Drain()
+
+	js, err := jetstream.New(nc)
+	if err != nil {
+		log.Error("failed to create JetStream context", "error", err)
+		os.Exit(1)
+	}
+
+	if _, err := natsstore.EnsureStream(ctx, js); err != nil {
+		log.Error("failed to ensure NATS stream", "error", err)
+		os.Exit(1)
+	}
+
+	if err := natsstore.Backfill(ctx, store, js, log); err != nil {
+		log.Error("failed to backfill NATS stream", "error", err)
+		os.Exit(1)
+	}
+
+	publisher := natsstore.NewPublisher(js, log)
+
 	// Create projections.
 	tradeProjection := orderbook.NewPgTradeProjection(pool)
 	orderProjection := orderbook.NewPgOrderProjection(pool)
 	depthProjection := orderbook.NewDepthProjection()
 	broker := orderbook.NewBroker()
 
-	// Start projection runner: catches up from stored events, then polls for new ones.
-	runner := es.NewProjectionRunner(store, registry, log, tradeProjection, orderProjection, depthProjection, broker)
-	if err := runner.Start(ctx); err != nil {
-		log.Error("failed to start projection runner", "error", err)
+	// Truncate projection tables before replaying from NATS stream.
+	if err := store.TruncateProjections(ctx); err != nil {
+		log.Error("failed to truncate projections", "error", err)
+		os.Exit(1)
+	}
+
+	// Start NATS consumer: replays from stream, then consumes live events.
+	consumer := natsstore.NewProjectionConsumer(js, registry, log, tradeProjection, orderProjection, depthProjection, broker)
+	if err := consumer.Start(ctx); err != nil {
+		log.Error("failed to start projection consumer", "error", err)
 		os.Exit(1)
 	}
 	broker.SetReady()
 
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
-	}, log).WithSnapshots(store)
+	}, log).WithSnapshots(store).WithPublisher(publisher)
 
 	srv := orderbook.NewServer(handler, log, tradeProjection, orderProjection, depthProjection, broker)
 
