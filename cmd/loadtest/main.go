@@ -23,9 +23,13 @@ func main() {
 	duration := flag.Duration("duration", 30*time.Second, "Test duration")
 	symbolsFlag := flag.String("symbols", "AAPL,GOOG,MSFT", "Comma-separated symbols")
 	placeWorkers := flag.Int("place-workers", 4, "Workers placing orders")
+	placeDelay := flag.Duration("place-delay", 0, "Delay between place requests")
 	cancelWorkers := flag.Int("cancel-workers", 2, "Workers cancelling orders")
+	cancelDelay := flag.Duration("cancel-delay", 0, "Delay between cancel requests")
 	depthWorkers := flag.Int("depth-workers", 2, "Workers reading market depth")
+	depthDelay := flag.Duration("depth-delay", time.Second, "Delay between depth requests")
 	orderWorkers := flag.Int("order-workers", 2, "Workers reading order status")
+	orderDelay := flag.Duration("order-delay", time.Second, "Delay between order requests")
 	flag.Parse()
 
 	symbols := strings.Split(*symbolsFlag, ",")
@@ -56,28 +60,28 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			runPlaceWorker(ctx, client, symbols, tracker, collector)
+			runPlaceWorker(ctx, client, symbols, tracker, collector, *placeDelay)
 		}()
 	}
 	for range *cancelWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			runCancelWorker(ctx, client, tracker, collector)
+			runCancelWorker(ctx, client, tracker, collector, *cancelDelay)
 		}()
 	}
 	for range *depthWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			runDepthWorker(ctx, client, symbols, collector)
+			runDepthWorker(ctx, client, symbols, collector, *depthDelay)
 		}()
 	}
 	for range *orderWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			runOrderWorker(ctx, client, tracker, collector)
+			runOrderWorker(ctx, client, tracker, collector, *orderDelay)
 		}()
 	}
 
@@ -265,7 +269,7 @@ func fmtDur(d time.Duration) string {
 	}
 }
 
-func runPlaceWorker(ctx context.Context, client orderbookv1connect.OrderBookServiceClient, symbols []string, tracker *orderTracker, stats *statsCollector) {
+func runPlaceWorker(ctx context.Context, client orderbookv1connect.OrderBookServiceClient, symbols []string, tracker *orderTracker, stats *statsCollector, delay time.Duration) {
 	sides := []orderbookv1.Side{orderbookv1.Side_SIDE_BUY, orderbookv1.Side_SIDE_SELL}
 	for ctx.Err() == nil {
 		symbol := symbols[rand.IntN(len(symbols))]
@@ -290,10 +294,14 @@ func runPlaceWorker(ctx context.Context, client orderbookv1connect.OrderBookServ
 		if err == nil {
 			tracker.add(symbol, resp.Msg.OrderId)
 		}
+
+		if delay > 0 {
+			time.Sleep(delay)
+		}
 	}
 }
 
-func runCancelWorker(ctx context.Context, client orderbookv1connect.OrderBookServiceClient, tracker *orderTracker, stats *statsCollector) {
+func runCancelWorker(ctx context.Context, client orderbookv1connect.OrderBookServiceClient, tracker *orderTracker, stats *statsCollector, delay time.Duration) {
 	for ctx.Err() == nil {
 		entry, ok := tracker.random()
 		if !ok {
@@ -318,10 +326,14 @@ func runCancelWorker(ctx context.Context, client orderbookv1connect.OrderBookSer
 			err = nil
 		}
 		stats.record("CancelOrder", d, err)
+
+		if delay > 0 {
+			time.Sleep(delay)
+		}
 	}
 }
 
-func runDepthWorker(ctx context.Context, client orderbookv1connect.OrderBookServiceClient, symbols []string, stats *statsCollector) {
+func runDepthWorker(ctx context.Context, client orderbookv1connect.OrderBookServiceClient, symbols []string, stats *statsCollector, delay time.Duration) {
 	for ctx.Err() == nil {
 		symbol := symbols[rand.IntN(len(symbols))]
 
@@ -335,11 +347,13 @@ func runDepthWorker(ctx context.Context, client orderbookv1connect.OrderBookServ
 		d := time.Since(start)
 		stats.record("GetMarketDepth", d, err)
 
-		time.Sleep(time.Millisecond)
+		if delay > 0 {
+			time.Sleep(delay)
+		}
 	}
 }
 
-func runOrderWorker(ctx context.Context, client orderbookv1connect.OrderBookServiceClient, tracker *orderTracker, stats *statsCollector) {
+func runOrderWorker(ctx context.Context, client orderbookv1connect.OrderBookServiceClient, tracker *orderTracker, stats *statsCollector, delay time.Duration) {
 	for ctx.Err() == nil {
 		entry, ok := tracker.random()
 		if !ok {
@@ -365,7 +379,9 @@ func runOrderWorker(ctx context.Context, client orderbookv1connect.OrderBookServ
 		}
 		stats.record("GetOrder", d, err)
 
-		time.Sleep(time.Millisecond)
+		if delay > 0 {
+			time.Sleep(delay)
+		}
 	}
 }
 
