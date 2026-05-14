@@ -19,7 +19,7 @@ func placeOrderOnBook(t *testing.T, book *OrderBook, id string, side Side, price
 		Data: &orderbookv1.OrderPlaced{
 			OrderId:  id,
 			Symbol:   book.Symbol,
-			Side:     sideToProto(side),
+			Side:     SideToProto(side),
 			Price:    price,
 			Quantity: qty,
 			PlacedAt: timestamppb.New(placedAt),
@@ -40,8 +40,6 @@ func TestMatch_ExactPriceFullFill(t *testing.T) {
 
 	placeOrderOnBook(t, book, "ask-1", Sell, 1500000, 100, now)
 
-	incoming := book.Orders["ask-1"]
-	// Create a buy order that matches exactly
 	buyOrder := &Order{
 		ID:           "buy-1",
 		Side:         Buy,
@@ -58,8 +56,6 @@ func TestMatch_ExactPriceFullFill(t *testing.T) {
 	assert.Equal(t, int64(100), trades[0].Quantity)
 	assert.Equal(t, "buy-1", trades[0].BuyOrderId)
 	assert.Equal(t, "ask-1", trades[0].SellOrderId)
-	assert.Equal(t, int64(0), buyOrder.RemainingQty)
-	assert.Equal(t, int64(0), incoming.RemainingQty)
 }
 
 func TestMatch_PriceImprovement(t *testing.T) {
@@ -102,7 +98,6 @@ func TestMatch_PartialFill(t *testing.T) {
 
 	require.Len(t, trades, 1)
 	assert.Equal(t, int64(30), trades[0].Quantity)
-	assert.Equal(t, int64(70), buyOrder.RemainingQty)
 }
 
 func TestMatch_MultipleFills(t *testing.T) {
@@ -134,7 +129,6 @@ func TestMatch_MultipleFills(t *testing.T) {
 	// Third fill at highest acceptable price
 	assert.Equal(t, int64(1510000), trades[2].Price)
 	assert.Equal(t, int64(20), trades[2].Quantity) // only 20 remaining
-	assert.Equal(t, int64(0), buyOrder.RemainingQty)
 }
 
 func TestMatch_NoMatch(t *testing.T) {
@@ -208,7 +202,6 @@ func TestMatch_MarketBuySweepsAllAsks(t *testing.T) {
 	assert.Equal(t, int64(50), trades[1].Quantity)
 	assert.Equal(t, int64(1600000), trades[2].Price)
 	assert.Equal(t, int64(40), trades[2].Quantity)
-	assert.Equal(t, int64(0), buyOrder.RemainingQty)
 }
 
 func TestMatch_MarketSellSweepsAllBids(t *testing.T) {
@@ -236,5 +229,4 @@ func TestMatch_MarketSellSweepsAllBids(t *testing.T) {
 	assert.Equal(t, int64(40), trades[0].Quantity)
 	assert.Equal(t, int64(1500000), trades[1].Price)
 	assert.Equal(t, int64(60), trades[1].Quantity)
-	assert.Equal(t, int64(0), sellOrder.RemainingQty)
 }

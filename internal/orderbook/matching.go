@@ -27,16 +27,17 @@ func Match(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.Trade
 
 func matchBuy(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.TradeExecuted {
 	var trades []*orderbookv1.TradeExecuted
+	remainingQty := incoming.RemainingQty
 
 	for ask := range book.Asks.All() {
-		if incoming.RemainingQty <= 0 {
+		if remainingQty <= 0 {
 			break
 		}
 		if incoming.OrderType != Market && ask.Price > incoming.Price {
 			break // asks are sorted lowest first; no more matches possible
 		}
 
-		qty := min(incoming.RemainingQty, ask.RemainingQty)
+		qty := min(remainingQty, ask.RemainingQty)
 		trades = append(trades, &orderbookv1.TradeExecuted{
 			TradeId:     uuid.New().String(),
 			BuyOrderId:  incoming.ID,
@@ -47,8 +48,7 @@ func matchBuy(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.Tr
 			ExecutedAt:  timestamppb.New(now),
 		})
 
-		incoming.RemainingQty -= qty
-		ask.RemainingQty -= qty
+		remainingQty -= qty
 	}
 
 	return trades
@@ -56,16 +56,17 @@ func matchBuy(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.Tr
 
 func matchSell(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.TradeExecuted {
 	var trades []*orderbookv1.TradeExecuted
+	remainingQty := incoming.RemainingQty
 
 	for bid := range book.Bids.All() {
-		if incoming.RemainingQty <= 0 {
+		if remainingQty <= 0 {
 			break
 		}
 		if incoming.OrderType != Market && bid.Price < incoming.Price {
 			break // bids are sorted highest first; no more matches possible
 		}
 
-		qty := min(incoming.RemainingQty, bid.RemainingQty)
+		qty := min(remainingQty, bid.RemainingQty)
 		trades = append(trades, &orderbookv1.TradeExecuted{
 			TradeId:     uuid.New().String(),
 			BuyOrderId:  bid.ID,
@@ -76,8 +77,7 @@ func matchSell(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.T
 			ExecutedAt:  timestamppb.New(now),
 		})
 
-		incoming.RemainingQty -= qty
-		bid.RemainingQty -= qty
+		remainingQty -= qty
 	}
 
 	return trades
