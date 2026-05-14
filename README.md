@@ -40,12 +40,14 @@ Environment variables:
 The server exposes RPCs via Connect (gRPC, gRPC-Web, and JSON-over-HTTP on the same port):
 
 **OrderBookService:**
+
 - `PlaceOrder` — Place a limit order, returns order ID and any immediate trades
 - `CancelOrder` — Cancel an existing order by ID
 - `GetOrderBook` — Get full book state (bids and asks) for a symbol
 - `GetOrder` — Look up a single order by symbol and order ID
 
 **SagaService:**
+
 - `PlaceBracketOrder` — Place an entry order with automatic take-profit and stop-loss exits
 - `GetSaga` — Look up a saga by ID (status, order IDs, prices)
 
@@ -58,13 +60,18 @@ buf curl --protocol grpc --http2-prior-knowledge \
   -d '{"symbol":"AAPL","side":"SIDE_SELL","price":"1505000","quantity":"100"}'
 
 # Place a buy order
-buf curl --protocol grpc --http2-prior-knowledge \                                                     rbenv:3.1.2
+buf curl --protocol grpc --http2-prior-knowledge \
   --schema proto http://localhost:8080/orderbook.v1.OrderBookService/PlaceOrder \
   -d '{"symbol":"AAPL","side":"SIDE_BUY","price":"1506000","quantity":"50"}'
 
 # Get the order book
 buf curl --protocol grpc --http2-prior-knowledge \
   --schema proto http://localhost:8080/orderbook.v1.OrderBookService/GetOrderBook \
+  -d '{"symbol":"AAPL"}'
+
+# Get the market depth
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/orderbook.v1.OrderBookService/GetMarketDepth \
   -d '{"symbol":"AAPL"}'
 
 # Place a bracket order (entry buy at $150, take-profit at $155, stop-loss at $145)
