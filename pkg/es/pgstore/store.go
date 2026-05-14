@@ -25,6 +25,9 @@ var migration003SQL string
 //go:embed migrations/000004.sql
 var migration004SQL string
 
+//go:embed migrations/000005.sql
+var migration005SQL string
+
 const (
 	queryLoad = `SELECT id, aggregate_id, type, version, data, timestamp, position
 		FROM events
@@ -56,6 +59,12 @@ const (
 	querySaveSnapshot = `INSERT INTO snapshots (aggregate_id, version, data)
 		VALUES ($1, $2, $3)
 		ON CONFLICT (aggregate_id) DO UPDATE SET version = $2, data = $3, updated_at = now()`
+
+	queryLoadCheckpoint = `SELECT sequence FROM projection_checkpoints WHERE name = $1`
+
+	querySaveCheckpoint = `INSERT INTO projection_checkpoints (name, sequence)
+		VALUES ($1, $2)
+		ON CONFLICT (name) DO UPDATE SET sequence = $2`
 )
 
 // compile-time checks
@@ -64,6 +73,7 @@ var (
 	_ es.SnapshotStore     = (*Store)(nil)
 	_ es.GlobalEventLoader = (*Store)(nil)
 	_ es.GlobalEventPoller = (*Store)(nil)
+	_ es.CheckpointStore   = (*Store)(nil)
 )
 
 // Store is a PostgreSQL-backed EventStore and SnapshotStore using pgxpool.
@@ -171,9 +181,32 @@ func (s *Store) TruncateProjections(ctx context.Context) error {
 	return err
 }
 
+// LoadCheckpoint returns the last processed sequence for the named checkpoint.
+// Returns 0 if no checkpoint exists.
+func (s *Store) LoadCheckpoint(ctx context.Context, name string) (uint64, error) {
+	var seq uint64
+	err := s.pool.QueryRow(ctx, queryLoadCheckpoint, name).Scan(&seq)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("load checkpoint: %w", err)
+	}
+	return seq, nil
+}
+
+// SaveCheckpoint persists the last processed sequence for the named checkpoint.
+func (s *Store) SaveCheckpoint(ctx context.Context, name string, sequence uint64) error {
+	_, err := s.pool.Exec(ctx, querySaveCheckpoint, name, sequence)
+	if err != nil {
+		return fmt.Errorf("save checkpoint: %w", err)
+	}
+	return nil
+}
+
 // Migrate runs the schema migrations. Call this on startup.
 func (s *Store) Migrate(ctx context.Context) error {
-	for _, sql := range []string{migration001SQL, migration002SQL, migration003SQL, migration004SQL} {
+	for _, sql := range []string{migration001SQL, migration002SQL, migration003SQL, migration004SQL, migration005SQL} {
 		if _, err := s.pool.Exec(ctx, sql); err != nil {
 			return err
 		}

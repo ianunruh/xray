@@ -107,14 +107,12 @@ func main() {
 	depthProjection := orderbook.NewDepthProjection()
 	broker := orderbook.NewBroker()
 
-	// Truncate projection tables before replaying from NATS stream.
-	if err := store.TruncateProjections(ctx); err != nil {
-		log.Error("failed to truncate projections", "error", err)
-		os.Exit(1)
-	}
-
 	// Start NATS consumer: replays from stream, then consumes live events.
-	consumer := natsstore.NewProjectionConsumer(js, registry, log, tradeProjection, orderProjection, depthProjection, broker)
+	// Ephemeral projections (in-memory) always replay from the beginning.
+	// Persistent projections (Pg-backed) resume from the last checkpoint.
+	consumer := natsstore.NewProjectionConsumer(js, registry, log).
+		WithEphemeral(depthProjection, broker).
+		WithPersistent(store, tradeProjection, orderProjection)
 	if err := consumer.Start(ctx); err != nil {
 		log.Error("failed to start projection consumer", "error", err)
 		os.Exit(1)

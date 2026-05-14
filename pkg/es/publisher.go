@@ -21,3 +21,9 @@ type GlobalEventLoader interface {
 type GlobalEventPoller interface {
 	LoadAfter(ctx context.Context, afterPosition int64, limit int) ([]RawEvent, error)
 }
+
+// CheckpointStore tracks the last processed sequence for resumable projections.
+type CheckpointStore interface {
+	LoadCheckpoint(ctx context.Context, name string) (uint64, error)
+	SaveCheckpoint(ctx context.Context, name string, sequence uint64) error
+}
