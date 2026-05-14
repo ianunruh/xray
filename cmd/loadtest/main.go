@@ -27,9 +27,9 @@ func main() {
 	cancelWorkers := flag.Int("cancel-workers", 2, "Workers cancelling orders")
 	cancelDelay := flag.Duration("cancel-delay", 0, "Delay between cancel requests")
 	depthWorkers := flag.Int("depth-workers", 2, "Workers reading market depth")
-	depthDelay := flag.Duration("depth-delay", time.Second, "Delay between depth requests")
+	depthDelay := flag.Duration("depth-delay", time.Millisecond, "Delay between depth requests")
 	orderWorkers := flag.Int("order-workers", 2, "Workers reading order status")
-	orderDelay := flag.Duration("order-delay", time.Second, "Delay between order requests")
+	orderDelay := flag.Duration("order-delay", time.Millisecond, "Delay between order requests")
 	flag.Parse()
 
 	symbols := strings.Split(*symbolsFlag, ",")
@@ -384,4 +384,3 @@ func runOrderWorker(ctx context.Context, client orderbookv1connect.OrderBookServ
 		}
 	}
 }
-
