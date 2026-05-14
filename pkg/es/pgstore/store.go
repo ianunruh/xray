@@ -22,6 +22,9 @@ var migration002SQL string
 //go:embed migrations/000003.sql
 var migration003SQL string
 
+//go:embed migrations/000004.sql
+var migration004SQL string
+
 const (
 	queryLoad = `SELECT id, aggregate_id, type, version, data, timestamp, position
 		FROM events
@@ -163,7 +166,7 @@ func (s *Store) SaveSnapshot(ctx context.Context, snap es.Snapshot) error {
 
 // Migrate runs the schema migrations. Call this on startup.
 func (s *Store) Migrate(ctx context.Context) error {
-	for _, sql := range []string{migration001SQL, migration002SQL, migration003SQL} {
+	for _, sql := range []string{migration001SQL, migration002SQL, migration003SQL, migration004SQL} {
 		if _, err := s.pool.Exec(ctx, sql); err != nil {
 			return err
 		}

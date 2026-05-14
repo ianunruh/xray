@@ -68,8 +68,8 @@ func main() {
 	registry.Register("OrderCancelled", func() proto.Message { return new(orderbookv1.OrderCancelled) })
 
 	// Create projections.
-	tradeProjection := orderbook.NewTradeProjection()
-	orderProjection := orderbook.NewOrderProjection()
+	tradeProjection := orderbook.NewPgTradeProjection(pool)
+	orderProjection := orderbook.NewPgOrderProjection(pool)
 	depthProjection := orderbook.NewDepthProjection()
 
 	// Start projection runner: catches up from stored events, then polls for new ones.
