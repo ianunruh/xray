@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package portfolio.v1;
+
+option go_package = "github.com/ianunruh/xray/gen/portfolio/v1;portfoliov1";
+
+import "google/protobuf/timestamp.proto";
+import "orderbook/v1/events.proto";
+
+// Portfolio events — stored under aggregate ID "portfolio:{account_id}".
+
+message CashDeposited {
+  string account_id = 1;
+  int64 amount = 2;
+  google.protobuf.Timestamp deposited_at = 3;
+}
+
+message CashWithdrawn {
+  string account_id = 1;
+  int64 amount = 2;
+  google.protobuf.Timestamp withdrawn_at = 3;
+}
+
+message CashHeld {
+  string account_id = 1;
+  string order_saga_id = 2;
+  int64 amount = 3;
+  google.protobuf.Timestamp held_at = 4;
+}
+
+message CashReleased {
+  string account_id = 1;
+  string order_saga_id = 2;
+  int64 amount = 3;
+  google.protobuf.Timestamp released_at = 4;
+}
+
+message CashSettled {
+  string account_id = 1;
+  string order_saga_id = 2;
+  int64 amount = 3;
+  string symbol = 4;
+  int64 quantity = 5;
+  int64 cost_per_share = 6;
+  google.protobuf.Timestamp settled_at = 7;
+}
+
+message SharesDebited {
+  string account_id = 1;
+  string symbol = 2;
+  int64 quantity = 3;
+  string order_saga_id = 4;
+  google.protobuf.Timestamp debited_at = 5;
+}
+
+// Order saga events — stored under aggregate ID "order-saga:{uuid}".
+
+message OrderSagaStarted {
+  string saga_id = 1;
+  string account_id = 2;
+  string symbol = 3;
+  orderbook.v1.Side side = 4;
+  int64 price = 5;
+  int64 quantity = 6;
+  orderbook.v1.OrderType order_type = 7;
+  orderbook.v1.TimeInForce time_in_force = 8;
+  google.protobuf.Timestamp started_at = 9;
+}
+
+message OrderSagaCashHeld {
+  string saga_id = 1;
+  int64 amount_held = 2;
+  google.protobuf.Timestamp held_at = 3;
+}
+
+message OrderSagaOrderPlaced {
+  string saga_id = 1;
+  string order_id = 2;
+  google.protobuf.Timestamp placed_at = 3;
+}
+
+message OrderSagaFillRecorded {
+  string saga_id = 1;
+  string trade_id = 2;
+  int64 fill_quantity = 3;
+  int64 fill_price = 4;
+  int64 cash_settled = 5;
+  google.protobuf.Timestamp filled_at = 6;
+}
+
+message OrderSagaCompleted {
+  string saga_id = 1;
+  google.protobuf.Timestamp completed_at = 2;
+}
+
+message OrderSagaFailed {
+  string saga_id = 1;
+  string reason = 2;
+  google.protobuf.Timestamp failed_at = 3;
+}
+
+message OrderSagaActionFailed {
+  string saga_id = 1;
+  string action = 2;
+  int32 attempts = 3;
+  google.protobuf.Timestamp failed_at = 4;
+}

@@ -113,8 +113,8 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 			StopPrice:   cmd.StopPrice,
 			Quantity:    cmd.Quantity,
 			PlacedAt:    timestamppb.New(now),
-			OrderType:   orderTypeToProto(cmd.OrderType),
-			TimeInForce: tifToProto(tif),
+			OrderType:   OrderTypeToProto(cmd.OrderType),
+			TimeInForce: TimeInForceToProto(tif),
 		},
 	}
 

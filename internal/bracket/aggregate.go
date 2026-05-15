@@ -1,4 +1,4 @@
-package saga
+package bracket
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/ianunruh/xray/pkg/es"
 )
 
-const AggregateType = "saga"
+const AggregateType = "bracket-saga"
 
 func AggregateID(sagaID string) string {
 	return AggregateType + ":" + sagaID

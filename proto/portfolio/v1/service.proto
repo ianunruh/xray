@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package portfolio.v1;
+
+option go_package = "github.com/ianunruh/xray/gen/portfolio/v1;portfoliov1";
+
+import "orderbook/v1/events.proto";
+
+service PortfolioService {
+  rpc Deposit(DepositRequest) returns (DepositResponse);
+  rpc Withdraw(WithdrawRequest) returns (WithdrawResponse);
+  rpc GetPortfolio(GetPortfolioRequest) returns (GetPortfolioResponse);
+  rpc PlaceOrder(PortfolioPlaceOrderRequest) returns (PortfolioPlaceOrderResponse);
+}
+
+message DepositRequest {
+  string account_id = 1;
+  int64 amount = 2;
+}
+
+message DepositResponse {}
+
+message WithdrawRequest {
+  string account_id = 1;
+  int64 amount = 2;
+}
+
+message WithdrawResponse {}
+
+message GetPortfolioRequest {
+  string account_id = 1;
+}
+
+message GetPortfolioResponse {
+  string account_id = 1;
+  int64 cash_balance = 2;
+  int64 cash_held = 3;
+  repeated Holding holdings = 4;
+}
+
+message Holding {
+  string symbol = 1;
+  int64 quantity = 2;
+  int64 total_cost = 3;
+  int64 average_cost = 4;
+}
+
+message PortfolioPlaceOrderRequest {
+  string account_id = 1;
+  string symbol = 2;
+  orderbook.v1.Side side = 3;
+  int64 price = 4;
+  int64 quantity = 5;
+  orderbook.v1.OrderType order_type = 6;
+  orderbook.v1.TimeInForce time_in_force = 7;
+}
+
+message PortfolioPlaceOrderResponse {
+  string saga_id = 1;
+}

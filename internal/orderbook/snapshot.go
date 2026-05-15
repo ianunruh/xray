@@ -23,8 +23,8 @@ func (ob *OrderBook) Snapshot() (proto.Message, error) {
 			Quantity:          order.Quantity,
 			RemainingQuantity: order.RemainingQty,
 			PlacedAt:          timestamppb.New(order.PlacedAt),
-			OrderType:         orderTypeToProto(order.OrderType),
-			TimeInForce:       tifToProto(order.TimeInForce),
+			OrderType:         OrderTypeToProto(order.OrderType),
+			TimeInForce:       TimeInForceToProto(order.TimeInForce),
 		})
 	}
 	return snap, nil
@@ -53,8 +53,8 @@ func (ob *OrderBook) RestoreSnapshot(msg proto.Message) error {
 			Quantity:     os.Quantity,
 			RemainingQty: os.RemainingQuantity,
 			PlacedAt:     os.PlacedAt.AsTime(),
-			OrderType:    orderTypeFromProto(os.OrderType),
-			TimeInForce:  tifFromProto(os.TimeInForce),
+			OrderType:    OrderTypeFromProto(os.OrderType),
+			TimeInForce:  TimeInForceFromProto(os.TimeInForce),
 		}
 		ob.Orders[order.ID] = order
 

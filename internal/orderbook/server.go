@@ -41,8 +41,8 @@ func (s *Server) PlaceOrder(ctx context.Context, req *connect.Request[orderbookv
 	msg := req.Msg
 
 	// Default market orders with unspecified TIF to IOC.
-	tif := tifFromProto(msg.TimeInForce)
-	if orderTypeFromProto(msg.OrderType) == Market && msg.TimeInForce == orderbookv1.TimeInForce_TIME_IN_FORCE_UNSPECIFIED {
+	tif := TimeInForceFromProto(msg.TimeInForce)
+	if OrderTypeFromProto(msg.OrderType) == Market && msg.TimeInForce == orderbookv1.TimeInForce_TIME_IN_FORCE_UNSPECIFIED {
 		tif = IOC
 	}
 
@@ -52,7 +52,7 @@ func (s *Server) PlaceOrder(ctx context.Context, req *connect.Request[orderbookv
 		Price:       msg.Price,
 		StopPrice:   msg.StopPrice,
 		Quantity:    msg.Quantity,
-		OrderType:   orderTypeFromProto(msg.OrderType),
+		OrderType:   OrderTypeFromProto(msg.OrderType),
 		TimeInForce: tif,
 	}
 

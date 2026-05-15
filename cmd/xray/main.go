@@ -13,12 +13,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
-	"google.golang.org/protobuf/proto"
 
-	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
+	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
+	"github.com/ianunruh/xray/internal/bracket"
 	"github.com/ianunruh/xray/internal/orderbook"
-	"github.com/ianunruh/xray/internal/saga"
+	"github.com/ianunruh/xray/internal/ordersaga"
+	"github.com/ianunruh/xray/internal/portfolio"
 	"github.com/ianunruh/xray/pkg/es"
 	"github.com/ianunruh/xray/pkg/es/natsstore"
 	"github.com/ianunruh/xray/pkg/es/pgstore"
@@ -72,16 +73,10 @@ func main() {
 	}
 
 	registry := es.NewRegistry()
-	registry.Register("OrderPlaced", func() proto.Message { return new(orderbookv1.OrderPlaced) })
-	registry.Register("TradeExecuted", func() proto.Message { return new(orderbookv1.TradeExecuted) })
-	registry.Register("OrderCancelled", func() proto.Message { return new(orderbookv1.OrderCancelled) })
-	registry.Register("StopTriggered", func() proto.Message { return new(orderbookv1.StopTriggered) })
-	registry.Register("SagaStarted", func() proto.Message { return new(orderbookv1.SagaStarted) })
-	registry.Register("EntryFilled", func() proto.Message { return new(orderbookv1.EntryFilled) })
-	registry.Register("ExitFilled", func() proto.Message { return new(orderbookv1.ExitFilled) })
-	registry.Register("SagaCompleted", func() proto.Message { return new(orderbookv1.SagaCompleted) })
-	registry.Register("SagaFailed", func() proto.Message { return new(orderbookv1.SagaFailed) })
-	registry.Register("SagaActionFailed", func() proto.Message { return new(orderbookv1.SagaActionFailed) })
+	orderbook.RegisterEvents(registry)
+	bracket.RegisterEvents(registry)
+	portfolio.RegisterEvents(registry)
+	ordersaga.RegisterEvents(registry)
 
 	// Connect to NATS.
 	nc, err := nats.Connect(natsURL)
@@ -114,8 +109,16 @@ func main() {
 		return orderbook.NewOrderBook(id)
 	}, log).WithSnapshots(store).WithPublisher(publisher)
 
-	sagaHandler := es.NewHandler(store, registry, func(id string) *saga.BracketSaga {
-		return saga.NewBracketSaga(id)
+	bracketHandler := es.NewHandler(store, registry, func(id string) *bracket.BracketSaga {
+		return bracket.NewBracketSaga(id)
+	}, log).WithPublisher(publisher)
+
+	portfolioHandler := es.NewHandler(store, registry, func(id string) *portfolio.Portfolio {
+		return portfolio.NewPortfolio(id)
+	}, log).WithPublisher(publisher)
+
+	orderSagaHandler := es.NewHandler(store, registry, func(id string) *ordersaga.OrderSaga {
+		return ordersaga.NewOrderSaga(id)
 	}, log).WithPublisher(publisher)
 
 	// Create projections.
@@ -123,29 +126,34 @@ func main() {
 	orderProjection := orderbook.NewPgOrderProjection(pool)
 	depthProjection := orderbook.NewDepthProjection()
 	broker := orderbook.NewBroker()
-	sagaReactor := saga.NewReactor(sagaHandler, obHandler, log)
+	bracketReactor := bracket.NewReactor(bracketHandler, obHandler, log)
+	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
 
 	// Start NATS consumer: replays from stream, then consumes live events.
 	// Ephemeral projections (in-memory) always replay from the beginning.
 	// Persistent projections (Pg-backed) resume from the last checkpoint.
 	consumer := natsstore.NewProjectionConsumer(js, registry, log).
-		WithEphemeral(depthProjection, broker, sagaReactor).
+		WithEphemeral(depthProjection, broker, bracketReactor, orderSagaReactor).
 		WithPersistent(store, tradeProjection, orderProjection)
 	if err := consumer.Start(ctx); err != nil {
 		log.Error("failed to start projection consumer", "error", err)
 		os.Exit(1)
 	}
 	broker.SetReady()
-	sagaReactor.SetReady(ctx)
+	bracketReactor.SetReady(ctx)
+	orderSagaReactor.SetReady(ctx)
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, depthProjection, broker)
-	sagaSrv := saga.NewServer(sagaHandler, obHandler, log)
+	bracketSrv := bracket.NewServer(bracketHandler, obHandler, log)
+	portfolioSrv := portfolio.NewServer(portfolioHandler, ordersaga.NewPlaceOrderFunc(orderSagaHandler), log)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
 	mux.Handle(path, h)
-	sagaPath, sagaH := orderbookv1connect.NewSagaServiceHandler(sagaSrv)
-	mux.Handle(sagaPath, sagaH)
+	bracketPath, bracketH := orderbookv1connect.NewSagaServiceHandler(bracketSrv)
+	mux.Handle(bracketPath, bracketH)
+	portfolioPath, portfolioH := portfoliov1connect.NewPortfolioServiceHandler(portfolioSrv)
+	mux.Handle(portfolioPath, portfolioH)
 	mux.Handle("/", orderbook.WebHandler())
 
 	httpServer := &http.Server{

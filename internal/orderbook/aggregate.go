@@ -69,8 +69,8 @@ func (ob *OrderBook) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 		Quantity:     data.Quantity,
 		RemainingQty: data.Quantity,
 		PlacedAt:     data.PlacedAt.AsTime(),
-		OrderType:    orderTypeFromProto(data.OrderType),
-		TimeInForce:  tifFromProto(data.TimeInForce),
+		OrderType:    OrderTypeFromProto(data.OrderType),
+		TimeInForce:  TimeInForceFromProto(data.TimeInForce),
 	}
 
 	ob.Orders[order.ID] = order

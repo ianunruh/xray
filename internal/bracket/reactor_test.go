@@ -1,4 +1,4 @@
-package saga_test
+package bracket_test
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/internal/orderbook"
-	"github.com/ianunruh/xray/internal/saga"
+	"github.com/ianunruh/xray/internal/bracket"
 	"github.com/ianunruh/xray/pkg/es"
 	"github.com/ianunruh/xray/pkg/es/memstore"
 )
@@ -28,7 +28,7 @@ func (p *collectingPublisher) Publish(_ context.Context, events []es.Event) erro
 	return nil
 }
 
-func (p *collectingPublisher) flush(ctx context.Context, reactor *saga.Reactor) {
+func (p *collectingPublisher) flush(ctx context.Context, reactor *bracket.Reactor) {
 	for len(p.events) > 0 {
 		batch := p.events
 		p.events = nil
@@ -39,8 +39,8 @@ func (p *collectingPublisher) flush(ctx context.Context, reactor *saga.Reactor) 
 type reactorTestEnv struct {
 	ctx         context.Context
 	obHandler   *es.Handler[*orderbook.OrderBook]
-	sagaHandler *es.Handler[*saga.BracketSaga]
-	reactor     *saga.Reactor
+	sagaHandler *es.Handler[*bracket.BracketSaga]
+	reactor     *bracket.Reactor
 	store       *memstore.Store
 	registry    *es.Registry
 	pub         *collectingPublisher
@@ -62,11 +62,11 @@ func setupReactorTest(t *testing.T) *reactorTestEnv {
 		return orderbook.NewOrderBook(id)
 	}, slog.Default()).WithPublisher(pub)
 
-	sagaHandler := es.NewHandler(store, registry, func(id string) *saga.BracketSaga {
-		return saga.NewBracketSaga(id)
+	sagaHandler := es.NewHandler(store, registry, func(id string) *bracket.BracketSaga {
+		return bracket.NewBracketSaga(id)
 	}, slog.Default()).WithPublisher(pub)
 
-	reactor := saga.NewReactor(sagaHandler, obHandler, slog.Default())
+	reactor := bracket.NewReactor(sagaHandler, obHandler, slog.Default())
 	reactor.SetReady(ctx)
 
 	return &reactorTestEnv{
@@ -91,9 +91,9 @@ func TestReactor_BracketOrder_FullLifecycle(t *testing.T) {
 	// Place the entry buy order at $150. This will match the resting sell.
 	entryOrderID := placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1500000, 100)
 
-	// Start the saga.
+	// Start the bracket.
 	sagaID := "bracket-test-1"
-	startCmd := saga.StartSaga{
+	startCmd := bracket.StartSaga{
 		SagaID:          sagaID,
 		Symbol:          "AAPL",
 		EntrySide:       orderbookv1.Side_SIDE_BUY,
@@ -103,8 +103,8 @@ func TestReactor_BracketOrder_FullLifecycle(t *testing.T) {
 		StopLossPrice:   1450000,
 		EntryOrderID:    entryOrderID,
 	}
-	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
-		return saga.ExecuteStartSaga(s, startCmd)
+	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
+		return bracket.ExecuteStartSaga(s, startCmd)
 	})
 	require.NoError(t, err)
 
@@ -113,9 +113,9 @@ func TestReactor_BracketOrder_FullLifecycle(t *testing.T) {
 	env.flush()
 
 	// Verify saga transitioned to PendingExit.
-	sagaAgg, err := env.sagaHandler.Load(env.ctx, saga.AggregateID(sagaID))
+	sagaAgg, err := env.sagaHandler.Load(env.ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
-	assert.Equal(t, saga.PendingExit, sagaAgg.Status)
+	assert.Equal(t, bracket.PendingExit, sagaAgg.Status)
 	assert.NotEmpty(t, sagaAgg.TakeProfitOrderID)
 	assert.NotEmpty(t, sagaAgg.StopLossOrderID)
 
@@ -124,12 +124,12 @@ func TestReactor_BracketOrder_FullLifecycle(t *testing.T) {
 	env.flush()
 
 	// Verify saga completed.
-	sagaAgg, err = env.sagaHandler.Load(env.ctx, saga.AggregateID(sagaID))
+	sagaAgg, err = env.sagaHandler.Load(env.ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
-	assert.Equal(t, saga.Completed, sagaAgg.Status)
+	assert.Equal(t, bracket.Completed, sagaAgg.Status)
 
 	// Verify the full saga event stream.
-	raw, err := env.store.Load(env.ctx, saga.AggregateID(sagaID))
+	raw, err := env.store.Load(env.ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
 
 	types := make([]string, len(raw))
@@ -148,9 +148,9 @@ func TestReactor_EntryCancelled_SagaFails(t *testing.T) {
 	entryOrderID := placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1500000, 100)
 	env.pub.events = nil
 
-	// Start the saga.
+	// Start the bracket.
 	sagaID := "fail-test-1"
-	startCmd := saga.StartSaga{
+	startCmd := bracket.StartSaga{
 		SagaID:          sagaID,
 		Symbol:          "AAPL",
 		EntrySide:       orderbookv1.Side_SIDE_BUY,
@@ -160,8 +160,8 @@ func TestReactor_EntryCancelled_SagaFails(t *testing.T) {
 		StopLossPrice:   1450000,
 		EntryOrderID:    entryOrderID,
 	}
-	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
-		return saga.ExecuteStartSaga(s, startCmd)
+	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
+		return bracket.ExecuteStartSaga(s, startCmd)
 	})
 	require.NoError(t, err)
 
@@ -179,9 +179,9 @@ func TestReactor_EntryCancelled_SagaFails(t *testing.T) {
 	env.flush()
 
 	// Verify saga failed.
-	sagaAgg, err := env.sagaHandler.Load(env.ctx, saga.AggregateID(sagaID))
+	sagaAgg, err := env.sagaHandler.Load(env.ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
-	assert.Equal(t, saga.Failed, sagaAgg.Status)
+	assert.Equal(t, bracket.Failed, sagaAgg.Status)
 }
 
 func TestReactor_PartialFill_WaitsForFullFill(t *testing.T) {
@@ -194,9 +194,9 @@ func TestReactor_PartialFill_WaitsForFullFill(t *testing.T) {
 	// Entry buy order for 100 shares. Only 60 will fill.
 	entryOrderID := placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1500000, 100)
 
-	// Start the saga.
+	// Start the bracket.
 	sagaID := "partial-test-1"
-	startCmd := saga.StartSaga{
+	startCmd := bracket.StartSaga{
 		SagaID:          sagaID,
 		Symbol:          "AAPL",
 		EntrySide:       orderbookv1.Side_SIDE_BUY,
@@ -206,8 +206,8 @@ func TestReactor_PartialFill_WaitsForFullFill(t *testing.T) {
 		StopLossPrice:   1450000,
 		EntryOrderID:    entryOrderID,
 	}
-	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
-		return saga.ExecuteStartSaga(s, startCmd)
+	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
+		return bracket.ExecuteStartSaga(s, startCmd)
 	})
 	require.NoError(t, err)
 
@@ -215,9 +215,9 @@ func TestReactor_PartialFill_WaitsForFullFill(t *testing.T) {
 	env.flush()
 
 	// Saga should still be PendingEntry.
-	sagaAgg, err := env.sagaHandler.Load(env.ctx, saga.AggregateID(sagaID))
+	sagaAgg, err := env.sagaHandler.Load(env.ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
-	assert.Equal(t, saga.PendingEntry, sagaAgg.Status)
+	assert.Equal(t, bracket.PendingEntry, sagaAgg.Status)
 
 	// Place more sell liquidity to fill the remaining 40.
 	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1500000, 40)
@@ -226,9 +226,9 @@ func TestReactor_PartialFill_WaitsForFullFill(t *testing.T) {
 	env.flush()
 
 	// Now saga should be PendingExit.
-	sagaAgg, err = env.sagaHandler.Load(env.ctx, saga.AggregateID(sagaID))
+	sagaAgg, err = env.sagaHandler.Load(env.ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
-	assert.Equal(t, saga.PendingExit, sagaAgg.Status)
+	assert.Equal(t, bracket.PendingExit, sagaAgg.Status)
 }
 
 func setupReactorTestNotReady(t *testing.T) *reactorTestEnv {
@@ -243,11 +243,11 @@ func setupReactorTestNotReady(t *testing.T) *reactorTestEnv {
 		return orderbook.NewOrderBook(id)
 	}, slog.Default()).WithPublisher(pub)
 
-	sagaHandler := es.NewHandler(store, registry, func(id string) *saga.BracketSaga {
-		return saga.NewBracketSaga(id)
+	sagaHandler := es.NewHandler(store, registry, func(id string) *bracket.BracketSaga {
+		return bracket.NewBracketSaga(id)
 	}, slog.Default()).WithPublisher(pub)
 
-	reactor := saga.NewReactor(sagaHandler, obHandler, slog.Default())
+	reactor := bracket.NewReactor(sagaHandler, obHandler, slog.Default())
 
 	return &reactorTestEnv{
 		ctx:         ctx,
@@ -270,9 +270,9 @@ func TestReactor_Recovery_EntryFilledDuringReplay(t *testing.T) {
 	// Place entry buy at $150 — matches immediately.
 	entryOrderID := placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1500000, 100)
 
-	// Start the saga.
+	// Start the bracket.
 	sagaID := "recovery-entry-fill-1"
-	startCmd := saga.StartSaga{
+	startCmd := bracket.StartSaga{
 		SagaID:          sagaID,
 		Symbol:          "AAPL",
 		EntrySide:       orderbookv1.Side_SIDE_BUY,
@@ -282,25 +282,25 @@ func TestReactor_Recovery_EntryFilledDuringReplay(t *testing.T) {
 		StopLossPrice:   1450000,
 		EntryOrderID:    entryOrderID,
 	}
-	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
-		return saga.ExecuteStartSaga(s, startCmd)
+	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
+		return bracket.ExecuteStartSaga(s, startCmd)
 	})
 	require.NoError(t, err)
 
 	// Flush events while NOT ready — reactor accumulates filledQty but won't place exits.
 	env.flush()
 
-	sagaAgg, err := env.sagaHandler.Load(env.ctx, saga.AggregateID(sagaID))
+	sagaAgg, err := env.sagaHandler.Load(env.ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
-	assert.Equal(t, saga.PendingEntry, sagaAgg.Status)
+	assert.Equal(t, bracket.PendingEntry, sagaAgg.Status)
 
 	// SetReady triggers recovery — should place exit orders and record EntryFilled.
 	env.reactor.SetReady(env.ctx)
 	env.flush()
 
-	sagaAgg, err = env.sagaHandler.Load(env.ctx, saga.AggregateID(sagaID))
+	sagaAgg, err = env.sagaHandler.Load(env.ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
-	assert.Equal(t, saga.PendingExit, sagaAgg.Status)
+	assert.Equal(t, bracket.PendingExit, sagaAgg.Status)
 	assert.NotEmpty(t, sagaAgg.TakeProfitOrderID)
 	assert.NotEmpty(t, sagaAgg.StopLossOrderID)
 }
@@ -312,9 +312,9 @@ func TestReactor_Recovery_EntryCancelledDuringReplay(t *testing.T) {
 	entryOrderID := placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1500000, 100)
 	env.pub.events = nil
 
-	// Start the saga.
+	// Start the bracket.
 	sagaID := "recovery-cancel-1"
-	startCmd := saga.StartSaga{
+	startCmd := bracket.StartSaga{
 		SagaID:          sagaID,
 		Symbol:          "AAPL",
 		EntrySide:       orderbookv1.Side_SIDE_BUY,
@@ -324,8 +324,8 @@ func TestReactor_Recovery_EntryCancelledDuringReplay(t *testing.T) {
 		StopLossPrice:   1450000,
 		EntryOrderID:    entryOrderID,
 	}
-	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
-		return saga.ExecuteStartSaga(s, startCmd)
+	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
+		return bracket.ExecuteStartSaga(s, startCmd)
 	})
 	require.NoError(t, err)
 	env.flush()
@@ -339,17 +339,17 @@ func TestReactor_Recovery_EntryCancelledDuringReplay(t *testing.T) {
 	env.flush()
 
 	// Saga should still be PendingEntry (side-effect suppressed during replay).
-	sagaAgg, err := env.sagaHandler.Load(env.ctx, saga.AggregateID(sagaID))
+	sagaAgg, err := env.sagaHandler.Load(env.ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
-	assert.Equal(t, saga.PendingEntry, sagaAgg.Status)
+	assert.Equal(t, bracket.PendingEntry, sagaAgg.Status)
 
 	// SetReady triggers recovery — should record SagaFailed.
 	env.reactor.SetReady(env.ctx)
 	env.flush()
 
-	sagaAgg, err = env.sagaHandler.Load(env.ctx, saga.AggregateID(sagaID))
+	sagaAgg, err = env.sagaHandler.Load(env.ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
-	assert.Equal(t, saga.Failed, sagaAgg.Status)
+	assert.Equal(t, bracket.Failed, sagaAgg.Status)
 }
 
 func TestReactor_Recovery_ExitFilledDuringReplay(t *testing.T) {
@@ -362,7 +362,7 @@ func TestReactor_Recovery_ExitFilledDuringReplay(t *testing.T) {
 	entryOrderID := placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1500000, 100)
 
 	sagaID := "recovery-exit-fill-1"
-	startCmd := saga.StartSaga{
+	startCmd := bracket.StartSaga{
 		SagaID:          sagaID,
 		Symbol:          "AAPL",
 		EntrySide:       orderbookv1.Side_SIDE_BUY,
@@ -372,22 +372,22 @@ func TestReactor_Recovery_ExitFilledDuringReplay(t *testing.T) {
 		StopLossPrice:   1450000,
 		EntryOrderID:    entryOrderID,
 	}
-	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
-		return saga.ExecuteStartSaga(s, startCmd)
+	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
+		return bracket.ExecuteStartSaga(s, startCmd)
 	})
 	require.NoError(t, err)
 	env.flush()
 
-	sagaAgg, err := env.sagaHandler.Load(env.ctx, saga.AggregateID(sagaID))
+	sagaAgg, err := env.sagaHandler.Load(env.ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
-	require.Equal(t, saga.PendingExit, sagaAgg.Status)
+	require.Equal(t, bracket.PendingExit, sagaAgg.Status)
 
 	// Fill the take-profit exit order (don't flush to the ready reactor).
 	placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1550000, 100)
 	env.pub.events = nil
 
 	// Phase 2: Create a fresh not-ready reactor and replay all events from the store.
-	reactor2 := saga.NewReactor(env.sagaHandler, env.obHandler, slog.Default())
+	reactor2 := bracket.NewReactor(env.sagaHandler, env.obHandler, slog.Default())
 
 	allRaw, err := env.store.LoadAll(env.ctx)
 	require.NoError(t, err)
@@ -405,9 +405,9 @@ func TestReactor_Recovery_ExitFilledDuringReplay(t *testing.T) {
 	// SetReady triggers recovery — should cancel sibling and record ExitFilled.
 	reactor2.SetReady(env.ctx)
 
-	sagaAgg, err = env.sagaHandler.Load(env.ctx, saga.AggregateID(sagaID))
+	sagaAgg, err = env.sagaHandler.Load(env.ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
-	assert.Equal(t, saga.Completed, sagaAgg.Status)
+	assert.Equal(t, bracket.Completed, sagaAgg.Status)
 }
 
 // failingStore wraps a store and fails Append calls for specific event types.
@@ -440,11 +440,11 @@ func TestReactor_Retry_RecordExitFilledFailure(t *testing.T) {
 		return orderbook.NewOrderBook(id)
 	}, slog.Default()).WithPublisher(pub)
 
-	sagaHandler := es.NewHandler(fStore, registry, func(id string) *saga.BracketSaga {
-		return saga.NewBracketSaga(id)
+	sagaHandler := es.NewHandler(fStore, registry, func(id string) *bracket.BracketSaga {
+		return bracket.NewBracketSaga(id)
 	}, slog.Default()).WithPublisher(pub)
 
-	reactor := saga.NewReactor(sagaHandler, obHandler, slog.Default())
+	reactor := bracket.NewReactor(sagaHandler, obHandler, slog.Default())
 	reactor.SetReady(ctx)
 
 	env := &reactorTestEnv{
@@ -459,20 +459,20 @@ func TestReactor_Retry_RecordExitFilledFailure(t *testing.T) {
 	entryOrderID := placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1500000, 100)
 
 	sagaID := "retry-exit-1"
-	startCmd := saga.StartSaga{
+	startCmd := bracket.StartSaga{
 		SagaID: sagaID, Symbol: "AAPL",
 		EntrySide: orderbookv1.Side_SIDE_BUY, EntryPrice: 1500000, EntryQty: 100,
 		TakeProfitPrice: 1550000, StopLossPrice: 1450000, EntryOrderID: entryOrderID,
 	}
-	err := sagaHandler.Handle(ctx, startCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
-		return saga.ExecuteStartSaga(s, startCmd)
+	err := sagaHandler.Handle(ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
+		return bracket.ExecuteStartSaga(s, startCmd)
 	})
 	require.NoError(t, err)
 	env.flush()
 
-	sagaAgg, err := sagaHandler.Load(ctx, saga.AggregateID(sagaID))
+	sagaAgg, err := sagaHandler.Load(ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
-	require.Equal(t, saga.PendingExit, sagaAgg.Status)
+	require.Equal(t, bracket.PendingExit, sagaAgg.Status)
 
 	// Make ExitFilled fail once — the reactor will emit SagaActionFailed,
 	// then retry successfully in the same flush cycle.
@@ -485,12 +485,12 @@ func TestReactor_Retry_RecordExitFilledFailure(t *testing.T) {
 	env.flush()
 
 	// Verify saga completed (retry succeeded after transient failure).
-	sagaAgg, err = sagaHandler.Load(ctx, saga.AggregateID(sagaID))
+	sagaAgg, err = sagaHandler.Load(ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
-	assert.Equal(t, saga.Completed, sagaAgg.Status)
+	assert.Equal(t, bracket.Completed, sagaAgg.Status)
 
 	// Verify that SagaActionFailed appears in the event stream (retry happened).
-	raw, err := realStore.Load(ctx, saga.AggregateID(sagaID))
+	raw, err := realStore.Load(ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
 	var types []string
 	for _, r := range raw {
@@ -515,11 +515,11 @@ func TestReactor_Retry_MaxRetriesExceeded(t *testing.T) {
 		return orderbook.NewOrderBook(id)
 	}, slog.Default()).WithPublisher(pub)
 
-	sagaHandler := es.NewHandler(fStore, registry, func(id string) *saga.BracketSaga {
-		return saga.NewBracketSaga(id)
+	sagaHandler := es.NewHandler(fStore, registry, func(id string) *bracket.BracketSaga {
+		return bracket.NewBracketSaga(id)
 	}, slog.Default()).WithPublisher(pub)
 
-	reactor := saga.NewReactor(sagaHandler, obHandler, slog.Default())
+	reactor := bracket.NewReactor(sagaHandler, obHandler, slog.Default())
 	reactor.SetReady(ctx)
 
 	env := &reactorTestEnv{
@@ -534,13 +534,13 @@ func TestReactor_Retry_MaxRetriesExceeded(t *testing.T) {
 	entryOrderID := placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1500000, 100)
 
 	sagaID := "retry-max-1"
-	startCmd := saga.StartSaga{
+	startCmd := bracket.StartSaga{
 		SagaID: sagaID, Symbol: "AAPL",
 		EntrySide: orderbookv1.Side_SIDE_BUY, EntryPrice: 1500000, EntryQty: 100,
 		TakeProfitPrice: 1550000, StopLossPrice: 1450000, EntryOrderID: entryOrderID,
 	}
-	err := sagaHandler.Handle(ctx, startCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
-		return saga.ExecuteStartSaga(s, startCmd)
+	err := sagaHandler.Handle(ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
+		return bracket.ExecuteStartSaga(s, startCmd)
 	})
 	require.NoError(t, err)
 	env.flush()
@@ -554,13 +554,13 @@ func TestReactor_Retry_MaxRetriesExceeded(t *testing.T) {
 	placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1550000, 100)
 
 	// Flush repeatedly until retries are exhausted.
-	for i := 0; i < saga.MaxActionAttempts+1; i++ {
+	for i := 0; i < bracket.MaxActionAttempts+1; i++ {
 		env.flush()
 	}
 
-	sagaAgg, err := sagaHandler.Load(ctx, saga.AggregateID(sagaID))
+	sagaAgg, err := sagaHandler.Load(ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
-	assert.Equal(t, saga.Failed, sagaAgg.Status)
+	assert.Equal(t, bracket.Failed, sagaAgg.Status)
 }
 
 func TestReactor_ExitCancelTransientFailure_Retries(t *testing.T) {
@@ -574,11 +574,11 @@ func TestReactor_ExitCancelTransientFailure_Retries(t *testing.T) {
 		return orderbook.NewOrderBook(id)
 	}, slog.Default()).WithPublisher(pub)
 
-	sagaHandler := es.NewHandler(realStore, registry, func(id string) *saga.BracketSaga {
-		return saga.NewBracketSaga(id)
+	sagaHandler := es.NewHandler(realStore, registry, func(id string) *bracket.BracketSaga {
+		return bracket.NewBracketSaga(id)
 	}, slog.Default()).WithPublisher(pub)
 
-	reactor := saga.NewReactor(sagaHandler, obHandler, slog.Default())
+	reactor := bracket.NewReactor(sagaHandler, obHandler, slog.Default())
 	reactor.SetReady(ctx)
 
 	env := &reactorTestEnv{
@@ -593,18 +593,18 @@ func TestReactor_ExitCancelTransientFailure_Retries(t *testing.T) {
 	entryOrderID := placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1500000, 100)
 
 	sagaID := "cancel-transient-1"
-	startCmd := saga.StartSaga{
+	startCmd := bracket.StartSaga{
 		SagaID: sagaID, Symbol: "AAPL",
 		EntrySide: orderbookv1.Side_SIDE_BUY, EntryPrice: 1500000, EntryQty: 100,
 		TakeProfitPrice: 1550000, StopLossPrice: 1450000, EntryOrderID: entryOrderID,
 	}
-	err := sagaHandler.Handle(ctx, startCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
-		return saga.ExecuteStartSaga(s, startCmd)
+	err := sagaHandler.Handle(ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
+		return bracket.ExecuteStartSaga(s, startCmd)
 	})
 	require.NoError(t, err)
 	env.flush()
 
-	require.Equal(t, saga.PendingExit, mustLoadSaga(t, sagaHandler, ctx, sagaID).Status)
+	require.Equal(t, bracket.PendingExit, mustLoadSaga(t, sagaHandler, ctx, sagaID).Status)
 
 	// Make OrderCancelled fail once — cancel of sibling will fail transiently.
 	obFail.mu.Lock()
@@ -616,10 +616,10 @@ func TestReactor_ExitCancelTransientFailure_Retries(t *testing.T) {
 	env.flush()
 
 	// Saga should complete after retry.
-	assert.Equal(t, saga.Completed, mustLoadSaga(t, sagaHandler, ctx, sagaID).Status)
+	assert.Equal(t, bracket.Completed, mustLoadSaga(t, sagaHandler, ctx, sagaID).Status)
 
 	// Verify SagaActionFailed appears in event stream.
-	raw, err := realStore.Load(ctx, saga.AggregateID(sagaID))
+	raw, err := realStore.Load(ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
 	types := eventTypes(t, registry, raw)
 	assert.Contains(t, types, "SagaActionFailed")
@@ -636,19 +636,19 @@ func TestReactor_ExitCancelOrderGone_Proceeds(t *testing.T) {
 	entryOrderID := placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1500000, 100)
 
 	sagaID := "cancel-gone-1"
-	startCmd := saga.StartSaga{
+	startCmd := bracket.StartSaga{
 		SagaID: sagaID, Symbol: "AAPL",
 		EntrySide: orderbookv1.Side_SIDE_BUY, EntryPrice: 1500000, EntryQty: 100,
 		TakeProfitPrice: 1550000, StopLossPrice: 1450000, EntryOrderID: entryOrderID,
 	}
-	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
-		return saga.ExecuteStartSaga(s, startCmd)
+	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
+		return bracket.ExecuteStartSaga(s, startCmd)
 	})
 	require.NoError(t, err)
 	env.flush()
 
 	sagaAgg := mustLoadSaga(t, env.sagaHandler, env.ctx, sagaID)
-	require.Equal(t, saga.PendingExit, sagaAgg.Status)
+	require.Equal(t, bracket.PendingExit, sagaAgg.Status)
 
 	// Fill the TP exit.
 	placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1550000, 100)
@@ -663,7 +663,7 @@ func TestReactor_ExitCancelOrderGone_Proceeds(t *testing.T) {
 
 	// Saga should complete even though the sibling cancel returned
 	// ErrOrderNotFound/ErrNoRemainingQty.
-	assert.Equal(t, saga.Completed, mustLoadSaga(t, env.sagaHandler, env.ctx, sagaID).Status)
+	assert.Equal(t, bracket.Completed, mustLoadSaga(t, env.sagaHandler, env.ctx, sagaID).Status)
 }
 
 func TestReactor_HandleEvents_ReturnsError(t *testing.T) {
@@ -677,11 +677,11 @@ func TestReactor_HandleEvents_ReturnsError(t *testing.T) {
 		return orderbook.NewOrderBook(id)
 	}, slog.Default()).WithPublisher(pub)
 
-	sagaHandler := es.NewHandler(fStore, registry, func(id string) *saga.BracketSaga {
-		return saga.NewBracketSaga(id)
+	sagaHandler := es.NewHandler(fStore, registry, func(id string) *bracket.BracketSaga {
+		return bracket.NewBracketSaga(id)
 	}, slog.Default()).WithPublisher(pub)
 
-	reactor := saga.NewReactor(sagaHandler, obHandler, slog.Default())
+	reactor := bracket.NewReactor(sagaHandler, obHandler, slog.Default())
 	reactor.SetReady(ctx)
 
 	env := &reactorTestEnv{
@@ -694,13 +694,13 @@ func TestReactor_HandleEvents_ReturnsError(t *testing.T) {
 	env.pub.events = nil
 
 	sagaID := "error-return-1"
-	startCmd := saga.StartSaga{
+	startCmd := bracket.StartSaga{
 		SagaID: sagaID, Symbol: "AAPL",
 		EntrySide: orderbookv1.Side_SIDE_BUY, EntryPrice: 1500000, EntryQty: 100,
 		TakeProfitPrice: 1550000, StopLossPrice: 1450000, EntryOrderID: entryOrderID,
 	}
-	err := sagaHandler.Handle(ctx, startCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
-		return saga.ExecuteStartSaga(s, startCmd)
+	err := sagaHandler.Handle(ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
+		return bracket.ExecuteStartSaga(s, startCmd)
 	})
 	require.NoError(t, err)
 	env.flush()
@@ -737,13 +737,13 @@ func TestReactor_DuplicateTradeIgnored(t *testing.T) {
 	entryOrderID := placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1500000, 200)
 
 	sagaID := "dedup-test-1"
-	startCmd := saga.StartSaga{
+	startCmd := bracket.StartSaga{
 		SagaID: sagaID, Symbol: "AAPL",
 		EntrySide: orderbookv1.Side_SIDE_BUY, EntryPrice: 1500000, EntryQty: 200,
 		TakeProfitPrice: 1550000, StopLossPrice: 1450000, EntryOrderID: entryOrderID,
 	}
-	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
-		return saga.ExecuteStartSaga(s, startCmd)
+	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
+		return bracket.ExecuteStartSaga(s, startCmd)
 	})
 	require.NoError(t, err)
 
@@ -762,10 +762,10 @@ func TestReactor_DuplicateTradeIgnored(t *testing.T) {
 
 	// Saga should be PendingExit (not double-triggered).
 	sagaAgg := mustLoadSaga(t, env.sagaHandler, env.ctx, sagaID)
-	assert.Equal(t, saga.PendingExit, sagaAgg.Status)
+	assert.Equal(t, bracket.PendingExit, sagaAgg.Status)
 
 	// Only one EntryFilled event should exist.
-	raw, err := env.store.Load(env.ctx, saga.AggregateID(sagaID))
+	raw, err := env.store.Load(env.ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
 	types := eventTypes(t, env.registry, raw)
 	count := 0
@@ -790,13 +790,13 @@ func TestReactor_Recovery_MissedFillDetected(t *testing.T) {
 	env.pub.events = nil
 
 	sagaID := "missed-fill-1"
-	startCmd := saga.StartSaga{
+	startCmd := bracket.StartSaga{
 		SagaID: sagaID, Symbol: "AAPL",
 		EntrySide: orderbookv1.Side_SIDE_BUY, EntryPrice: 1500000, EntryQty: 100,
 		TakeProfitPrice: 1550000, StopLossPrice: 1450000, EntryOrderID: entryOrderID,
 	}
-	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
-		return saga.ExecuteStartSaga(s, startCmd)
+	err := env.sagaHandler.Handle(env.ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
+		return bracket.ExecuteStartSaga(s, startCmd)
 	})
 	require.NoError(t, err)
 
@@ -805,7 +805,7 @@ func TestReactor_Recovery_MissedFillDetected(t *testing.T) {
 
 	// Saga should be PendingEntry (reactor doesn't know about the fill).
 	sagaAgg := mustLoadSaga(t, env.sagaHandler, env.ctx, sagaID)
-	require.Equal(t, saga.PendingEntry, sagaAgg.Status)
+	require.Equal(t, bracket.PendingEntry, sagaAgg.Status)
 
 	// SetReady triggers recovery — should detect fill from orderbook.
 	env.reactor.SetReady(env.ctx)
@@ -813,14 +813,14 @@ func TestReactor_Recovery_MissedFillDetected(t *testing.T) {
 
 	// Saga should now be PendingExit with exit orders placed.
 	sagaAgg = mustLoadSaga(t, env.sagaHandler, env.ctx, sagaID)
-	assert.Equal(t, saga.PendingExit, sagaAgg.Status)
+	assert.Equal(t, bracket.PendingExit, sagaAgg.Status)
 	assert.NotEmpty(t, sagaAgg.TakeProfitOrderID)
 	assert.NotEmpty(t, sagaAgg.StopLossOrderID)
 }
 
-func mustLoadSaga(t *testing.T, handler *es.Handler[*saga.BracketSaga], ctx context.Context, sagaID string) *saga.BracketSaga {
+func mustLoadSaga(t *testing.T, handler *es.Handler[*bracket.BracketSaga], ctx context.Context, sagaID string) *bracket.BracketSaga {
 	t.Helper()
-	s, err := handler.Load(ctx, saga.AggregateID(sagaID))
+	s, err := handler.Load(ctx, bracket.AggregateID(sagaID))
 	require.NoError(t, err)
 	return s
 }
