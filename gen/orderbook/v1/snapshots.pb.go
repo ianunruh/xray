@@ -85,6 +85,7 @@ type OrderSnapshot struct {
 	OrderType         OrderType              `protobuf:"varint,7,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
 	TimeInForce       TimeInForce            `protobuf:"varint,8,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
 	StopPrice         int64                  `protobuf:"varint,9,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
+	AccountId         string                 `protobuf:"bytes,10,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -182,6 +183,13 @@ func (x *OrderSnapshot) GetStopPrice() int64 {
 	return 0
 }
 
+func (x *OrderSnapshot) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
 var File_orderbook_v1_snapshots_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_snapshots_proto_rawDesc = "" +
@@ -189,7 +197,7 @@ const file_orderbook_v1_snapshots_proto_rawDesc = "" +
 	"\x1corderbook/v1/snapshots.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"`\n" +
 	"\x11OrderBookSnapshot\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x123\n" +
-	"\x06orders\x18\x02 \x03(\v2\x1b.orderbook.v1.OrderSnapshotR\x06orders\"\x82\x03\n" +
+	"\x06orders\x18\x02 \x03(\v2\x1b.orderbook.v1.OrderSnapshotR\x06orders\"\xa1\x03\n" +
 	"\rOrderSnapshot\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +
@@ -201,7 +209,10 @@ const file_orderbook_v1_snapshots_proto_rawDesc = "" +
 	"order_type\x18\a \x01(\x0e2\x17.orderbook.v1.OrderTypeR\torderType\x12=\n" +
 	"\rtime_in_force\x18\b \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\x12\x1d\n" +
 	"\n" +
-	"stop_price\x18\t \x01(\x03R\tstopPriceB7Z5github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1b\x06proto3"
+	"stop_price\x18\t \x01(\x03R\tstopPrice\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\n" +
+	" \x01(\tR\taccountIdB7Z5github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1b\x06proto3"
 
 var (
 	file_orderbook_v1_snapshots_proto_rawDescOnce sync.Once

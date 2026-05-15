@@ -35,6 +35,7 @@ type PlaceOrder struct {
 	OrderType   OrderType
 	TimeInForce TimeInForce
 	OrderID     string
+	AccountID   string
 }
 
 func (c PlaceOrder) AggregateID() string {
@@ -89,7 +90,7 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 
 	// FOK pre-check: ensure enough liquidity before emitting any events.
 	if tif == FOK {
-		avail := AvailableQty(book, cmd.Side, cmd.Price, cmd.OrderType == Market)
+		avail := AvailableQty(book, cmd.Side, cmd.Price, cmd.OrderType == Market, cmd.AccountID)
 		if avail < cmd.Quantity {
 			return nil, ErrInsufficientLiquidity
 		}
@@ -115,6 +116,7 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 			PlacedAt:    timestamppb.New(now),
 			OrderType:   OrderTypeToProto(cmd.OrderType),
 			TimeInForce: TimeInForceToProto(tif),
+			AccountId:   cmd.AccountID,
 		},
 	}
 
@@ -130,10 +132,10 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 	}
 
 	incoming := book.Orders[orderID]
-	events = matchAndAppend(book, incoming, events, now)
+	events, selfTradePrevented := matchAndAppend(book, incoming, events, now)
 
-	// IOC / Market: cancel any unfilled remainder.
-	if tif == IOC || cmd.OrderType == Market {
+	// Cancel unfilled remainder for IOC/Market, or when self-trade prevention fires.
+	if tif == IOC || cmd.OrderType == Market || selfTradePrevented {
 		events = cancelUnfilled(book, incoming, events, now)
 	}
 
@@ -142,9 +144,9 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 	return events, nil
 }
 
-func matchAndAppend(book *OrderBook, incoming *Order, events []es.Event, now time.Time) []es.Event {
-	tradeProtos := Match(book, incoming, now)
-	for _, trade := range tradeProtos {
+func matchAndAppend(book *OrderBook, incoming *Order, events []es.Event, now time.Time) ([]es.Event, bool) {
+	result := Match(book, incoming, now)
+	for _, trade := range result.Trades {
 		tradeEvt := es.Event{
 			AggregateID: book.AggregateID(),
 			Type:        EventTradeExecuted,
@@ -154,7 +156,10 @@ func matchAndAppend(book *OrderBook, incoming *Order, events []es.Event, now tim
 		book.Apply(tradeEvt)
 		events = append(events, tradeEvt)
 	}
-	return events
+	if result.SelfTradePrevented {
+		events = cancelUnfilled(book, incoming, events, now)
+	}
+	return events, result.SelfTradePrevented
 }
 
 func cancelUnfilled(book *OrderBook, order *Order, events []es.Event, now time.Time) []es.Event {
@@ -207,9 +212,10 @@ func triggerStops(book *OrderBook, events []es.Event, now time.Time) []es.Event 
 			events = append(events, triggerEvt)
 
 			activated := book.Orders[stopOrder.ID]
-			events = matchAndAppend(book, activated, events, now)
+			var stp bool
+			events, stp = matchAndAppend(book, activated, events, now)
 
-			if stopOrder.OrderType == StopMarket {
+			if stopOrder.OrderType == StopMarket || stp {
 				events = cancelUnfilled(book, activated, events, now)
 			}
 		}

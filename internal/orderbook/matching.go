@@ -9,23 +9,27 @@ import (
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 )
 
+type MatchResult struct {
+	Trades             []*orderbookv1.TradeExecuted
+	SelfTradePrevented bool
+}
+
 // Match runs price-time priority matching for the incoming order against the
 // resting orders on the book. It returns TradeExecuted events for each fill.
 // The incoming order's RemainingQty is decremented in place during matching.
-func Match(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.TradeExecuted {
-	var trades []*orderbookv1.TradeExecuted
-
+// If the incoming order would match against a resting order from the same
+// account (non-empty AccountID), matching stops and SelfTradePrevented is set.
+func Match(book *OrderBook, incoming *Order, now time.Time) MatchResult {
 	switch incoming.Side {
 	case Buy:
-		trades = matchBuy(book, incoming, now)
+		return matchBuy(book, incoming, now)
 	case Sell:
-		trades = matchSell(book, incoming, now)
+		return matchSell(book, incoming, now)
 	}
-
-	return trades
+	return MatchResult{}
 }
 
-func matchBuy(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.TradeExecuted {
+func matchBuy(book *OrderBook, incoming *Order, now time.Time) MatchResult {
 	var trades []*orderbookv1.TradeExecuted
 	remainingQty := incoming.RemainingQty
 
@@ -34,7 +38,10 @@ func matchBuy(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.Tr
 			break
 		}
 		if incoming.OrderType != Market && ask.Price > incoming.Price {
-			break // asks are sorted lowest first; no more matches possible
+			break
+		}
+		if incoming.AccountID != "" && ask.AccountID == incoming.AccountID {
+			return MatchResult{Trades: trades, SelfTradePrevented: true}
 		}
 
 		qty := min(remainingQty, ask.RemainingQty)
@@ -43,7 +50,7 @@ func matchBuy(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.Tr
 			BuyOrderId:  incoming.ID,
 			SellOrderId: ask.ID,
 			Symbol:      book.Symbol,
-			Price:       ask.Price, // trade at resting order's price
+			Price:       ask.Price,
 			Quantity:    qty,
 			ExecutedAt:  timestamppb.New(now),
 		})
@@ -51,10 +58,10 @@ func matchBuy(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.Tr
 		remainingQty -= qty
 	}
 
-	return trades
+	return MatchResult{Trades: trades}
 }
 
-func matchSell(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.TradeExecuted {
+func matchSell(book *OrderBook, incoming *Order, now time.Time) MatchResult {
 	var trades []*orderbookv1.TradeExecuted
 	remainingQty := incoming.RemainingQty
 
@@ -63,7 +70,10 @@ func matchSell(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.T
 			break
 		}
 		if incoming.OrderType != Market && bid.Price < incoming.Price {
-			break // bids are sorted highest first; no more matches possible
+			break
+		}
+		if incoming.AccountID != "" && bid.AccountID == incoming.AccountID {
+			return MatchResult{Trades: trades, SelfTradePrevented: true}
 		}
 
 		qty := min(remainingQty, bid.RemainingQty)
@@ -72,7 +82,7 @@ func matchSell(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.T
 			BuyOrderId:  bid.ID,
 			SellOrderId: incoming.ID,
 			Symbol:      book.Symbol,
-			Price:       bid.Price, // trade at resting order's price
+			Price:       bid.Price,
 			Quantity:    qty,
 			ExecutedAt:  timestamppb.New(now),
 		})
@@ -80,27 +90,33 @@ func matchSell(book *OrderBook, incoming *Order, now time.Time) []*orderbookv1.T
 		remainingQty -= qty
 	}
 
-	return trades
+	return MatchResult{Trades: trades}
 }
 
 // AvailableQty returns the total resting quantity available on the given side
 // at or better than the given price. For market orders (isMarket=true), all
 // resting quantity on the side is counted regardless of price.
-func AvailableQty(book *OrderBook, side Side, price int64, isMarket bool) int64 {
+// If excludeAccountID is non-empty, counting stops at the first resting order
+// from that account (mirroring cancel-incoming self-trade prevention).
+func AvailableQty(book *OrderBook, side Side, price int64, isMarket bool, excludeAccountID string) int64 {
 	var total int64
 	switch side {
 	case Buy:
-		// Buying: count asks at or below the price
 		for ask := range book.Asks.All() {
 			if !isMarket && ask.Price > price {
+				break
+			}
+			if excludeAccountID != "" && ask.AccountID == excludeAccountID {
 				break
 			}
 			total += ask.RemainingQty
 		}
 	case Sell:
-		// Selling: count bids at or above the price
 		for bid := range book.Bids.All() {
 			if !isMarket && bid.Price < price {
+				break
+			}
+			if excludeAccountID != "" && bid.AccountID == excludeAccountID {
 				break
 			}
 			total += bid.RemainingQty

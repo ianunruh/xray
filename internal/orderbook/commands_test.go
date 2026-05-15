@@ -867,6 +867,158 @@ func TestCloseMarket_DayStopOrders(t *testing.T) {
 	assert.Empty(t, book.Orders)
 }
 
+func TestPlaceOrder_SelfTradePrevention_CancelsIncoming(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	// Place a resting sell from acct-1.
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:    "AAPL",
+		Side:      orderbook.Sell,
+		Price:     1500000,
+		Quantity:  100,
+		AccountID: "acct-1",
+	})
+	require.NoError(t, err)
+
+	// Incoming buy from the same account — should be cancelled.
+	events, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:    "AAPL",
+		Side:      orderbook.Buy,
+		Price:     1500000,
+		Quantity:  50,
+		AccountID: "acct-1",
+	})
+	require.NoError(t, err)
+
+	types := eventTypes(events)
+	assert.Equal(t, []string{"OrderPlaced", "OrderCancelled"}, types)
+}
+
+func TestPlaceOrder_SelfTradePrevention_PartialFillBeforeSTP(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	// Resting sell from acct-2 at $149.
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:    "AAPL",
+		Side:      orderbook.Sell,
+		Price:     1490000,
+		Quantity:  30,
+		AccountID: "acct-2",
+	})
+	require.NoError(t, err)
+
+	// Resting sell from acct-1 at $150.
+	_, err = orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:    "AAPL",
+		Side:      orderbook.Sell,
+		Price:     1500000,
+		Quantity:  50,
+		AccountID: "acct-1",
+	})
+	require.NoError(t, err)
+
+	// Buy from acct-1 — fills 30 against acct-2, then STP cancels rest.
+	events, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:    "AAPL",
+		Side:      orderbook.Buy,
+		Price:     1510000,
+		Quantity:  100,
+		AccountID: "acct-1",
+	})
+	require.NoError(t, err)
+
+	types := eventTypes(events)
+	assert.Equal(t, []string{"OrderPlaced", "TradeExecuted", "OrderCancelled"}, types)
+
+	trade := events[1].Data.(*orderbookv1.TradeExecuted)
+	assert.Equal(t, int64(30), trade.Quantity)
+}
+
+func TestPlaceOrder_SelfTradePrevention_FOK_Rejected(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	// Resting sell from acct-1 — only liquidity on the book.
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:    "AAPL",
+		Side:      orderbook.Sell,
+		Price:     1500000,
+		Quantity:  100,
+		AccountID: "acct-1",
+	})
+	require.NoError(t, err)
+
+	// FOK buy from acct-1 — AvailableQty should exclude same-account, so 0 available.
+	_, err = orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        orderbook.Buy,
+		Price:       1500000,
+		Quantity:    100,
+		TimeInForce: orderbook.FOK,
+		AccountID:   "acct-1",
+	})
+	assert.ErrorIs(t, err, orderbook.ErrInsufficientLiquidity)
+}
+
+func TestPlaceOrder_SelfTradePrevention_RestingOrderUntouched(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	// Place resting sell from acct-1.
+	sellEvents, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:    "AAPL",
+		Side:      orderbook.Sell,
+		Price:     1500000,
+		Quantity:  100,
+		AccountID: "acct-1",
+	})
+	require.NoError(t, err)
+	sellOrderID := sellEvents[0].Data.(*orderbookv1.OrderPlaced).OrderId
+
+	// Incoming buy from same account — cancelled.
+	_, err = orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:    "AAPL",
+		Side:      orderbook.Buy,
+		Price:     1500000,
+		Quantity:  50,
+		AccountID: "acct-1",
+	})
+	require.NoError(t, err)
+
+	// Resting sell should still be on the book with original quantity.
+	order, ok := book.Orders[sellOrderID]
+	require.True(t, ok, "resting order should still exist")
+	assert.Equal(t, int64(100), order.RemainingQty)
+}
+
+func TestPlaceOrder_SelfTradePrevention_EmptyAccountID(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	// Resting sell without account_id.
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:   "AAPL",
+		Side:     orderbook.Sell,
+		Price:    1500000,
+		Quantity: 100,
+	})
+	require.NoError(t, err)
+
+	// Buy without account_id — should match normally.
+	events, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:   "AAPL",
+		Side:     orderbook.Buy,
+		Price:    1500000,
+		Quantity: 100,
+	})
+	require.NoError(t, err)
+
+	types := eventTypes(events)
+	assert.Equal(t, []string{"OrderPlaced", "TradeExecuted"}, types)
+}
+
 func placeOrder(t *testing.T, handler *es.Handler[*orderbook.OrderBook], ctx context.Context, cmd orderbook.PlaceOrder) []es.Event {
 	t.Helper()
 	var produced []es.Event

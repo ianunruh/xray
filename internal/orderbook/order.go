@@ -33,6 +33,7 @@ const (
 // Order represents an order on the book.
 type Order struct {
 	ID           string
+	AccountID    string
 	Side         Side
 	Price        int64
 	StopPrice    int64

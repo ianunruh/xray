@@ -192,6 +192,7 @@ type OrderPlaced struct {
 	OrderType     OrderType              `protobuf:"varint,7,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
 	TimeInForce   TimeInForce            `protobuf:"varint,8,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
 	StopPrice     int64                  `protobuf:"varint,9,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
+	AccountId     string                 `protobuf:"bytes,10,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -287,6 +288,13 @@ func (x *OrderPlaced) GetStopPrice() int64 {
 		return x.StopPrice
 	}
 	return 0
+}
+
+func (x *OrderPlaced) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
 }
 
 type OrderCancelled struct {
@@ -989,7 +997,7 @@ var File_orderbook_v1_events_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"\x19orderbook/v1/events.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe9\x02\n" +
+	"\x19orderbook/v1/events.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x88\x03\n" +
 	"\vOrderPlaced\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12&\n" +
@@ -1001,7 +1009,10 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"order_type\x18\a \x01(\x0e2\x17.orderbook.v1.OrderTypeR\torderType\x12=\n" +
 	"\rtime_in_force\x18\b \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\x12\x1d\n" +
 	"\n" +
-	"stop_price\x18\t \x01(\x03R\tstopPrice\"C\n" +
+	"stop_price\x18\t \x01(\x03R\tstopPrice\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\n" +
+	" \x01(\tR\taccountId\"C\n" +
 	"\x0eOrderCancelled\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\"\xf7\x01\n" +

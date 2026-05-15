@@ -56,6 +56,7 @@ func (s *Server) PlaceOrder(ctx context.Context, req *connect.Request[orderbookv
 		Quantity:    msg.Quantity,
 		OrderType:   OrderTypeFromProto(msg.OrderType),
 		TimeInForce: tif,
+		AccountID:   msg.AccountId,
 	}
 
 	var produced []es.Event

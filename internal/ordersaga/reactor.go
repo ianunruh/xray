@@ -482,6 +482,7 @@ func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
 	quantity := state.quantity
 	orderType := state.orderType
 	timeInForce := state.timeInForce
+	accountID := state.accountID
 	r.mu.Unlock()
 
 	placeCmd := orderbook.PlaceOrder{
@@ -491,6 +492,7 @@ func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
 		Quantity:    quantity,
 		OrderType:   orderType,
 		TimeInForce: timeInForce,
+		AccountID:   accountID,
 	}
 
 	var orderID string

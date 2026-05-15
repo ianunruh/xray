@@ -38,6 +38,7 @@ message PlaceOrderRequest {
   OrderType order_type = 5;
   TimeInForce time_in_force = 6;
   int64 stop_price = 7;
+  string account_id = 8;
 }
 
 message PlaceOrderResponse {

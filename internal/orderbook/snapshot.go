@@ -17,6 +17,7 @@ func (ob *OrderBook) Snapshot() (proto.Message, error) {
 	for _, order := range ob.Orders {
 		snap.Orders = append(snap.Orders, &orderbookv1.OrderSnapshot{
 			OrderId:           order.ID,
+			AccountId:         order.AccountID,
 			Side:              SideToProto(order.Side),
 			Price:             order.Price,
 			StopPrice:         order.StopPrice,
@@ -47,6 +48,7 @@ func (ob *OrderBook) RestoreSnapshot(msg proto.Message) error {
 	for _, os := range snap.Orders {
 		order := &Order{
 			ID:           os.OrderId,
+			AccountID:    os.AccountId,
 			Side:         SideFromProto(os.Side),
 			Price:        os.Price,
 			StopPrice:    os.StopPrice,

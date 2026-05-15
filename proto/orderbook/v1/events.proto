@@ -38,6 +38,7 @@ message OrderPlaced {
   OrderType order_type = 7;
   TimeInForce time_in_force = 8;
   int64 stop_price = 9;
+  string account_id = 10;
 }
 
 message OrderCancelled {
