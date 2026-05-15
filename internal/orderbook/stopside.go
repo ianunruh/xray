@@ -90,4 +90,3 @@ func shouldTrigger(order *Order, tradePrice int64) bool {
 	}
 	return false
 }
-

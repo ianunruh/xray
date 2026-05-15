@@ -167,5 +167,3 @@ func (ob *OrderBook) applyStopTriggered(data *orderbookv1.StopTriggered) {
 		ob.Asks.Insert(order)
 	}
 }
-
-

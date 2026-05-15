@@ -13,16 +13,16 @@ import (
 )
 
 var (
-	ErrInvalidPrice              = errors.New("price must be positive")
-	ErrInvalidQuantity           = errors.New("quantity must be positive")
-	ErrOrderNotFound             = errors.New("order not found")
-	ErrNoRemainingQty            = errors.New("order has no remaining quantity")
-	ErrMarketGTC                 = errors.New("market orders cannot use GTC time-in-force")
-	ErrInsufficientLiquidity     = errors.New("insufficient liquidity for FOK order")
-	ErrMarketRequiresZeroPrice   = errors.New("market orders must have zero price")
-	ErrStopRequiresStopPrice     = errors.New("stop orders require a positive stop price")
+	ErrInvalidPrice                = errors.New("price must be positive")
+	ErrInvalidQuantity             = errors.New("quantity must be positive")
+	ErrOrderNotFound               = errors.New("order not found")
+	ErrNoRemainingQty              = errors.New("order has no remaining quantity")
+	ErrMarketGTC                   = errors.New("market orders cannot use GTC time-in-force")
+	ErrInsufficientLiquidity       = errors.New("insufficient liquidity for FOK order")
+	ErrMarketRequiresZeroPrice     = errors.New("market orders must have zero price")
+	ErrStopRequiresStopPrice       = errors.New("stop orders require a positive stop price")
 	ErrStopMarketRequiresZeroPrice = errors.New("stop-market orders must have zero price")
-	ErrStopLimitRequiresPrice    = errors.New("stop-limit orders require a positive limit price")
+	ErrStopLimitRequiresPrice      = errors.New("stop-limit orders require a positive limit price")
 )
 
 // PlaceOrder is a command to place a new order on the book.

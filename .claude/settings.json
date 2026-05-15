@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "if echo \"$CLAUDE_FILE_PATHS\" | grep -q '\\.go$'; then echo \"$CLAUDE_FILE_PATHS\" | tr ':' '\\n' | grep '\\.go$' | xargs gofmt -w; fi"
+      }
+    ]
+  }
+}

@@ -19,10 +19,10 @@ const (
 )
 
 type ProjectionConsumer struct {
-	js          jetstream.JetStream
-	registry    *es.Registry
-	log         *slog.Logger
-	batchSize   int
+	js        jetstream.JetStream
+	registry  *es.Registry
+	log       *slog.Logger
+	batchSize int
 
 	ephemeral  []es.Projection
 	persistent []es.Projection

@@ -32,8 +32,8 @@ func depthPrice(price int64) int64 {
 // places for aggregation.
 type DepthProjection struct {
 	mu           sync.RWMutex
-	orders       map[string]*depthOrder       // orderID -> tracked order
-	pendingStops map[string]*depthOrder       // stop orders awaiting trigger
+	orders       map[string]*depthOrder           // orderID -> tracked order
+	pendingStops map[string]*depthOrder           // stop orders awaiting trigger
 	bids         map[string]map[int64]*depthLevel // symbol -> price -> level
 	asks         map[string]map[int64]*depthLevel // symbol -> price -> level
 }

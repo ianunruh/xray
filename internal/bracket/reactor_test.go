@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
-	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/bracket"
+	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/pkg/es"
 	"github.com/ianunruh/xray/pkg/es/memstore"
 )

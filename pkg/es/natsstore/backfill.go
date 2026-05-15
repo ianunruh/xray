@@ -51,7 +51,7 @@ func Backfill(ctx context.Context, poller es.GlobalEventPoller, js jetstream.Jet
 				Subject: Subject(raw.AggregateID, raw.Type),
 				Data:    raw.Data,
 				Header: nats.Header{
-					"Nats-Msg-Id":      {raw.AggregateID + ":" + strconv.Itoa(raw.Version)},
+					"Nats-Msg-Id":       {raw.AggregateID + ":" + strconv.Itoa(raw.Version)},
 					"Xray-Aggregate-Id": {raw.AggregateID},
 					"Xray-Event-Type":   {raw.Type},
 					"Xray-Version":      {strconv.Itoa(raw.Version)},
