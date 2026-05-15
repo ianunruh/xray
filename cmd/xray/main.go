@@ -23,6 +23,7 @@ import (
 	"github.com/ianunruh/xray/pkg/es"
 	"github.com/ianunruh/xray/pkg/es/natsstore"
 	"github.com/ianunruh/xray/pkg/es/pgstore"
+	"github.com/ianunruh/xray/web"
 )
 
 func main() {
@@ -156,7 +157,7 @@ func main() {
 	mux.Handle(bracketPath, bracketH)
 	portfolioPath, portfolioH := portfoliov1connect.NewPortfolioServiceHandler(portfolioSrv)
 	mux.Handle(portfolioPath, portfolioH)
-	mux.Handle("/", orderbook.WebHandler())
+	mux.Handle("/", web.Handler())
 
 	httpServer := &http.Server{
 		Addr:      listenAddr,
