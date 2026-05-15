@@ -18,11 +18,13 @@ var (
 	ErrInvalidQuantity = errors.New("quantity must be positive")
 )
 
-type PlaceOrderFunc func(ctx context.Context, req *portfoliov1.PortfolioPlaceOrderRequest) (sagaID string, err error)
-
 type PortfolioReader interface {
 	GetPortfolio(ctx context.Context, accountID string) (*portfoliov1.GetPortfolioResponse, error)
 }
+
+type PlaceOrderFunc func(ctx context.Context, req *portfoliov1.PortfolioPlaceOrderRequest) (sagaID string, err error)
+
+type GetOrderStatusFunc func(ctx context.Context, sagaID string) (*portfoliov1.GetOrderStatusResponse, error)
 
 type Server struct {
 	portfoliov1connect.UnimplementedPortfolioServiceHandler
@@ -30,14 +32,16 @@ type Server struct {
 	portfolioHandler *es.Handler[*Portfolio]
 	reader           PortfolioReader
 	placeOrder       PlaceOrderFunc
+	getOrderStatus   GetOrderStatusFunc
 	log              *slog.Logger
 }
 
-func NewServer(portfolioHandler *es.Handler[*Portfolio], reader PortfolioReader, placeOrder PlaceOrderFunc, log *slog.Logger) *Server {
+func NewServer(portfolioHandler *es.Handler[*Portfolio], reader PortfolioReader, placeOrder PlaceOrderFunc, getOrderStatus GetOrderStatusFunc, log *slog.Logger) *Server {
 	return &Server{
 		portfolioHandler: portfolioHandler,
 		reader:           reader,
 		placeOrder:       placeOrder,
+		getOrderStatus:   getOrderStatus,
 		log:              log,
 	}
 }
@@ -121,4 +125,19 @@ func (s *Server) PlaceOrder(ctx context.Context, req *connect.Request[portfoliov
 	return connect.NewResponse(&portfoliov1.PortfolioPlaceOrderResponse{
 		SagaId: sagaID,
 	}), nil
+}
+
+func (s *Server) GetOrderStatus(ctx context.Context, req *connect.Request[portfoliov1.GetOrderStatusRequest]) (*connect.Response[portfoliov1.GetOrderStatusResponse], error) {
+	sagaID := req.Msg.SagaId
+	if sagaID == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("saga_id is required"))
+	}
+
+	resp, err := s.getOrderStatus(ctx, sagaID)
+	if err != nil {
+		s.log.Error("GetOrderStatus failed", "saga_id", sagaID, "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	return connect.NewResponse(resp), nil
 }

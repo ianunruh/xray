@@ -69,7 +69,7 @@ buf curl --protocol grpc --http2-prior-knowledge \
 # Place a buy order
 buf curl --protocol grpc --http2-prior-knowledge \
   --schema proto http://localhost:8080/orderbook.v1.OrderBookService/PlaceOrder \
-  -d '{"symbol":"AAPL","side":"SIDE_BUY","price":"1506000","quantity":"50"}'
+  -d '{"symbol":"AAPL","side":"SIDE_BUY","price":"1490000","quantity":"50"}'
 
 # Get the order book
 buf curl --protocol grpc --http2-prior-knowledge \
@@ -94,12 +94,17 @@ buf curl --protocol grpc --http2-prior-knowledge \
 # Deposit cash into a portfolio
 buf curl --protocol grpc --http2-prior-knowledge \
   --schema proto http://localhost:8080/portfolio.v1.PortfolioService/Deposit \
-  -d '{"account_id":"acct-1","amount":"50000000"}'
+  -d '{"account_id":"acct-1","amount":"500000000"}'
 
 # Place an order through the portfolio (holds cash, places in order book, settles fills)
 buf curl --protocol grpc --http2-prior-knowledge \
   --schema proto http://localhost:8080/portfolio.v1.PortfolioService/PlaceOrder \
   -d '{"account_id":"acct-1","symbol":"AAPL","side":"SIDE_BUY","price":"1500000","quantity":"100","order_type":"ORDER_TYPE_LIMIT","time_in_force":"TIME_IN_FORCE_GTC"}'
+
+# Check order status (use saga_id from PlaceOrder response)
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/portfolio.v1.PortfolioService/GetOrderStatus \
+  -d '{"saga_id":"<saga_id from above>"}'
 
 # Get portfolio (balance, holdings, pending orders)
 buf curl --protocol grpc --http2-prior-knowledge \

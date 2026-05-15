@@ -12,6 +12,7 @@ service PortfolioService {
   rpc Withdraw(WithdrawRequest) returns (WithdrawResponse);
   rpc GetPortfolio(GetPortfolioRequest) returns (GetPortfolioResponse);
   rpc PlaceOrder(PortfolioPlaceOrderRequest) returns (PortfolioPlaceOrderResponse);
+  rpc GetOrderStatus(GetOrderStatusRequest) returns (GetOrderStatusResponse);
 }
 
 message DepositRequest {
@@ -79,4 +80,33 @@ message PortfolioPlaceOrderRequest {
 
 message PortfolioPlaceOrderResponse {
   string saga_id = 1;
+}
+
+message GetOrderStatusRequest {
+  string saga_id = 1;
+}
+
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_STARTED = 1;
+  ORDER_STATUS_CASH_HELD = 2;
+  ORDER_STATUS_ORDER_PLACED = 3;
+  ORDER_STATUS_COMPLETED = 4;
+  ORDER_STATUS_FAILED = 5;
+}
+
+message GetOrderStatusResponse {
+  string saga_id = 1;
+  string account_id = 2;
+  string symbol = 3;
+  orderbook.v1.Side side = 4;
+  int64 price = 5;
+  int64 quantity = 6;
+  orderbook.v1.OrderType order_type = 7;
+  orderbook.v1.TimeInForce time_in_force = 8;
+  OrderStatus status = 9;
+  int64 filled_quantity = 10;
+  int64 amount_held = 11;
+  int64 cash_settled = 12;
+  string order_id = 13;
 }

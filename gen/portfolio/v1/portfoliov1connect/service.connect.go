@@ -45,6 +45,9 @@ const (
 	// PortfolioServicePlaceOrderProcedure is the fully-qualified name of the PortfolioService's
 	// PlaceOrder RPC.
 	PortfolioServicePlaceOrderProcedure = "/portfolio.v1.PortfolioService/PlaceOrder"
+	// PortfolioServiceGetOrderStatusProcedure is the fully-qualified name of the PortfolioService's
+	// GetOrderStatus RPC.
+	PortfolioServiceGetOrderStatusProcedure = "/portfolio.v1.PortfolioService/GetOrderStatus"
 )
 
 // PortfolioServiceClient is a client for the portfolio.v1.PortfolioService service.
@@ -53,6 +56,7 @@ type PortfolioServiceClient interface {
 	Withdraw(context.Context, *connect.Request[v1.WithdrawRequest]) (*connect.Response[v1.WithdrawResponse], error)
 	GetPortfolio(context.Context, *connect.Request[v1.GetPortfolioRequest]) (*connect.Response[v1.GetPortfolioResponse], error)
 	PlaceOrder(context.Context, *connect.Request[v1.PortfolioPlaceOrderRequest]) (*connect.Response[v1.PortfolioPlaceOrderResponse], error)
+	GetOrderStatus(context.Context, *connect.Request[v1.GetOrderStatusRequest]) (*connect.Response[v1.GetOrderStatusResponse], error)
 }
 
 // NewPortfolioServiceClient constructs a client for the portfolio.v1.PortfolioService service. By
@@ -90,15 +94,22 @@ func NewPortfolioServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(portfolioServiceMethods.ByName("PlaceOrder")),
 			connect.WithClientOptions(opts...),
 		),
+		getOrderStatus: connect.NewClient[v1.GetOrderStatusRequest, v1.GetOrderStatusResponse](
+			httpClient,
+			baseURL+PortfolioServiceGetOrderStatusProcedure,
+			connect.WithSchema(portfolioServiceMethods.ByName("GetOrderStatus")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // portfolioServiceClient implements PortfolioServiceClient.
 type portfolioServiceClient struct {
-	deposit      *connect.Client[v1.DepositRequest, v1.DepositResponse]
-	withdraw     *connect.Client[v1.WithdrawRequest, v1.WithdrawResponse]
-	getPortfolio *connect.Client[v1.GetPortfolioRequest, v1.GetPortfolioResponse]
-	placeOrder   *connect.Client[v1.PortfolioPlaceOrderRequest, v1.PortfolioPlaceOrderResponse]
+	deposit        *connect.Client[v1.DepositRequest, v1.DepositResponse]
+	withdraw       *connect.Client[v1.WithdrawRequest, v1.WithdrawResponse]
+	getPortfolio   *connect.Client[v1.GetPortfolioRequest, v1.GetPortfolioResponse]
+	placeOrder     *connect.Client[v1.PortfolioPlaceOrderRequest, v1.PortfolioPlaceOrderResponse]
+	getOrderStatus *connect.Client[v1.GetOrderStatusRequest, v1.GetOrderStatusResponse]
 }
 
 // Deposit calls portfolio.v1.PortfolioService.Deposit.
@@ -121,12 +132,18 @@ func (c *portfolioServiceClient) PlaceOrder(ctx context.Context, req *connect.Re
 	return c.placeOrder.CallUnary(ctx, req)
 }
 
+// GetOrderStatus calls portfolio.v1.PortfolioService.GetOrderStatus.
+func (c *portfolioServiceClient) GetOrderStatus(ctx context.Context, req *connect.Request[v1.GetOrderStatusRequest]) (*connect.Response[v1.GetOrderStatusResponse], error) {
+	return c.getOrderStatus.CallUnary(ctx, req)
+}
+
 // PortfolioServiceHandler is an implementation of the portfolio.v1.PortfolioService service.
 type PortfolioServiceHandler interface {
 	Deposit(context.Context, *connect.Request[v1.DepositRequest]) (*connect.Response[v1.DepositResponse], error)
 	Withdraw(context.Context, *connect.Request[v1.WithdrawRequest]) (*connect.Response[v1.WithdrawResponse], error)
 	GetPortfolio(context.Context, *connect.Request[v1.GetPortfolioRequest]) (*connect.Response[v1.GetPortfolioResponse], error)
 	PlaceOrder(context.Context, *connect.Request[v1.PortfolioPlaceOrderRequest]) (*connect.Response[v1.PortfolioPlaceOrderResponse], error)
+	GetOrderStatus(context.Context, *connect.Request[v1.GetOrderStatusRequest]) (*connect.Response[v1.GetOrderStatusResponse], error)
 }
 
 // NewPortfolioServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -160,6 +177,12 @@ func NewPortfolioServiceHandler(svc PortfolioServiceHandler, opts ...connect.Han
 		connect.WithSchema(portfolioServiceMethods.ByName("PlaceOrder")),
 		connect.WithHandlerOptions(opts...),
 	)
+	portfolioServiceGetOrderStatusHandler := connect.NewUnaryHandler(
+		PortfolioServiceGetOrderStatusProcedure,
+		svc.GetOrderStatus,
+		connect.WithSchema(portfolioServiceMethods.ByName("GetOrderStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/portfolio.v1.PortfolioService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case PortfolioServiceDepositProcedure:
@@ -170,6 +193,8 @@ func NewPortfolioServiceHandler(svc PortfolioServiceHandler, opts ...connect.Han
 			portfolioServiceGetPortfolioHandler.ServeHTTP(w, r)
 		case PortfolioServicePlaceOrderProcedure:
 			portfolioServicePlaceOrderHandler.ServeHTTP(w, r)
+		case PortfolioServiceGetOrderStatusProcedure:
+			portfolioServiceGetOrderStatusHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -193,4 +218,8 @@ func (UnimplementedPortfolioServiceHandler) GetPortfolio(context.Context, *conne
 
 func (UnimplementedPortfolioServiceHandler) PlaceOrder(context.Context, *connect.Request[v1.PortfolioPlaceOrderRequest]) (*connect.Response[v1.PortfolioPlaceOrderResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portfolio.v1.PortfolioService.PlaceOrder is not implemented"))
+}
+
+func (UnimplementedPortfolioServiceHandler) GetOrderStatus(context.Context, *connect.Request[v1.GetOrderStatusRequest]) (*connect.Response[v1.GetOrderStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portfolio.v1.PortfolioService.GetOrderStatus is not implemented"))
 }
