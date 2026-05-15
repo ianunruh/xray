@@ -20,17 +20,23 @@ var (
 
 type PlaceOrderFunc func(ctx context.Context, req *portfoliov1.PortfolioPlaceOrderRequest) (sagaID string, err error)
 
+type PortfolioReader interface {
+	GetPortfolio(ctx context.Context, accountID string) (*portfoliov1.GetPortfolioResponse, error)
+}
+
 type Server struct {
 	portfoliov1connect.UnimplementedPortfolioServiceHandler
 
 	portfolioHandler *es.Handler[*Portfolio]
+	reader           PortfolioReader
 	placeOrder       PlaceOrderFunc
 	log              *slog.Logger
 }
 
-func NewServer(portfolioHandler *es.Handler[*Portfolio], placeOrder PlaceOrderFunc, log *slog.Logger) *Server {
+func NewServer(portfolioHandler *es.Handler[*Portfolio], reader PortfolioReader, placeOrder PlaceOrderFunc, log *slog.Logger) *Server {
 	return &Server{
 		portfolioHandler: portfolioHandler,
+		reader:           reader,
 		placeOrder:       placeOrder,
 		log:              log,
 	}
@@ -80,30 +86,11 @@ func (s *Server) Withdraw(ctx context.Context, req *connect.Request[portfoliov1.
 }
 
 func (s *Server) GetPortfolio(ctx context.Context, req *connect.Request[portfoliov1.GetPortfolioRequest]) (*connect.Response[portfoliov1.GetPortfolioResponse], error) {
-	p, err := s.portfolioHandler.Load(ctx, AggregateID(req.Msg.AccountId))
+	resp, err := s.reader.GetPortfolio(ctx, req.Msg.AccountId)
 	if err != nil {
 		s.log.Error("GetPortfolio failed", "account_id", req.Msg.AccountId, "error", err)
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-
-	resp := &portfoliov1.GetPortfolioResponse{
-		AccountId:   req.Msg.AccountId,
-		CashBalance: p.CashBalance,
-		CashHeld:    p.CashHeld,
-	}
-
-	for symbol, h := range p.Holdings {
-		holding := &portfoliov1.Holding{
-			Symbol:    symbol,
-			Quantity:  h.Quantity,
-			TotalCost: h.TotalCost,
-		}
-		if h.Quantity > 0 {
-			holding.AverageCost = h.TotalCost / h.Quantity
-		}
-		resp.Holdings = append(resp.Holdings, holding)
-	}
-
 	return connect.NewResponse(resp), nil
 }
 

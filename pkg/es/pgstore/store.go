@@ -28,6 +28,9 @@ var migration004SQL string
 //go:embed migrations/000005.sql
 var migration005SQL string
 
+//go:embed migrations/000006.sql
+var migration006SQL string
+
 const (
 	queryLoad = `SELECT id, aggregate_id, type, version, data, timestamp, position
 		FROM events
@@ -206,7 +209,7 @@ func (s *Store) SaveCheckpoint(ctx context.Context, name string, sequence uint64
 
 // Migrate runs the schema migrations. Call this on startup.
 func (s *Store) Migrate(ctx context.Context) error {
-	for _, sql := range []string{migration001SQL, migration002SQL, migration003SQL, migration004SQL, migration005SQL} {
+	for _, sql := range []string{migration001SQL, migration002SQL, migration003SQL, migration004SQL, migration005SQL, migration006SQL} {
 		if _, err := s.pool.Exec(ctx, sql); err != nil {
 			return err
 		}

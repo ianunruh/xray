@@ -4,6 +4,7 @@ package portfolio.v1;
 
 option go_package = "github.com/ianunruh/xray/gen/portfolio/v1;portfoliov1";
 
+import "google/protobuf/timestamp.proto";
 import "orderbook/v1/events.proto";
 
 service PortfolioService {
@@ -36,6 +37,7 @@ message GetPortfolioResponse {
   int64 cash_balance = 2;
   int64 cash_held = 3;
   repeated Holding holdings = 4;
+  repeated PendingOrder pending_orders = 5;
 }
 
 message Holding {
@@ -43,6 +45,26 @@ message Holding {
   int64 quantity = 2;
   int64 total_cost = 3;
   int64 average_cost = 4;
+}
+
+enum PendingOrderStatus {
+  PENDING_ORDER_STATUS_UNSPECIFIED = 0;
+  PENDING_ORDER_STATUS_STARTED = 1;
+  PENDING_ORDER_STATUS_CASH_HELD = 2;
+  PENDING_ORDER_STATUS_ORDER_PLACED = 3;
+}
+
+message PendingOrder {
+  string saga_id = 1;
+  string symbol = 2;
+  orderbook.v1.Side side = 3;
+  int64 price = 4;
+  int64 quantity = 5;
+  orderbook.v1.OrderType order_type = 6;
+  orderbook.v1.TimeInForce time_in_force = 7;
+  int64 filled_quantity = 8;
+  PendingOrderStatus status = 9;
+  google.protobuf.Timestamp started_at = 10;
 }
 
 message PortfolioPlaceOrderRequest {

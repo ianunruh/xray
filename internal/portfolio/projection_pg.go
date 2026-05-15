@@ -1,0 +1,192 @@
+package portfolio
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
+	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
+	"github.com/ianunruh/xray/pkg/es"
+)
+
+type PgPortfolioProjection struct {
+	pool *pgxpool.Pool
+}
+
+func NewPgPortfolioProjection(pool *pgxpool.Pool) *PgPortfolioProjection {
+	return &PgPortfolioProjection{pool: pool}
+}
+
+func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Event) error {
+	batch := &pgx.Batch{}
+
+	for _, evt := range events {
+		switch data := evt.Data.(type) {
+		case *portfoliov1.CashDeposited:
+			batch.Queue(
+				`INSERT INTO projection_portfolios (account_id, cash_balance)
+				VALUES ($1, $2)
+				ON CONFLICT (account_id) DO UPDATE SET cash_balance = projection_portfolios.cash_balance + $2`,
+				data.AccountId, data.Amount,
+			)
+		case *portfoliov1.CashWithdrawn:
+			batch.Queue(
+				`UPDATE projection_portfolios SET cash_balance = cash_balance - $1 WHERE account_id = $2`,
+				data.Amount, data.AccountId,
+			)
+		case *portfoliov1.CashHeld:
+			batch.Queue(
+				`UPDATE projection_portfolios SET cash_balance = cash_balance - $1, cash_held = cash_held + $1 WHERE account_id = $2`,
+				data.Amount, data.AccountId,
+			)
+		case *portfoliov1.CashReleased:
+			batch.Queue(
+				`UPDATE projection_portfolios SET cash_balance = cash_balance + $1, cash_held = cash_held - $1 WHERE account_id = $2`,
+				data.Amount, data.AccountId,
+			)
+		case *portfoliov1.CashSettled:
+			batch.Queue(
+				`UPDATE projection_portfolios SET cash_held = cash_held - $1 WHERE account_id = $2`,
+				data.Amount, data.AccountId,
+			)
+			batch.Queue(
+				`INSERT INTO projection_holdings (account_id, symbol, quantity, total_cost)
+				VALUES ($1, $2, $3, $4)
+				ON CONFLICT (account_id, symbol) DO UPDATE SET
+					quantity = projection_holdings.quantity + $3,
+					total_cost = projection_holdings.total_cost + $4`,
+				data.AccountId, data.Symbol, data.Quantity, data.CostPerShare*data.Quantity,
+			)
+		case *portfoliov1.SharesDebited:
+			batch.Queue(
+				`UPDATE projection_holdings
+				SET total_cost = CASE WHEN quantity > 0 THEN total_cost * (quantity - $1) / quantity ELSE 0 END,
+					quantity = quantity - $1
+				WHERE account_id = $2 AND symbol = $3`,
+				data.Quantity, data.AccountId, data.Symbol,
+			)
+		case *portfoliov1.OrderSagaStarted:
+			batch.Queue(
+				`INSERT INTO projection_pending_orders (saga_id, account_id, symbol, side, price, quantity, order_type, time_in_force, status, started_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				ON CONFLICT DO NOTHING`,
+				data.SagaId, data.AccountId, data.Symbol,
+				int32(data.Side), data.Price, data.Quantity,
+				int32(data.OrderType), int32(data.TimeInForce),
+				int32(portfoliov1.PendingOrderStatus_PENDING_ORDER_STATUS_STARTED),
+				data.StartedAt.AsTime(),
+			)
+		case *portfoliov1.OrderSagaCashHeld:
+			batch.Queue(
+				`UPDATE projection_pending_orders SET status = $1 WHERE saga_id = $2`,
+				int32(portfoliov1.PendingOrderStatus_PENDING_ORDER_STATUS_CASH_HELD), data.SagaId,
+			)
+		case *portfoliov1.OrderSagaOrderPlaced:
+			batch.Queue(
+				`UPDATE projection_pending_orders SET status = $1 WHERE saga_id = $2`,
+				int32(portfoliov1.PendingOrderStatus_PENDING_ORDER_STATUS_ORDER_PLACED), data.SagaId,
+			)
+		case *portfoliov1.OrderSagaFillRecorded:
+			batch.Queue(
+				`UPDATE projection_pending_orders SET filled_qty = filled_qty + $1 WHERE saga_id = $2`,
+				data.FillQuantity, data.SagaId,
+			)
+		case *portfoliov1.OrderSagaCompleted:
+			batch.Queue(`DELETE FROM projection_pending_orders WHERE saga_id = $1`, data.SagaId)
+		case *portfoliov1.OrderSagaFailed:
+			batch.Queue(`DELETE FROM projection_pending_orders WHERE saga_id = $1`, data.SagaId)
+		}
+	}
+
+	if batch.Len() == 0 {
+		return nil
+	}
+
+	br := p.pool.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for range batch.Len() {
+		if _, err := br.Exec(); err != nil {
+			return fmt.Errorf("portfolio projection: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID string) (*portfoliov1.GetPortfolioResponse, error) {
+	resp := &portfoliov1.GetPortfolioResponse{
+		AccountId: accountID,
+	}
+
+	err := p.pool.QueryRow(ctx,
+		`SELECT cash_balance, cash_held FROM projection_portfolios WHERE account_id = $1`,
+		accountID,
+	).Scan(&resp.CashBalance, &resp.CashHeld)
+	if err == pgx.ErrNoRows {
+		return resp, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query portfolio: %w", err)
+	}
+
+	rows, err := p.pool.Query(ctx,
+		`SELECT symbol, quantity, total_cost FROM projection_holdings WHERE account_id = $1 AND quantity > 0`,
+		accountID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query holdings: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		h := &portfoliov1.Holding{}
+		if err := rows.Scan(&h.Symbol, &h.Quantity, &h.TotalCost); err != nil {
+			return nil, fmt.Errorf("scan holding: %w", err)
+		}
+		if h.Quantity > 0 {
+			h.AverageCost = h.TotalCost / h.Quantity
+		}
+		resp.Holdings = append(resp.Holdings, h)
+	}
+
+	orderRows, err := p.pool.Query(ctx,
+		`SELECT saga_id, symbol, side, price, quantity, order_type, time_in_force, filled_qty, status, started_at
+		FROM projection_pending_orders WHERE account_id = $1`,
+		accountID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query pending orders: %w", err)
+	}
+	defer orderRows.Close()
+
+	for orderRows.Next() {
+		var (
+			o           portfoliov1.PendingOrder
+			side        int32
+			orderType   int32
+			timeInForce int32
+			status      int32
+			startedAt   time.Time
+		)
+		if err := orderRows.Scan(
+			&o.SagaId, &o.Symbol, &side, &o.Price, &o.Quantity,
+			&orderType, &timeInForce, &o.FilledQuantity, &status, &startedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan pending order: %w", err)
+		}
+		o.Side = orderbookv1.Side(side)
+		o.OrderType = orderbookv1.OrderType(orderType)
+		o.TimeInForce = orderbookv1.TimeInForce(timeInForce)
+		o.Status = portfoliov1.PendingOrderStatus(status)
+		o.StartedAt = timestamppb.New(startedAt)
+		resp.PendingOrders = append(resp.PendingOrders, &o)
+	}
+
+	return resp, nil
+}
