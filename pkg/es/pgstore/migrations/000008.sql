@@ -1,0 +1,1 @@
+ALTER TABLE projection_orders ADD COLUMN IF NOT EXISTS stop_price BIGINT NOT NULL DEFAULT 0;
