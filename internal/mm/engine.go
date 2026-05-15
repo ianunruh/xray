@@ -11,6 +11,7 @@ import (
 	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
+	"github.com/ianunruh/xray/internal/pricesource"
 )
 
 type trackedOrder struct {
@@ -30,7 +31,7 @@ type resolveResult struct {
 type Engine struct {
 	cfg      SymbolConfig
 	strategy Strategy
-	prices   PriceSource
+	prices   pricesource.PriceSource
 	obClient orderbookv1connect.OrderBookServiceClient
 	pfClient portfoliov1connect.PortfolioServiceClient
 	log      *slog.Logger
@@ -44,7 +45,7 @@ type Engine struct {
 func NewEngine(
 	cfg SymbolConfig,
 	strategy Strategy,
-	prices PriceSource,
+	prices pricesource.PriceSource,
 	obClient orderbookv1connect.OrderBookServiceClient,
 	pfClient portfoliov1connect.PortfolioServiceClient,
 	log *slog.Logger,

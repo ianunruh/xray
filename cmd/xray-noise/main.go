@@ -11,17 +11,16 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
-	"github.com/ianunruh/xray/internal/mm"
+	"github.com/ianunruh/xray/internal/noise"
 	"github.com/ianunruh/xray/internal/pricesource"
 )
 
 func main() {
-	configPath := flag.String("config", "mm.yaml", "Path to config file")
+	configPath := flag.String("config", "noise.yaml", "Path to config file")
 	flag.Parse()
 
-	cfg, err := mm.LoadConfig(*configPath)
+	cfg, err := noise.LoadConfig(*configPath)
 	if err != nil {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
@@ -35,7 +34,6 @@ func main() {
 	defer stop()
 
 	httpClient := &http.Client{}
-	obClient := orderbookv1connect.NewOrderBookServiceClient(httpClient, cfg.ServerURL)
 	pfClient := portfoliov1connect.NewPortfolioServiceClient(httpClient, cfg.ServerURL)
 
 	symbols := make([]string, len(cfg.Symbols))
@@ -43,24 +41,23 @@ func main() {
 		symbols[i] = s.Symbol
 	}
 
-	var priceSource pricesource.PriceSource
+	var prices pricesource.PriceSource
 	switch cfg.PriceSource {
 	case "polygon":
-		priceSource = pricesource.NewPolygonPriceSource(cfg.Polygon, cfg.PolygonKey, symbols, log)
+		prices = pricesource.NewPolygonPriceSource(cfg.Polygon, cfg.PolygonKey, symbols, log)
 	case "static":
-		priceSource = pricesource.NewStaticPriceSource(cfg.StaticPrices)
+		prices = pricesource.NewStaticPriceSource(cfg.StaticPrices)
 	}
 
 	go func() {
-		if err := priceSource.Start(ctx); err != nil && ctx.Err() == nil {
+		if err := prices.Start(ctx); err != nil && ctx.Err() == nil {
 			log.Error("price source stopped unexpectedly", "error", err)
 		}
 	}()
 
 	var wg sync.WaitGroup
 	for _, symCfg := range cfg.Symbols {
-		strategy := mm.NewSpreadStrategy(symCfg)
-		engine := mm.NewEngine(symCfg, strategy, priceSource, obClient, pfClient, log)
+		engine := noise.NewEngine(symCfg, prices, pfClient, log)
 
 		wg.Add(1)
 		go func() {
@@ -71,13 +68,13 @@ func main() {
 		}()
 	}
 
-	log.Info("market maker started",
+	log.Info("noise trader started",
 		"symbols", strings.Join(symbols, ","),
 		"server", cfg.ServerURL,
 		"price_source", cfg.PriceSource)
 
 	wg.Wait()
-	log.Info("market maker shutdown complete")
+	log.Info("noise trader shutdown complete")
 }
 
 func parseLogLevel(s string) slog.Level {

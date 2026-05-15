@@ -1,4 +1,4 @@
-package mm
+package pricesource
 
 import (
 	"context"
@@ -10,6 +10,11 @@ import (
 	"sync"
 	"time"
 )
+
+type PolygonConfig struct {
+	BaseURL      string        `yaml:"base_url"`
+	PollInterval time.Duration `yaml:"poll_interval"`
+}
 
 type polygonPrevResponse struct {
 	Results []struct {

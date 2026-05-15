@@ -1,0 +1,19 @@
+server_url: "http://localhost:8080"
+price_source: polygon
+
+symbols:
+  - symbol: AAPL
+    account_id: noise-AAPL
+    initial_deposit: 5000000000 # $500K
+    initial_shares: 500
+    order_interval: 3s
+    min_quantity: 1
+    max_quantity: 10
+    price_jitter: 50000 # $5.00 — limit orders land in [ref-$5, ref+$5]
+    market_order_pct: 0.3 # 30% market orders, 70% limit
+    max_position: 200
+    buy_bias: 0.5 # neutral — 50/50 buy/sell
+
+polygon:
+  base_url: "https://api.massive.com"
+  poll_interval: 60s

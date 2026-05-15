@@ -1,4 +1,4 @@
-package mm
+package pricesource
 
 import (
 	"context"

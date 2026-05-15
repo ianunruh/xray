@@ -14,9 +14,12 @@ Event-sourced order book — a learning project implementing a simple but realis
 - `internal/portfolio/` — Portfolio domain (cash/share tracking, order sagas)
 - `internal/ordersaga/` — Order saga reactor (portfolio-aware order orchestration)
 - `internal/bracket/` — Bracket order saga (entry + take-profit/stop-loss exits)
-- `internal/mm/` — Market maker (strategy, engine, price sources)
+- `internal/pricesource/` — Shared price source interface and implementations (Polygon, static)
+- `internal/mm/` — Market maker (strategy, engine)
+- `internal/noise/` — Noise trader (random order flow generator)
 - `cmd/xray/` — HTTP/gRPC server entry point
 - `cmd/xray-mm/` — Market maker binary
+- `cmd/xray-noise/` — Noise trader binary
 
 ## Key design decisions
 
@@ -176,6 +179,47 @@ polygon:
 - **Strategy interface**: `SpreadStrategy` is the first implementation; designed for adding other strategies (e.g., inventory-aware Avellaneda-Stoikov)
 
 See [docs/plans/market-maker.md](docs/plans/market-maker.md) for the full design document.
+
+## Noise Trader
+
+The `xray-noise` binary generates random order flow to simulate retail/noise trading activity. It places a mix of market and limit orders at random intervals, creating volume and book depth alongside the market maker.
+
+### Running
+
+```sh
+go run ./cmd/xray-noise -config noise.yaml
+```
+
+### Configuration
+
+```yaml
+server_url: "http://localhost:8080"
+price_source: "static"                # "polygon" or "static"
+static_prices:
+  AAPL: 1505000                       # $150.50
+
+symbols:
+  - symbol: AAPL
+    account_id: noise-AAPL
+    initial_deposit: 5000000000       # $500K
+    initial_shares: 500               # credited on first startup for sell-side orders
+    order_interval: 3s                # place an order every 3 seconds
+    min_quantity: 1                   # random quantity range
+    max_quantity: 10
+    price_jitter: 50000               # $5.00 — limit orders land in [ref-$5, ref+$5]
+    market_order_pct: 0.3             # 30% market orders, 70% limit
+    max_position: 200                 # hard inventory limit per side
+    buy_bias: 0.5                     # 0.0 = always sell, 1.0 = always buy, 0.5 = neutral
+```
+
+### How it works
+
+- **Fire-and-forget**: Places one random order per tick, no cancel/requote cycle
+- **Mixed order types**: Configurable fraction of market orders (IOC) vs limit orders (GTC)
+- **Symmetric jitter**: Limit order prices are `refPrice + uniform(-jitter, +jitter)`, so roughly half cross the spread (aggressive) and half rest on the book (passive)
+- **Position limits**: Flips to the opposite side when at max position, skips if both sides are limited
+- **Directional bias**: `buy_bias` controls the probability of buying vs selling (0.5 = neutral)
+- **Bootstrapping**: Same as the market maker — deposits initial cash and credits shares on first startup
 
 ## Development
 

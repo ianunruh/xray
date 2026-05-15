@@ -1,4 +1,4 @@
-package mm
+package noise
 
 import (
 	"errors"
@@ -12,27 +12,27 @@ import (
 )
 
 type Config struct {
-	ServerURL    string           `yaml:"server_url"`
-	PolygonKey   string           `yaml:"polygon_api_key"`
-	LogLevel     string           `yaml:"log_level"`
+	ServerURL    string                  `yaml:"server_url"`
+	PolygonKey   string                  `yaml:"polygon_api_key"`
+	LogLevel     string                  `yaml:"log_level"`
 	Symbols      []SymbolConfig          `yaml:"symbols"`
 	Polygon      pricesource.PolygonConfig `yaml:"polygon"`
-	PriceSource  string           `yaml:"price_source"`
-	StaticPrices map[string]int64 `yaml:"static_prices"`
+	PriceSource  string                  `yaml:"price_source"`
+	StaticPrices map[string]int64        `yaml:"static_prices"`
 }
 
 type SymbolConfig struct {
-	Symbol             string        `yaml:"symbol"`
-	AccountID          string        `yaml:"account_id"`
-	InitialDeposit     int64         `yaml:"initial_deposit"`
-	InitialShares      int64         `yaml:"initial_shares"`
-	Spread             int64         `yaml:"spread"`
-	Quantity           int64         `yaml:"quantity"`
-	Levels             int           `yaml:"levels"`
-	LevelSpacing       int64         `yaml:"level_spacing"`
-	MaxPosition        int64         `yaml:"max_position"`
-	RequoteInterval    time.Duration `yaml:"requote_interval"`
-	PriceMoveThreshold int64         `yaml:"price_move_threshold"`
+	Symbol         string        `yaml:"symbol"`
+	AccountID      string        `yaml:"account_id"`
+	InitialDeposit int64         `yaml:"initial_deposit"`
+	InitialShares  int64         `yaml:"initial_shares"`
+	OrderInterval  time.Duration `yaml:"order_interval"`
+	MinQuantity    int64         `yaml:"min_quantity"`
+	MaxQuantity    int64         `yaml:"max_quantity"`
+	PriceJitter    int64         `yaml:"price_jitter"`
+	MarketOrderPct float64       `yaml:"market_order_pct"`
+	MaxPosition    int64         `yaml:"max_position"`
+	BuyBias        float64       `yaml:"buy_bias"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -73,14 +73,17 @@ func (c *Config) applyDefaults() {
 	}
 	for i := range c.Symbols {
 		s := &c.Symbols[i]
-		if s.Levels == 0 {
-			s.Levels = 1
+		if s.OrderInterval == 0 {
+			s.OrderInterval = 5 * time.Second
 		}
-		if s.LevelSpacing == 0 {
-			s.LevelSpacing = s.Spread
+		if s.MinQuantity == 0 {
+			s.MinQuantity = 1
 		}
-		if s.RequoteInterval == 0 {
-			s.RequoteInterval = 30 * time.Second
+		if s.MaxQuantity == 0 {
+			s.MaxQuantity = s.MinQuantity
+		}
+		if s.BuyBias == 0 {
+			s.BuyBias = 0.5
 		}
 	}
 }
@@ -102,14 +105,14 @@ func (c *Config) validate() error {
 		if s.AccountID == "" {
 			return fmt.Errorf("symbols[%d]: account_id is required", i)
 		}
-		if s.Spread <= 0 {
-			return fmt.Errorf("symbols[%d]: spread must be positive", i)
-		}
-		if s.Quantity <= 0 {
-			return fmt.Errorf("symbols[%d]: quantity must be positive", i)
-		}
 		if s.MaxPosition <= 0 {
 			return fmt.Errorf("symbols[%d]: max_position must be positive", i)
+		}
+		if s.MarketOrderPct < 0 || s.MarketOrderPct > 1 {
+			return fmt.Errorf("symbols[%d]: market_order_pct must be between 0 and 1", i)
+		}
+		if s.BuyBias < 0 || s.BuyBias > 1 {
+			return fmt.Errorf("symbols[%d]: buy_bias must be between 0 and 1", i)
 		}
 		if c.PriceSource == "static" {
 			if _, ok := c.StaticPrices[s.Symbol]; !ok {
