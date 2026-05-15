@@ -24,6 +24,7 @@ type Config struct {
 type SymbolConfig struct {
 	Symbol         string        `yaml:"symbol"`
 	AccountID      string        `yaml:"account_id"`
+	Instances      int           `yaml:"instances"`
 	InitialDeposit int64         `yaml:"initial_deposit"`
 	InitialShares  int64         `yaml:"initial_shares"`
 	OrderInterval  time.Duration `yaml:"order_interval"`
@@ -45,6 +46,7 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 	cfg.applyDefaults()
+	cfg.expandInstances()
 	cfg.applyEnv()
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
@@ -73,6 +75,9 @@ func (c *Config) applyDefaults() {
 	}
 	for i := range c.Symbols {
 		s := &c.Symbols[i]
+		if s.Instances == 0 {
+			s.Instances = 1
+		}
 		if s.OrderInterval == 0 {
 			s.OrderInterval = 5 * time.Second
 		}
@@ -86,6 +91,23 @@ func (c *Config) applyDefaults() {
 			s.BuyBias = 0.5
 		}
 	}
+}
+
+func (c *Config) expandInstances() {
+	var expanded []SymbolConfig
+	for _, s := range c.Symbols {
+		if s.Instances <= 1 {
+			expanded = append(expanded, s)
+			continue
+		}
+		for i := 1; i <= s.Instances; i++ {
+			inst := s
+			inst.AccountID = fmt.Sprintf("%s-%d", s.AccountID, i)
+			inst.Instances = 1
+			expanded = append(expanded, inst)
+		}
+	}
+	c.Symbols = expanded
 }
 
 func (c *Config) validate() error {

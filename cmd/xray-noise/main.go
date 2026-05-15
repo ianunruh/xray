@@ -36,9 +36,13 @@ func main() {
 	httpClient := &http.Client{}
 	pfClient := portfoliov1connect.NewPortfolioServiceClient(httpClient, cfg.ServerURL)
 
-	symbols := make([]string, len(cfg.Symbols))
-	for i, s := range cfg.Symbols {
-		symbols[i] = s.Symbol
+	seen := make(map[string]bool)
+	var symbols []string
+	for _, s := range cfg.Symbols {
+		if !seen[s.Symbol] {
+			seen[s.Symbol] = true
+			symbols = append(symbols, s.Symbol)
+		}
 	}
 
 	var prices pricesource.PriceSource
