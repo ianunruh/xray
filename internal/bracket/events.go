@@ -7,11 +7,20 @@ import (
 	"github.com/ianunruh/xray/pkg/es"
 )
 
+const (
+	EventSagaStarted      = "SagaStarted"
+	EventEntryFilled      = "EntryFilled"
+	EventExitFilled       = "ExitFilled"
+	EventSagaCompleted    = "SagaCompleted"
+	EventSagaFailed       = "SagaFailed"
+	EventSagaActionFailed = "SagaActionFailed"
+)
+
 func RegisterEvents(r *es.Registry) {
-	r.Register("SagaStarted", func() proto.Message { return new(orderbookv1.SagaStarted) })
-	r.Register("EntryFilled", func() proto.Message { return new(orderbookv1.EntryFilled) })
-	r.Register("ExitFilled", func() proto.Message { return new(orderbookv1.ExitFilled) })
-	r.Register("SagaCompleted", func() proto.Message { return new(orderbookv1.SagaCompleted) })
-	r.Register("SagaFailed", func() proto.Message { return new(orderbookv1.SagaFailed) })
-	r.Register("SagaActionFailed", func() proto.Message { return new(orderbookv1.SagaActionFailed) })
+	r.Register(EventSagaStarted, func() proto.Message { return new(orderbookv1.SagaStarted) })
+	r.Register(EventEntryFilled, func() proto.Message { return new(orderbookv1.EntryFilled) })
+	r.Register(EventExitFilled, func() proto.Message { return new(orderbookv1.ExitFilled) })
+	r.Register(EventSagaCompleted, func() proto.Message { return new(orderbookv1.SagaCompleted) })
+	r.Register(EventSagaFailed, func() proto.Message { return new(orderbookv1.SagaFailed) })
+	r.Register(EventSagaActionFailed, func() proto.Message { return new(orderbookv1.SagaActionFailed) })
 }

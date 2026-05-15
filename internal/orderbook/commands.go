@@ -103,7 +103,7 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 
 	placedEvt := es.Event{
 		AggregateID: book.AggregateID(),
-		Type:        "OrderPlaced",
+		Type:        EventOrderPlaced,
 		Timestamp:   now,
 		Data: &orderbookv1.OrderPlaced{
 			OrderId:     orderID,
@@ -147,7 +147,7 @@ func matchAndAppend(book *OrderBook, incoming *Order, events []es.Event, now tim
 	for _, trade := range tradeProtos {
 		tradeEvt := es.Event{
 			AggregateID: book.AggregateID(),
-			Type:        "TradeExecuted",
+			Type:        EventTradeExecuted,
 			Timestamp:   now,
 			Data:        trade,
 		}
@@ -166,7 +166,7 @@ func cancelUnfilled(book *OrderBook, order *Order, events []es.Event, now time.T
 	}
 	cancelEvt := es.Event{
 		AggregateID: book.AggregateID(),
-		Type:        "OrderCancelled",
+		Type:        EventOrderCancelled,
 		Timestamp:   now,
 		Data: &orderbookv1.OrderCancelled{
 			OrderId: order.ID,
@@ -193,7 +193,7 @@ func triggerStops(book *OrderBook, events []es.Event, now time.Time) []es.Event 
 		for _, stopOrder := range triggered {
 			triggerEvt := es.Event{
 				AggregateID: book.AggregateID(),
-				Type:        "StopTriggered",
+				Type:        EventStopTriggered,
 				Timestamp:   now,
 				Data: &orderbookv1.StopTriggered{
 					OrderId:      stopOrder.ID,
@@ -259,7 +259,7 @@ func ExecuteCloseMarket(book *OrderBook, cmd CloseMarket) ([]es.Event, error) {
 
 	closedEvt := es.Event{
 		AggregateID: book.AggregateID(),
-		Type:        "MarketClosed",
+		Type:        EventMarketClosed,
 		Timestamp:   now,
 		Data: &orderbookv1.MarketClosed{
 			Symbol:   cmd.Symbol,
@@ -283,7 +283,7 @@ func ExecuteCloseMarket(book *OrderBook, cmd CloseMarket) ([]es.Event, error) {
 	for _, order := range dayOrders {
 		cancelEvt := es.Event{
 			AggregateID: book.AggregateID(),
-			Type:        "OrderCancelled",
+			Type:        EventOrderCancelled,
 			Timestamp:   now,
 			Data: &orderbookv1.OrderCancelled{
 				OrderId: order.ID,
@@ -309,7 +309,7 @@ func ExecuteCancelOrder(book *OrderBook, cmd CancelOrder) ([]es.Event, error) {
 
 	evt := es.Event{
 		AggregateID: book.AggregateID(),
-		Type:        "OrderCancelled",
+		Type:        EventOrderCancelled,
 		Timestamp:   time.Now(),
 		Data: &orderbookv1.OrderCancelled{
 			OrderId: cmd.OrderID,

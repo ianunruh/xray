@@ -44,7 +44,7 @@ func ExecuteStartOrderSaga(saga *OrderSaga, cmd StartOrderSaga) ([]es.Event, err
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: saga.AggregateID(),
-		Type:        "OrderSagaStarted",
+		Type:        EventOrderSagaStarted,
 		Timestamp:   now,
 		Data: &portfoliov1.OrderSagaStarted{
 			SagaId:      cmd.SagaID,
@@ -82,7 +82,7 @@ func ExecuteRecordCashHeld(saga *OrderSaga, cmd RecordCashHeld) ([]es.Event, err
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: saga.AggregateID(),
-		Type:        "OrderSagaCashHeld",
+		Type:        EventOrderSagaCashHeld,
 		Timestamp:   now,
 		Data: &portfoliov1.OrderSagaCashHeld{
 			SagaId:     cmd.SagaID,
@@ -114,7 +114,7 @@ func ExecuteRecordOrderPlaced(saga *OrderSaga, cmd RecordOrderPlaced) ([]es.Even
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: saga.AggregateID(),
-		Type:        "OrderSagaOrderPlaced",
+		Type:        EventOrderSagaOrderPlaced,
 		Timestamp:   now,
 		Data: &portfoliov1.OrderSagaOrderPlaced{
 			SagaId:   cmd.SagaID,
@@ -149,7 +149,7 @@ func ExecuteRecordFill(saga *OrderSaga, cmd RecordFill) ([]es.Event, error) {
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: saga.AggregateID(),
-		Type:        "OrderSagaFillRecorded",
+		Type:        EventOrderSagaFillRecorded,
 		Timestamp:   now,
 		Data: &portfoliov1.OrderSagaFillRecorded{
 			SagaId:       cmd.SagaID,
@@ -183,7 +183,7 @@ func ExecuteRecordCompleted(saga *OrderSaga, cmd RecordCompleted) ([]es.Event, e
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: saga.AggregateID(),
-		Type:        "OrderSagaCompleted",
+		Type:        EventOrderSagaCompleted,
 		Timestamp:   now,
 		Data: &portfoliov1.OrderSagaCompleted{
 			SagaId:      cmd.SagaID,
@@ -214,7 +214,7 @@ func ExecuteRecordFailed(saga *OrderSaga, cmd RecordFailed) ([]es.Event, error) 
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: saga.AggregateID(),
-		Type:        "OrderSagaFailed",
+		Type:        EventOrderSagaFailed,
 		Timestamp:   now,
 		Data: &portfoliov1.OrderSagaFailed{
 			SagaId:   cmd.SagaID,
@@ -249,7 +249,7 @@ func ExecuteRecordActionFailed(saga *OrderSaga, cmd RecordActionFailed) ([]es.Ev
 	if attempts >= MaxActionAttempts {
 		evt := es.Event{
 			AggregateID: saga.AggregateID(),
-			Type:        "OrderSagaFailed",
+			Type:        EventOrderSagaFailed,
 			Timestamp:   now,
 			Data: &portfoliov1.OrderSagaFailed{
 				SagaId:   cmd.SagaID,
@@ -265,7 +265,7 @@ func ExecuteRecordActionFailed(saga *OrderSaga, cmd RecordActionFailed) ([]es.Ev
 
 	evt := es.Event{
 		AggregateID: saga.AggregateID(),
-		Type:        "OrderSagaActionFailed",
+		Type:        EventOrderSagaActionFailed,
 		Timestamp:   now,
 		Data: &portfoliov1.OrderSagaActionFailed{
 			SagaId:   cmd.SagaID,

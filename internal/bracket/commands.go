@@ -43,7 +43,7 @@ func ExecuteStartSaga(saga *BracketSaga, cmd StartSaga) ([]es.Event, error) {
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: saga.AggregateID(),
-		Type:        "SagaStarted",
+		Type:        EventSagaStarted,
 		Timestamp:   now,
 		Data: &orderbookv1.SagaStarted{
 			SagaId:          cmd.SagaID,
@@ -82,7 +82,7 @@ func ExecuteRecordEntryFilled(saga *BracketSaga, cmd RecordEntryFilled) ([]es.Ev
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: saga.AggregateID(),
-		Type:        "EntryFilled",
+		Type:        EventEntryFilled,
 		Timestamp:   now,
 		Data: &orderbookv1.EntryFilled{
 			SagaId:            cmd.SagaID,
@@ -116,7 +116,7 @@ func ExecuteRecordExitFilled(saga *BracketSaga, cmd RecordExitFilled) ([]es.Even
 	now := time.Now()
 	exitEvt := es.Event{
 		AggregateID: saga.AggregateID(),
-		Type:        "ExitFilled",
+		Type:        EventExitFilled,
 		Timestamp:   now,
 		Data: &orderbookv1.ExitFilled{
 			SagaId:           cmd.SagaID,
@@ -131,7 +131,7 @@ func ExecuteRecordExitFilled(saga *BracketSaga, cmd RecordExitFilled) ([]es.Even
 
 	completedEvt := es.Event{
 		AggregateID: saga.AggregateID(),
-		Type:        "SagaCompleted",
+		Type:        EventSagaCompleted,
 		Timestamp:   now,
 		Data: &orderbookv1.SagaCompleted{
 			SagaId:      cmd.SagaID,
@@ -162,7 +162,7 @@ func ExecuteRecordSagaFailed(saga *BracketSaga, cmd RecordSagaFailed) ([]es.Even
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: saga.AggregateID(),
-		Type:        "SagaFailed",
+		Type:        EventSagaFailed,
 		Timestamp:   now,
 		Data: &orderbookv1.SagaFailed{
 			SagaId:   cmd.SagaID,
@@ -197,7 +197,7 @@ func ExecuteRecordActionFailed(saga *BracketSaga, cmd RecordActionFailed) ([]es.
 	if attempts >= MaxActionAttempts {
 		evt := es.Event{
 			AggregateID: saga.AggregateID(),
-			Type:        "SagaFailed",
+			Type:        EventSagaFailed,
 			Timestamp:   now,
 			Data: &orderbookv1.SagaFailed{
 				SagaId:   cmd.SagaID,
@@ -213,7 +213,7 @@ func ExecuteRecordActionFailed(saga *BracketSaga, cmd RecordActionFailed) ([]es.
 
 	evt := es.Event{
 		AggregateID: saga.AggregateID(),
-		Type:        "SagaActionFailed",
+		Type:        EventSagaActionFailed,
 		Timestamp:   now,
 		Data: &orderbookv1.SagaActionFailed{
 			SagaId:   cmd.SagaID,

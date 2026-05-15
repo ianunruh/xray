@@ -33,7 +33,7 @@ func ExecuteDepositCash(p *Portfolio, cmd DepositCash) ([]es.Event, error) {
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
-		Type:        "CashDeposited",
+		Type:        EventCashDeposited,
 		Timestamp:   now,
 		Data: &portfoliov1.CashDeposited{
 			AccountId:   cmd.AccountID,
@@ -68,7 +68,7 @@ func ExecuteWithdrawCash(p *Portfolio, cmd WithdrawCash) ([]es.Event, error) {
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
-		Type:        "CashWithdrawn",
+		Type:        EventCashWithdrawn,
 		Timestamp:   now,
 		Data: &portfoliov1.CashWithdrawn{
 			AccountId:   cmd.AccountID,
@@ -104,7 +104,7 @@ func ExecuteHoldCash(p *Portfolio, cmd HoldCash) ([]es.Event, error) {
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
-		Type:        "CashHeld",
+		Type:        EventCashHeld,
 		Timestamp:   now,
 		Data: &portfoliov1.CashHeld{
 			AccountId:   cmd.AccountID,
@@ -138,7 +138,7 @@ func ExecuteReleaseCash(p *Portfolio, cmd ReleaseCash) ([]es.Event, error) {
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
-		Type:        "CashReleased",
+		Type:        EventCashReleased,
 		Timestamp:   now,
 		Data: &portfoliov1.CashReleased{
 			AccountId:   cmd.AccountID,
@@ -171,7 +171,7 @@ func ExecuteSettleTrade(p *Portfolio, cmd SettleTrade) ([]es.Event, error) {
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
-		Type:        "CashSettled",
+		Type:        EventCashSettled,
 		Timestamp:   now,
 		Data: &portfoliov1.CashSettled{
 			AccountId:    cmd.AccountID,
@@ -217,7 +217,7 @@ func ExecuteHoldShares(p *Portfolio, cmd HoldShares) ([]es.Event, error) {
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
-		Type:        "SharesHeld",
+		Type:        EventSharesHeld,
 		Timestamp:   now,
 		Data: &portfoliov1.SharesHeld{
 			AccountId:   cmd.AccountID,
@@ -253,7 +253,7 @@ func ExecuteReleaseShares(p *Portfolio, cmd ReleaseShares) ([]es.Event, error) {
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
-		Type:        "SharesReleased",
+		Type:        EventSharesReleased,
 		Timestamp:   now,
 		Data: &portfoliov1.SharesReleased{
 			AccountId:   cmd.AccountID,
@@ -287,7 +287,7 @@ func ExecuteSettleSale(p *Portfolio, cmd SettleSale) ([]es.Event, error) {
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
-		Type:        "SharesSettled",
+		Type:        EventSharesSettled,
 		Timestamp:   now,
 		Data: &portfoliov1.SharesSettled{
 			AccountId:     cmd.AccountID,
