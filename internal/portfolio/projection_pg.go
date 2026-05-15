@@ -62,6 +62,15 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 					total_cost = projection_holdings.total_cost + $4`,
 				data.AccountId, data.Symbol, data.Quantity, data.CostPerShare*data.Quantity,
 			)
+		case *portfoliov1.SharesCredited:
+			batch.Queue(
+				`INSERT INTO projection_holdings (account_id, symbol, quantity, total_cost)
+				VALUES ($1, $2, $3, $4)
+				ON CONFLICT (account_id, symbol) DO UPDATE SET
+					quantity = projection_holdings.quantity + $3,
+					total_cost = projection_holdings.total_cost + $4`,
+				data.AccountId, data.Symbol, data.Quantity, data.CostPerShare*data.Quantity,
+			)
 		case *portfoliov1.SharesDebited:
 			batch.Queue(
 				`UPDATE projection_holdings
@@ -159,7 +168,7 @@ func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID stri
 	}
 
 	rows, err := p.pool.Query(ctx,
-		`SELECT symbol, quantity, total_cost FROM projection_holdings WHERE account_id = $1 AND quantity > 0`,
+		`SELECT symbol, quantity, total_cost, shares_held FROM projection_holdings WHERE account_id = $1 AND quantity > 0`,
 		accountID,
 	)
 	if err != nil {
@@ -169,7 +178,7 @@ func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID stri
 
 	for rows.Next() {
 		h := &portfoliov1.Holding{}
-		if err := rows.Scan(&h.Symbol, &h.Quantity, &h.TotalCost); err != nil {
+		if err := rows.Scan(&h.Symbol, &h.Quantity, &h.TotalCost, &h.SharesHeld); err != nil {
 			return nil, fmt.Errorf("scan holding: %w", err)
 		}
 		if h.Quantity > 0 {

@@ -184,7 +184,9 @@ func (e *Engine) placeRandomOrder(ctx context.Context) {
 		"side", side,
 		"price", price,
 		"quantity", qty,
-		"order_type", orderType)
+		"order_type", orderType,
+		"position", position,
+		"cash_available", portfolio.CashBalance-portfolio.CashHeld)
 }
 
 func (e *Engine) wouldSelfTrade(

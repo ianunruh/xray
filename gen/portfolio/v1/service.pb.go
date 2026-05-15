@@ -539,6 +539,7 @@ type Holding struct {
 	Quantity      int64                  `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	TotalCost     int64                  `protobuf:"varint,3,opt,name=total_cost,json=totalCost,proto3" json:"total_cost,omitempty"`
 	AverageCost   int64                  `protobuf:"varint,4,opt,name=average_cost,json=averageCost,proto3" json:"average_cost,omitempty"`
+	SharesHeld    int64                  `protobuf:"varint,5,opt,name=shares_held,json=sharesHeld,proto3" json:"shares_held,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -597,6 +598,13 @@ func (x *Holding) GetTotalCost() int64 {
 func (x *Holding) GetAverageCost() int64 {
 	if x != nil {
 		return x.AverageCost
+	}
+	return 0
+}
+
+func (x *Holding) GetSharesHeld() int64 {
+	if x != nil {
+		return x.SharesHeld
 	}
 	return 0
 }
@@ -1068,13 +1076,15 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\fcash_balance\x18\x02 \x01(\x03R\vcashBalance\x12\x1b\n" +
 	"\tcash_held\x18\x03 \x01(\x03R\bcashHeld\x121\n" +
 	"\bholdings\x18\x04 \x03(\v2\x15.portfolio.v1.HoldingR\bholdings\x12A\n" +
-	"\x0epending_orders\x18\x05 \x03(\v2\x1a.portfolio.v1.PendingOrderR\rpendingOrders\"\x7f\n" +
+	"\x0epending_orders\x18\x05 \x03(\v2\x1a.portfolio.v1.PendingOrderR\rpendingOrders\"\xa0\x01\n" +
 	"\aHolding\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x1a\n" +
 	"\bquantity\x18\x02 \x01(\x03R\bquantity\x12\x1d\n" +
 	"\n" +
 	"total_cost\x18\x03 \x01(\x03R\ttotalCost\x12!\n" +
-	"\faverage_cost\x18\x04 \x01(\x03R\vaverageCost\"\xae\x03\n" +
+	"\faverage_cost\x18\x04 \x01(\x03R\vaverageCost\x12\x1f\n" +
+	"\vshares_held\x18\x05 \x01(\x03R\n" +
+	"sharesHeld\"\xae\x03\n" +
 	"\fPendingOrder\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12&\n" +

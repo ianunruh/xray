@@ -56,6 +56,7 @@ message Holding {
   int64 quantity = 2;
   int64 total_cost = 3;
   int64 average_cost = 4;
+  int64 shares_held = 5;
 }
 
 enum PendingOrderStatus {

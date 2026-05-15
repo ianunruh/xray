@@ -204,7 +204,15 @@ func (e *Engine) requote(ctx context.Context) {
 
 	e.cancelAllOrders(ctx)
 
-	position := e.getPosition(ctx)
+	portfolio := e.getPortfolio(ctx)
+
+	var position int64
+	for _, h := range portfolio.Holdings {
+		if h.Symbol == e.cfg.Symbol {
+			position = h.Quantity
+			break
+		}
+	}
 
 	inv := InventoryState{
 		Position:    position,
@@ -222,6 +230,7 @@ func (e *Engine) requote(ctx context.Context) {
 	e.log.Info("placing quotes",
 		"ref_price", snap.Price,
 		"position", position,
+		"cash_available", portfolio.CashBalance-portfolio.CashHeld,
 		"levels", len(levels))
 
 	for _, level := range levels {
@@ -245,20 +254,15 @@ func (e *Engine) cancelAllOrders(ctx context.Context) {
 	}
 }
 
-func (e *Engine) getPosition(ctx context.Context) int64 {
+func (e *Engine) getPortfolio(ctx context.Context) *portfoliov1.GetPortfolioResponse {
 	resp, err := e.pfClient.GetPortfolio(ctx, connect.NewRequest(&portfoliov1.GetPortfolioRequest{
 		AccountId: e.cfg.AccountID,
 	}))
 	if err != nil {
 		e.log.Error("failed to get portfolio", "error", err)
-		return 0
+		return &portfoliov1.GetPortfolioResponse{}
 	}
-	for _, h := range resp.Msg.Holdings {
-		if h.Symbol == e.cfg.Symbol {
-			return h.Quantity
-		}
-	}
-	return 0
+	return resp.Msg
 }
 
 func (e *Engine) placeOrder(ctx context.Context, level QuoteLevel) {
