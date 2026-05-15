@@ -109,12 +109,24 @@ func (e *Engine) placeRandomOrder(ctx context.Context) {
 		return
 	}
 
+	portfolio := e.getPortfolio(ctx)
+	if portfolio == nil {
+		return
+	}
+
+	var position int64
+	for _, h := range portfolio.Holdings {
+		if h.Symbol == e.cfg.Symbol {
+			position = h.Quantity
+			break
+		}
+	}
+
 	side := orderbookv1.Side_SIDE_BUY
 	if rand.Float64() >= e.cfg.BuyBias {
 		side = orderbookv1.Side_SIDE_SELL
 	}
 
-	position := e.getPosition(ctx)
 	if side == orderbookv1.Side_SIDE_BUY && position >= e.cfg.MaxPosition {
 		side = orderbookv1.Side_SIDE_SELL
 	} else if side == orderbookv1.Side_SIDE_SELL && position <= -e.cfg.MaxPosition {
@@ -147,6 +159,12 @@ func (e *Engine) placeRandomOrder(ctx context.Context) {
 		}
 	}
 
+	if e.wouldSelfTrade(portfolio.PendingOrders, side, price, orderType) {
+		e.log.Debug("skipping order to avoid self-trade",
+			"side", side, "price", price, "order_type", orderType)
+		return
+	}
+
 	resp, err := e.pfClient.PlaceOrder(ctx, connect.NewRequest(&portfoliov1.PortfolioPlaceOrderRequest{
 		AccountId:   e.cfg.AccountID,
 		Symbol:      e.cfg.Symbol,
@@ -169,18 +187,39 @@ func (e *Engine) placeRandomOrder(ctx context.Context) {
 		"order_type", orderType)
 }
 
-func (e *Engine) getPosition(ctx context.Context) int64 {
+func (e *Engine) wouldSelfTrade(
+	pending []*portfoliov1.PendingOrder,
+	side orderbookv1.Side,
+	price int64,
+	orderType orderbookv1.OrderType,
+) bool {
+	for _, po := range pending {
+		if po.Symbol != e.cfg.Symbol {
+			continue
+		}
+		if po.Side == side {
+			continue
+		}
+		if orderType == orderbookv1.OrderType_ORDER_TYPE_MARKET {
+			return true
+		}
+		if side == orderbookv1.Side_SIDE_BUY && price >= po.Price {
+			return true
+		}
+		if side == orderbookv1.Side_SIDE_SELL && price <= po.Price {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *Engine) getPortfolio(ctx context.Context) *portfoliov1.GetPortfolioResponse {
 	resp, err := e.pfClient.GetPortfolio(ctx, connect.NewRequest(&portfoliov1.GetPortfolioRequest{
 		AccountId: e.cfg.AccountID,
 	}))
 	if err != nil {
 		e.log.Error("failed to get portfolio", "error", err)
-		return 0
+		return nil
 	}
-	for _, h := range resp.Msg.Holdings {
-		if h.Symbol == e.cfg.Symbol {
-			return h.Quantity
-		}
-	}
-	return 0
+	return resp.Msg
 }
