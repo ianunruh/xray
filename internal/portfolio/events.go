@@ -14,4 +14,7 @@ func RegisterEvents(r *es.Registry) {
 	r.Register("CashReleased", func() proto.Message { return new(portfoliov1.CashReleased) })
 	r.Register("CashSettled", func() proto.Message { return new(portfoliov1.CashSettled) })
 	r.Register("SharesDebited", func() proto.Message { return new(portfoliov1.SharesDebited) })
+	r.Register("SharesHeld", func() proto.Message { return new(portfoliov1.SharesHeld) })
+	r.Register("SharesReleased", func() proto.Message { return new(portfoliov1.SharesReleased) })
+	r.Register("SharesSettled", func() proto.Message { return new(portfoliov1.SharesSettled) })
 }

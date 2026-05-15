@@ -70,6 +70,29 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 				WHERE account_id = $2 AND symbol = $3`,
 				data.Quantity, data.AccountId, data.Symbol,
 			)
+		case *portfoliov1.SharesHeld:
+			batch.Queue(
+				`UPDATE projection_holdings SET shares_held = shares_held + $1 WHERE account_id = $2 AND symbol = $3`,
+				data.Quantity, data.AccountId, data.Symbol,
+			)
+		case *portfoliov1.SharesReleased:
+			batch.Queue(
+				`UPDATE projection_holdings SET shares_held = shares_held - $1 WHERE account_id = $2 AND symbol = $3`,
+				data.Quantity, data.AccountId, data.Symbol,
+			)
+		case *portfoliov1.SharesSettled:
+			batch.Queue(
+				`UPDATE projection_holdings
+				SET total_cost = CASE WHEN quantity > 0 THEN total_cost * (quantity - $1) / quantity ELSE 0 END,
+					quantity = quantity - $1,
+					shares_held = shares_held - $1
+				WHERE account_id = $2 AND symbol = $3`,
+				data.Quantity, data.AccountId, data.Symbol,
+			)
+			batch.Queue(
+				`UPDATE projection_portfolios SET cash_balance = cash_balance + $1 WHERE account_id = $2`,
+				data.Proceeds, data.AccountId,
+			)
 		case *portfoliov1.OrderSagaStarted:
 			batch.Queue(
 				`INSERT INTO projection_pending_orders (saga_id, account_id, symbol, side, price, quantity, order_type, time_in_force, status, started_at)

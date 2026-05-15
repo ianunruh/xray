@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	ErrInvalidAmount     = errors.New("amount must be positive")
-	ErrInsufficientFunds = errors.New("insufficient funds")
+	ErrInvalidAmount      = errors.New("amount must be positive")
+	ErrInsufficientFunds  = errors.New("insufficient funds")
+	ErrInsufficientShares = errors.New("insufficient shares")
 )
 
 type DepositCash struct {
@@ -180,6 +181,122 @@ func ExecuteSettleTrade(p *Portfolio, cmd SettleTrade) ([]es.Event, error) {
 			Quantity:     cmd.Quantity,
 			CostPerShare: cmd.CostPerShare,
 			SettledAt:    timestamppb.New(now),
+		},
+	}
+
+	if err := p.Apply(evt); err != nil {
+		return nil, err
+	}
+	return []es.Event{evt}, nil
+}
+
+type HoldShares struct {
+	AccountID   string
+	OrderSagaID string
+	Symbol      string
+	Quantity    int64
+}
+
+func (c HoldShares) AggregateID() string {
+	return AggregateID(c.AccountID)
+}
+
+func ExecuteHoldShares(p *Portfolio, cmd HoldShares) ([]es.Event, error) {
+	if cmd.Quantity <= 0 {
+		return nil, ErrInvalidQuantity
+	}
+	h := p.Holdings[cmd.Symbol]
+	available := int64(0)
+	if h != nil {
+		available = h.Quantity - p.SharesHeld[cmd.Symbol]
+	}
+	if available < cmd.Quantity {
+		return nil, ErrInsufficientShares
+	}
+
+	now := time.Now()
+	evt := es.Event{
+		AggregateID: p.AggregateID(),
+		Type:        "SharesHeld",
+		Timestamp:   now,
+		Data: &portfoliov1.SharesHeld{
+			AccountId:   cmd.AccountID,
+			OrderSagaId: cmd.OrderSagaID,
+			Symbol:      cmd.Symbol,
+			Quantity:    cmd.Quantity,
+			HeldAt:      timestamppb.New(now),
+		},
+	}
+
+	if err := p.Apply(evt); err != nil {
+		return nil, err
+	}
+	return []es.Event{evt}, nil
+}
+
+type ReleaseShares struct {
+	AccountID   string
+	OrderSagaID string
+	Symbol      string
+	Quantity    int64
+}
+
+func (c ReleaseShares) AggregateID() string {
+	return AggregateID(c.AccountID)
+}
+
+func ExecuteReleaseShares(p *Portfolio, cmd ReleaseShares) ([]es.Event, error) {
+	if cmd.Quantity <= 0 {
+		return nil, ErrInvalidQuantity
+	}
+
+	now := time.Now()
+	evt := es.Event{
+		AggregateID: p.AggregateID(),
+		Type:        "SharesReleased",
+		Timestamp:   now,
+		Data: &portfoliov1.SharesReleased{
+			AccountId:   cmd.AccountID,
+			OrderSagaId: cmd.OrderSagaID,
+			Symbol:      cmd.Symbol,
+			Quantity:    cmd.Quantity,
+			ReleasedAt:  timestamppb.New(now),
+		},
+	}
+
+	if err := p.Apply(evt); err != nil {
+		return nil, err
+	}
+	return []es.Event{evt}, nil
+}
+
+type SettleSale struct {
+	AccountID     string
+	OrderSagaID   string
+	Symbol        string
+	Quantity      int64
+	PricePerShare int64
+	Proceeds      int64
+}
+
+func (c SettleSale) AggregateID() string {
+	return AggregateID(c.AccountID)
+}
+
+func ExecuteSettleSale(p *Portfolio, cmd SettleSale) ([]es.Event, error) {
+	now := time.Now()
+	evt := es.Event{
+		AggregateID: p.AggregateID(),
+		Type:        "SharesSettled",
+		Timestamp:   now,
+		Data: &portfoliov1.SharesSettled{
+			AccountId:     cmd.AccountID,
+			OrderSagaId:   cmd.OrderSagaID,
+			Symbol:        cmd.Symbol,
+			Quantity:      cmd.Quantity,
+			PricePerShare: cmd.PricePerShare,
+			Proceeds:      cmd.Proceeds,
+			SettledAt:     timestamppb.New(now),
 		},
 	}
 

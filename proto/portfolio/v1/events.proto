@@ -53,6 +53,32 @@ message SharesDebited {
   google.protobuf.Timestamp debited_at = 5;
 }
 
+message SharesHeld {
+  string account_id = 1;
+  string order_saga_id = 2;
+  string symbol = 3;
+  int64 quantity = 4;
+  google.protobuf.Timestamp held_at = 5;
+}
+
+message SharesReleased {
+  string account_id = 1;
+  string order_saga_id = 2;
+  string symbol = 3;
+  int64 quantity = 4;
+  google.protobuf.Timestamp released_at = 5;
+}
+
+message SharesSettled {
+  string account_id = 1;
+  string order_saga_id = 2;
+  string symbol = 3;
+  int64 quantity = 4;
+  int64 price_per_share = 5;
+  int64 proceeds = 6;
+  google.protobuf.Timestamp settled_at = 7;
+}
+
 // Order saga events — stored under aggregate ID "order-saga:{uuid}".
 
 message OrderSagaStarted {

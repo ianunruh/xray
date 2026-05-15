@@ -1,0 +1,1 @@
+ALTER TABLE projection_holdings ADD COLUMN IF NOT EXISTS shares_held BIGINT NOT NULL DEFAULT 0;

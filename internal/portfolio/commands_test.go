@@ -283,3 +283,169 @@ func TestSettleTrade_PartialFill(t *testing.T) {
 	assert.Equal(t, int64(6000000), p.HoldsBySaga["saga-1"])
 	assert.Equal(t, int64(60), p.Holdings["AAPL"].Quantity)
 }
+
+func setupPortfolioWithHolding(t *testing.T, handler *es.Handler[*portfolio.Portfolio], ctx context.Context, accountID, symbol string, qty, costPerShare int64) {
+	t.Helper()
+
+	totalCost := costPerShare * qty
+	deposit := portfolio.DepositCash{AccountID: accountID, Amount: totalCost}
+	err := handler.Handle(ctx, deposit, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, deposit)
+	})
+	require.NoError(t, err)
+
+	hold := portfolio.HoldCash{AccountID: accountID, OrderSagaID: "setup-saga", Amount: totalCost}
+	err = handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCash(p, hold)
+	})
+	require.NoError(t, err)
+
+	settle := portfolio.SettleTrade{
+		AccountID: accountID, OrderSagaID: "setup-saga",
+		Amount: totalCost, Symbol: symbol, Quantity: qty, CostPerShare: costPerShare,
+	}
+	err = handler.Handle(ctx, settle, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteSettleTrade(p, settle)
+	})
+	require.NoError(t, err)
+}
+
+func TestHoldAndReleaseShares(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	setupPortfolioWithHolding(t, handler, ctx, "acct-1", "AAPL", 100, 1500000)
+
+	hold := portfolio.HoldShares{AccountID: "acct-1", OrderSagaID: "saga-1", Symbol: "AAPL", Quantity: 60}
+	err := handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShares(p, hold)
+	})
+	require.NoError(t, err)
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(100), p.Holdings["AAPL"].Quantity)
+	assert.Equal(t, int64(60), p.SharesHeld["AAPL"])
+	assert.Equal(t, int64(60), p.ShareHoldsBySaga["saga-1"].Quantity)
+
+	release := portfolio.ReleaseShares{AccountID: "acct-1", OrderSagaID: "saga-1", Symbol: "AAPL", Quantity: 60}
+	err = handler.Handle(ctx, release, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteReleaseShares(p, release)
+	})
+	require.NoError(t, err)
+
+	p, err = handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(100), p.Holdings["AAPL"].Quantity)
+	assert.Empty(t, p.SharesHeld)
+	assert.Empty(t, p.ShareHoldsBySaga)
+}
+
+func TestHoldShares_InsufficientShares(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	setupPortfolioWithHolding(t, handler, ctx, "acct-1", "AAPL", 100, 1500000)
+
+	hold := portfolio.HoldShares{AccountID: "acct-1", OrderSagaID: "saga-1", Symbol: "AAPL", Quantity: 101}
+	err := handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShares(p, hold)
+	})
+	assert.ErrorIs(t, err, portfolio.ErrInsufficientShares)
+}
+
+func TestHoldShares_InsufficientShares_AlreadyHeld(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	setupPortfolioWithHolding(t, handler, ctx, "acct-1", "AAPL", 100, 1500000)
+
+	hold1 := portfolio.HoldShares{AccountID: "acct-1", OrderSagaID: "saga-1", Symbol: "AAPL", Quantity: 80}
+	err := handler.Handle(ctx, hold1, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShares(p, hold1)
+	})
+	require.NoError(t, err)
+
+	hold2 := portfolio.HoldShares{AccountID: "acct-1", OrderSagaID: "saga-2", Symbol: "AAPL", Quantity: 30}
+	err = handler.Handle(ctx, hold2, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShares(p, hold2)
+	})
+	assert.ErrorIs(t, err, portfolio.ErrInsufficientShares)
+}
+
+func TestSettleSale(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	setupPortfolioWithHolding(t, handler, ctx, "acct-1", "AAPL", 100, 1500000)
+
+	hold := portfolio.HoldShares{AccountID: "acct-1", OrderSagaID: "saga-1", Symbol: "AAPL", Quantity: 100}
+	err := handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShares(p, hold)
+	})
+	require.NoError(t, err)
+
+	settle := portfolio.SettleSale{
+		AccountID:     "acct-1",
+		OrderSagaID:   "saga-1",
+		Symbol:        "AAPL",
+		Quantity:      100,
+		PricePerShare: 1550000,
+		Proceeds:      155000000,
+	}
+	err = handler.Handle(ctx, settle, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteSettleSale(p, settle)
+	})
+	require.NoError(t, err)
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(155000000), p.CashBalance)
+	assert.Empty(t, p.SharesHeld)
+	assert.Empty(t, p.ShareHoldsBySaga)
+	assert.Nil(t, p.Holdings["AAPL"])
+}
+
+func TestSettleSale_PartialFill(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	setupPortfolioWithHolding(t, handler, ctx, "acct-1", "AAPL", 100, 1500000)
+
+	hold := portfolio.HoldShares{AccountID: "acct-1", OrderSagaID: "saga-1", Symbol: "AAPL", Quantity: 100}
+	err := handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShares(p, hold)
+	})
+	require.NoError(t, err)
+
+	settle := portfolio.SettleSale{
+		AccountID:     "acct-1",
+		OrderSagaID:   "saga-1",
+		Symbol:        "AAPL",
+		Quantity:      60,
+		PricePerShare: 1550000,
+		Proceeds:      93000000,
+	}
+	err = handler.Handle(ctx, settle, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteSettleSale(p, settle)
+	})
+	require.NoError(t, err)
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(93000000), p.CashBalance)
+	assert.Equal(t, int64(40), p.SharesHeld["AAPL"])
+	assert.Equal(t, int64(40), p.ShareHoldsBySaga["saga-1"].Quantity)
+	assert.Equal(t, int64(40), p.Holdings["AAPL"].Quantity)
+	assert.Equal(t, int64(60000000), p.Holdings["AAPL"].TotalCost) // 40/100 * 150M = 60M
+}

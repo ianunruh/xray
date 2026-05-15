@@ -396,10 +396,41 @@ func (r *Reactor) executeHoldCash(ctx context.Context, sagaID string) error {
 		return nil
 	}
 	accountID := state.accountID
-	amount := computeHoldAmount(state.orderType, state.side, state.price, state.quantity)
+	symbol := state.symbol
+	side := state.side
+	cashAmount := computeHoldAmount(state.orderType, state.side, state.price, state.quantity)
+	shareQty := computeShareHoldQuantity(state.orderType, state.side, state.quantity)
 	r.mu.Unlock()
 
-	if amount == 0 {
+	if side == orderbookv1.Side_SIDE_SELL && shareQty > 0 {
+		holdCmd := portfolio.HoldShares{
+			AccountID:   accountID,
+			OrderSagaID: sagaID,
+			Symbol:      symbol,
+			Quantity:    shareQty,
+		}
+		err := r.portfolioHandler.Handle(ctx, holdCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteHoldShares(p, holdCmd)
+		})
+		if err != nil {
+			r.log.Error("failed to hold shares", "saga_id", sagaID, "error", err)
+			return r.emitActionFailed(ctx, sagaID, "hold_cash")
+		}
+
+		cmd := RecordCashHeld{SagaID: sagaID, AmountHeld: shareQty}
+		err = r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
+			return ExecuteRecordCashHeld(saga, cmd)
+		})
+		if err != nil {
+			r.log.Error("failed to record shares held", "saga_id", sagaID, "error", err)
+			return r.emitActionFailed(ctx, sagaID, "hold_cash")
+		}
+
+		r.log.Info("order saga shares held", "saga_id", sagaID, "quantity", shareQty)
+		return nil
+	}
+
+	if cashAmount == 0 {
 		cmd := RecordCashHeld{SagaID: sagaID, AmountHeld: 0}
 		err := r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
 			return ExecuteRecordCashHeld(saga, cmd)
@@ -415,7 +446,7 @@ func (r *Reactor) executeHoldCash(ctx context.Context, sagaID string) error {
 	holdCmd := portfolio.HoldCash{
 		AccountID:   accountID,
 		OrderSagaID: sagaID,
-		Amount:      amount,
+		Amount:      cashAmount,
 	}
 	err := r.portfolioHandler.Handle(ctx, holdCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
 		return portfolio.ExecuteHoldCash(p, holdCmd)
@@ -425,7 +456,7 @@ func (r *Reactor) executeHoldCash(ctx context.Context, sagaID string) error {
 		return r.emitActionFailed(ctx, sagaID, "hold_cash")
 	}
 
-	cmd := RecordCashHeld{SagaID: sagaID, AmountHeld: amount}
+	cmd := RecordCashHeld{SagaID: sagaID, AmountHeld: cashAmount}
 	err = r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
 		return ExecuteRecordCashHeld(saga, cmd)
 	})
@@ -434,7 +465,7 @@ func (r *Reactor) executeHoldCash(ctx context.Context, sagaID string) error {
 		return r.emitActionFailed(ctx, sagaID, "hold_cash")
 	}
 
-	r.log.Info("order saga cash held", "saga_id", sagaID, "amount", amount)
+	r.log.Info("order saga cash held", "saga_id", sagaID, "amount", cashAmount)
 	return nil
 }
 
@@ -505,30 +536,54 @@ func (r *Reactor) executeRecordFills(ctx context.Context, sagaID string) error {
 	state.pendingFills = nil
 	accountID := state.accountID
 	symbol := state.symbol
+	side := state.side
 	r.mu.Unlock()
 
 	for _, f := range fills {
 		cashAmount := f.price * f.quantity
 
-		settleCmd := portfolio.SettleTrade{
-			AccountID:    accountID,
-			OrderSagaID:  sagaID,
-			Amount:       cashAmount,
-			Symbol:       symbol,
-			Quantity:     f.quantity,
-			CostPerShare: f.price,
-		}
-		err := r.portfolioHandler.Handle(ctx, settleCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-			return portfolio.ExecuteSettleTrade(p, settleCmd)
-		})
-		if err != nil {
-			r.log.Error("failed to settle trade on portfolio", "saga_id", sagaID, "trade_id", f.tradeID, "error", err)
-			r.mu.Lock()
-			if s, ok := r.sagas[sagaID]; ok {
-				s.pendingFills = append(s.pendingFills, f)
+		if side == orderbookv1.Side_SIDE_SELL {
+			settleCmd := portfolio.SettleSale{
+				AccountID:     accountID,
+				OrderSagaID:   sagaID,
+				Symbol:        symbol,
+				Quantity:      f.quantity,
+				PricePerShare: f.price,
+				Proceeds:      cashAmount,
 			}
-			r.mu.Unlock()
-			return r.emitActionFailed(ctx, sagaID, "record_fills")
+			err := r.portfolioHandler.Handle(ctx, settleCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteSettleSale(p, settleCmd)
+			})
+			if err != nil {
+				r.log.Error("failed to settle sale on portfolio", "saga_id", sagaID, "trade_id", f.tradeID, "error", err)
+				r.mu.Lock()
+				if s, ok := r.sagas[sagaID]; ok {
+					s.pendingFills = append(s.pendingFills, f)
+				}
+				r.mu.Unlock()
+				return r.emitActionFailed(ctx, sagaID, "record_fills")
+			}
+		} else {
+			settleCmd := portfolio.SettleTrade{
+				AccountID:    accountID,
+				OrderSagaID:  sagaID,
+				Amount:       cashAmount,
+				Symbol:       symbol,
+				Quantity:     f.quantity,
+				CostPerShare: f.price,
+			}
+			err := r.portfolioHandler.Handle(ctx, settleCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteSettleTrade(p, settleCmd)
+			})
+			if err != nil {
+				r.log.Error("failed to settle trade on portfolio", "saga_id", sagaID, "trade_id", f.tradeID, "error", err)
+				r.mu.Lock()
+				if s, ok := r.sagas[sagaID]; ok {
+					s.pendingFills = append(s.pendingFills, f)
+				}
+				r.mu.Unlock()
+				return r.emitActionFailed(ctx, sagaID, "record_fills")
+			}
 		}
 
 		fillCmd := RecordFill{
@@ -538,7 +593,7 @@ func (r *Reactor) executeRecordFills(ctx context.Context, sagaID string) error {
 			FillPrice:    f.price,
 			CashSettled:  cashAmount,
 		}
-		err = r.sagaHandler.Handle(ctx, fillCmd, func(saga *OrderSaga) ([]es.Event, error) {
+		err := r.sagaHandler.Handle(ctx, fillCmd, func(saga *OrderSaga) ([]es.Event, error) {
 			return ExecuteRecordFill(saga, fillCmd)
 		})
 		if err != nil {
@@ -569,23 +624,45 @@ func (r *Reactor) executeComplete(ctx context.Context, sagaID string) error {
 		return nil
 	}
 	accountID := state.accountID
+	symbol := state.symbol
+	side := state.side
 	amountHeld := state.amountHeld
+	filledQty := state.filledQty
 	cashSettled := state.cashSettled
 	r.mu.Unlock()
 
-	remaining := amountHeld - cashSettled
-	if remaining > 0 {
-		releaseCmd := portfolio.ReleaseCash{
-			AccountID:   accountID,
-			OrderSagaID: sagaID,
-			Amount:      remaining,
+	if side == orderbookv1.Side_SIDE_SELL {
+		remainingShares := amountHeld - filledQty
+		if remainingShares > 0 {
+			releaseCmd := portfolio.ReleaseShares{
+				AccountID:   accountID,
+				OrderSagaID: sagaID,
+				Symbol:      symbol,
+				Quantity:    remainingShares,
+			}
+			err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteReleaseShares(p, releaseCmd)
+			})
+			if err != nil {
+				r.log.Error("failed to release remaining shares", "saga_id", sagaID, "error", err)
+				return r.emitActionFailed(ctx, sagaID, "complete")
+			}
 		}
-		err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-			return portfolio.ExecuteReleaseCash(p, releaseCmd)
-		})
-		if err != nil {
-			r.log.Error("failed to release remaining cash", "saga_id", sagaID, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "complete")
+	} else {
+		remaining := amountHeld - cashSettled
+		if remaining > 0 {
+			releaseCmd := portfolio.ReleaseCash{
+				AccountID:   accountID,
+				OrderSagaID: sagaID,
+				Amount:      remaining,
+			}
+			err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteReleaseCash(p, releaseCmd)
+			})
+			if err != nil {
+				r.log.Error("failed to release remaining cash", "saga_id", sagaID, "error", err)
+				return r.emitActionFailed(ctx, sagaID, "complete")
+			}
 		}
 	}
 
@@ -610,23 +687,45 @@ func (r *Reactor) executeReleaseCashAndFail(ctx context.Context, sagaID string) 
 		return nil
 	}
 	accountID := state.accountID
+	symbol := state.symbol
+	side := state.side
 	amountHeld := state.amountHeld
+	filledQty := state.filledQty
 	cashSettled := state.cashSettled
 	r.mu.Unlock()
 
-	remaining := amountHeld - cashSettled
-	if remaining > 0 {
-		releaseCmd := portfolio.ReleaseCash{
-			AccountID:   accountID,
-			OrderSagaID: sagaID,
-			Amount:      remaining,
+	if side == orderbookv1.Side_SIDE_SELL {
+		remainingShares := amountHeld - filledQty
+		if remainingShares > 0 {
+			releaseCmd := portfolio.ReleaseShares{
+				AccountID:   accountID,
+				OrderSagaID: sagaID,
+				Symbol:      symbol,
+				Quantity:    remainingShares,
+			}
+			err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteReleaseShares(p, releaseCmd)
+			})
+			if err != nil {
+				r.log.Error("failed to release shares on cancel", "saga_id", sagaID, "error", err)
+				return r.emitActionFailed(ctx, sagaID, "release_cash_and_fail")
+			}
 		}
-		err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-			return portfolio.ExecuteReleaseCash(p, releaseCmd)
-		})
-		if err != nil {
-			r.log.Error("failed to release cash on cancel", "saga_id", sagaID, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "release_cash_and_fail")
+	} else {
+		remaining := amountHeld - cashSettled
+		if remaining > 0 {
+			releaseCmd := portfolio.ReleaseCash{
+				AccountID:   accountID,
+				OrderSagaID: sagaID,
+				Amount:      remaining,
+			}
+			err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteReleaseCash(p, releaseCmd)
+			})
+			if err != nil {
+				r.log.Error("failed to release cash on cancel", "saga_id", sagaID, "error", err)
+				return r.emitActionFailed(ctx, sagaID, "release_cash_and_fail")
+			}
 		}
 	}
 
@@ -666,4 +765,14 @@ func computeHoldAmount(orderType orderbook.OrderType, side orderbookv1.Side, pri
 		return 0
 	}
 	return price * quantity
+}
+
+func computeShareHoldQuantity(orderType orderbook.OrderType, side orderbookv1.Side, quantity int64) int64 {
+	if side == orderbookv1.Side_SIDE_BUY {
+		return 0
+	}
+	if orderType == orderbook.Market {
+		return 0
+	}
+	return quantity
 }

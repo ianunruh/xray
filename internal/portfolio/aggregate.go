@@ -18,20 +18,29 @@ type Holding struct {
 	TotalCost int64
 }
 
+type ShareHold struct {
+	Symbol   string
+	Quantity int64
+}
+
 type Portfolio struct {
 	es.AggregateBase
 
-	AccountID   string
-	CashBalance int64
-	CashHeld    int64
-	Holdings    map[string]*Holding
-	HoldsBySaga map[string]int64
+	AccountID        string
+	CashBalance      int64
+	CashHeld         int64
+	Holdings         map[string]*Holding
+	HoldsBySaga      map[string]int64
+	SharesHeld       map[string]int64
+	ShareHoldsBySaga map[string]*ShareHold
 }
 
 func NewPortfolio(id string) *Portfolio {
 	p := &Portfolio{
-		Holdings:    make(map[string]*Holding),
-		HoldsBySaga: make(map[string]int64),
+		Holdings:         make(map[string]*Holding),
+		HoldsBySaga:      make(map[string]int64),
+		SharesHeld:       make(map[string]int64),
+		ShareHoldsBySaga: make(map[string]*ShareHold),
 	}
 	p.SetID(id)
 	return p
@@ -51,6 +60,12 @@ func (p *Portfolio) Apply(evt es.Event) error {
 		p.applyCashSettled(data)
 	case *portfoliov1.SharesDebited:
 		p.applySharesDebited(data)
+	case *portfoliov1.SharesHeld:
+		p.applySharesHeld(data)
+	case *portfoliov1.SharesReleased:
+		p.applySharesReleased(data)
+	case *portfoliov1.SharesSettled:
+		p.applySharesSettled(data)
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}
@@ -107,4 +122,48 @@ func (p *Portfolio) applySharesDebited(data *portfoliov1.SharesDebited) {
 	if h.Quantity <= 0 {
 		delete(p.Holdings, data.Symbol)
 	}
+}
+
+func (p *Portfolio) applySharesHeld(data *portfoliov1.SharesHeld) {
+	p.SharesHeld[data.Symbol] += data.Quantity
+	p.ShareHoldsBySaga[data.OrderSagaId] = &ShareHold{
+		Symbol:   data.Symbol,
+		Quantity: data.Quantity,
+	}
+}
+
+func (p *Portfolio) applySharesReleased(data *portfoliov1.SharesReleased) {
+	p.SharesHeld[data.Symbol] -= data.Quantity
+	if p.SharesHeld[data.Symbol] <= 0 {
+		delete(p.SharesHeld, data.Symbol)
+	}
+	delete(p.ShareHoldsBySaga, data.OrderSagaId)
+}
+
+func (p *Portfolio) applySharesSettled(data *portfoliov1.SharesSettled) {
+	p.SharesHeld[data.Symbol] -= data.Quantity
+	if p.SharesHeld[data.Symbol] <= 0 {
+		delete(p.SharesHeld, data.Symbol)
+	}
+
+	hold := p.ShareHoldsBySaga[data.OrderSagaId]
+	if hold != nil {
+		hold.Quantity -= data.Quantity
+		if hold.Quantity <= 0 {
+			delete(p.ShareHoldsBySaga, data.OrderSagaId)
+		}
+	}
+
+	h, ok := p.Holdings[data.Symbol]
+	if ok {
+		if h.Quantity > 0 {
+			h.TotalCost = h.TotalCost * (h.Quantity - data.Quantity) / h.Quantity
+		}
+		h.Quantity -= data.Quantity
+		if h.Quantity <= 0 {
+			delete(p.Holdings, data.Symbol)
+		}
+	}
+
+	p.CashBalance += data.Proceeds
 }

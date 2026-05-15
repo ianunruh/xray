@@ -303,7 +303,7 @@ func TestReactor_PriceImprovement_RemainingCashReleased(t *testing.T) {
 	assert.Equal(t, int64(149000000), p.Holdings["AAPL"].TotalCost) // cost basis at actual fill price
 }
 
-func TestReactor_SellOrder_NoCashHold(t *testing.T) {
+func TestReactor_SellOrder_SharesHeld(t *testing.T) {
 	env := setupReactorTest(t)
 
 	// Deposit cash and buy shares so we have a holding to sell.
@@ -321,7 +321,7 @@ func TestReactor_SellOrder_NoCashHold(t *testing.T) {
 	placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1550000, 50)
 	env.pub.events = nil
 
-	// Start sell order saga: sell 50 AAPL at $155 (no cash hold needed).
+	// Start sell order saga: sell 50 AAPL at $155.
 	startOrderSaga(t, env, "saga-sell", "acct-1", "AAPL", orderbookv1.Side_SIDE_SELL, 1550000, 50)
 	env.flush()
 
@@ -329,7 +329,127 @@ func TestReactor_SellOrder_NoCashHold(t *testing.T) {
 	s := loadSaga(t, env, "saga-sell")
 	assert.Equal(t, ordersaga.Completed, s.Status)
 	assert.Equal(t, int64(50), s.FilledQty)
-	assert.Equal(t, int64(0), s.AmountHeld)
+	assert.Equal(t, int64(50), s.AmountHeld)
+
+	// Verify portfolio: 50 shares sold, cash credited.
+	p = loadPortfolio(t, env, "acct-1")
+	assert.Equal(t, int64(50), p.Holdings["AAPL"].Quantity)
+	assert.Equal(t, int64(77500000), p.CashBalance) // 50 * $155 = $77,500
+	assert.Empty(t, p.SharesHeld)
+	assert.Empty(t, p.ShareHoldsBySaga)
+}
+
+func TestReactor_SellOrder_PartialFills(t *testing.T) {
+	env := setupReactorTest(t)
+
+	// Buy 100 shares.
+	depositCash(t, env, "acct-1", 150000000)
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1500000, 100)
+	env.pub.events = nil
+	startOrderSaga(t, env, "saga-buy", "acct-1", "AAPL", orderbookv1.Side_SIDE_BUY, 1500000, 100)
+	env.flush()
+
+	// Place only 60 shares of buy liquidity.
+	placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1550000, 60)
+	env.pub.events = nil
+
+	startOrderSaga(t, env, "saga-sell", "acct-1", "AAPL", orderbookv1.Side_SIDE_SELL, 1550000, 100)
+	env.flush()
+
+	// Saga should be OrderPlaced (partially filled).
+	s := loadSaga(t, env, "saga-sell")
+	assert.Equal(t, ordersaga.OrderPlaced, s.Status)
+	assert.Equal(t, int64(60), s.FilledQty)
+
+	// Portfolio should reflect partial sell.
+	p := loadPortfolio(t, env, "acct-1")
+	assert.Equal(t, int64(40), p.Holdings["AAPL"].Quantity)
+	assert.Equal(t, int64(40), p.SharesHeld["AAPL"])
+	assert.Equal(t, int64(93000000), p.CashBalance) // 60 * $155
+
+	// Fill remaining 40.
+	placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1550000, 40)
+	env.flush()
+
+	s = loadSaga(t, env, "saga-sell")
+	assert.Equal(t, ordersaga.Completed, s.Status)
+
+	p = loadPortfolio(t, env, "acct-1")
+	assert.Nil(t, p.Holdings["AAPL"])
+	assert.Empty(t, p.SharesHeld)
+	assert.Equal(t, int64(155000000), p.CashBalance) // 100 * $155
+}
+
+func TestReactor_SellOrder_Cancelled_SharesReleased(t *testing.T) {
+	env := setupReactorTest(t)
+
+	// Buy 100 shares.
+	depositCash(t, env, "acct-1", 150000000)
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1500000, 100)
+	env.pub.events = nil
+	startOrderSaga(t, env, "saga-buy", "acct-1", "AAPL", orderbookv1.Side_SIDE_BUY, 1500000, 100)
+	env.flush()
+
+	// Start sell saga with no matching liquidity.
+	startOrderSaga(t, env, "saga-sell", "acct-1", "AAPL", orderbookv1.Side_SIDE_SELL, 1550000, 100)
+	env.flush()
+
+	// Saga should be OrderPlaced (resting, no fills).
+	s := loadSaga(t, env, "saga-sell")
+	assert.Equal(t, ordersaga.OrderPlaced, s.Status)
+	orderID := s.OrderID
+	require.NotEmpty(t, orderID)
+
+	// Shares should be held.
+	p := loadPortfolio(t, env, "acct-1")
+	assert.Equal(t, int64(100), p.SharesHeld["AAPL"])
+
+	// Cancel the order.
+	cancelCmd := orderbook.CancelOrder{Symbol: "AAPL", OrderID: orderID}
+	err := env.obHandler.Handle(env.ctx, cancelCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecuteCancelOrder(book, cancelCmd)
+	})
+	require.NoError(t, err)
+	env.flush()
+
+	// Saga should fail.
+	s = loadSaga(t, env, "saga-sell")
+	assert.Equal(t, ordersaga.Failed, s.Status)
+
+	// Shares should be fully released.
+	p = loadPortfolio(t, env, "acct-1")
+	assert.Equal(t, int64(100), p.Holdings["AAPL"].Quantity)
+	assert.Empty(t, p.SharesHeld)
+	assert.Equal(t, int64(0), p.CashBalance)
+}
+
+func TestReactor_SellOrder_InsufficientShares_SagaFails(t *testing.T) {
+	env := setupReactorTest(t)
+
+	// Buy only 50 shares but try to sell 100.
+	depositCash(t, env, "acct-1", 75000000)
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1500000, 50)
+	env.pub.events = nil
+	startOrderSaga(t, env, "saga-buy", "acct-1", "AAPL", orderbookv1.Side_SIDE_BUY, 1500000, 50)
+	env.flush()
+
+	p := loadPortfolio(t, env, "acct-1")
+	require.Equal(t, int64(50), p.Holdings["AAPL"].Quantity)
+
+	startOrderSaga(t, env, "saga-sell", "acct-1", "AAPL", orderbookv1.Side_SIDE_SELL, 1550000, 100)
+
+	// Flush repeatedly to exhaust retries.
+	for i := 0; i < ordersaga.MaxActionAttempts+1; i++ {
+		env.flush()
+	}
+
+	s := loadSaga(t, env, "saga-sell")
+	assert.Equal(t, ordersaga.Failed, s.Status)
+
+	// Shares should not have been touched.
+	p = loadPortfolio(t, env, "acct-1")
+	assert.Equal(t, int64(50), p.Holdings["AAPL"].Quantity)
+	assert.Empty(t, p.SharesHeld)
 }
 
 func TestReactor_Recovery_FillsDuringReplay(t *testing.T) {
