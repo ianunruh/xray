@@ -12,6 +12,7 @@ import (
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
 	"github.com/ianunruh/xray/internal/pricesource"
+	"github.com/ianunruh/xray/internal/trader"
 )
 
 type Engine struct {
@@ -36,7 +37,12 @@ func NewEngine(
 }
 
 func (e *Engine) Run(ctx context.Context) error {
-	e.bootstrap(ctx)
+	trader.Bootstrap(ctx, trader.BootstrapConfig{
+		AccountID:      e.cfg.AccountID,
+		Symbol:         e.cfg.Symbol,
+		InitialDeposit: e.cfg.InitialDeposit,
+		InitialShares:  e.cfg.InitialShares,
+	}, e.prices, e.pfClient, e.log)
 
 	ticker := time.NewTicker(e.cfg.OrderInterval)
 	defer ticker.Stop()
@@ -47,53 +53,6 @@ func (e *Engine) Run(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 			e.placeRandomOrder(ctx)
-		}
-	}
-}
-
-func (e *Engine) bootstrap(ctx context.Context) {
-	resp, err := e.pfClient.GetPortfolio(ctx, connect.NewRequest(&portfoliov1.GetPortfolioRequest{
-		AccountId: e.cfg.AccountID,
-	}))
-	if err != nil {
-		e.log.Error("failed to get portfolio for bootstrap", "error", err)
-		return
-	}
-
-	if resp.Msg.CashBalance == 0 && e.cfg.InitialDeposit > 0 {
-		_, err := e.pfClient.Deposit(ctx, connect.NewRequest(&portfoliov1.DepositRequest{
-			AccountId: e.cfg.AccountID,
-			Amount:    e.cfg.InitialDeposit,
-		}))
-		if err != nil {
-			e.log.Error("failed to deposit initial cash", "error", err)
-		} else {
-			e.log.Info("deposited initial cash", "amount", e.cfg.InitialDeposit)
-		}
-	}
-
-	hasHolding := false
-	for _, h := range resp.Msg.Holdings {
-		if h.Symbol == e.cfg.Symbol && h.Quantity > 0 {
-			hasHolding = true
-			break
-		}
-	}
-	if !hasHolding && e.cfg.InitialShares > 0 {
-		refPrice := int64(0)
-		if snap, ok := e.prices.GetPrice(e.cfg.Symbol); ok {
-			refPrice = snap.Price
-		}
-		_, err := e.pfClient.CreditShares(ctx, connect.NewRequest(&portfoliov1.CreditSharesRequest{
-			AccountId:    e.cfg.AccountID,
-			Symbol:       e.cfg.Symbol,
-			Quantity:     e.cfg.InitialShares,
-			CostPerShare: refPrice,
-		}))
-		if err != nil {
-			e.log.Error("failed to credit initial shares", "error", err)
-		} else {
-			e.log.Info("credited initial shares", "quantity", e.cfg.InitialShares)
 		}
 	}
 }
@@ -109,18 +68,8 @@ func (e *Engine) placeRandomOrder(ctx context.Context) {
 		return
 	}
 
-	portfolio := e.getPortfolio(ctx)
-	if portfolio == nil {
-		return
-	}
-
-	var position int64
-	for _, h := range portfolio.Holdings {
-		if h.Symbol == e.cfg.Symbol {
-			position = h.Quantity
-			break
-		}
-	}
+	portfolio := trader.GetPortfolio(ctx, e.pfClient, e.cfg.AccountID, e.log)
+	position := trader.GetPosition(portfolio, e.cfg.Symbol)
 
 	side := orderbookv1.Side_SIDE_BUY
 	if rand.Float64() >= e.cfg.BuyBias {
@@ -215,13 +164,3 @@ func (e *Engine) wouldSelfTrade(
 	return false
 }
 
-func (e *Engine) getPortfolio(ctx context.Context) *portfoliov1.GetPortfolioResponse {
-	resp, err := e.pfClient.GetPortfolio(ctx, connect.NewRequest(&portfoliov1.GetPortfolioRequest{
-		AccountId: e.cfg.AccountID,
-	}))
-	if err != nil {
-		e.log.Error("failed to get portfolio", "error", err)
-		return nil
-	}
-	return resp.Msg
-}

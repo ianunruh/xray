@@ -13,7 +13,7 @@ import (
 
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
 	"github.com/ianunruh/xray/internal/noise"
-	"github.com/ianunruh/xray/internal/pricesource"
+	"github.com/ianunruh/xray/internal/trader"
 )
 
 func main() {
@@ -27,7 +27,7 @@ func main() {
 	}
 
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: parseLogLevel(cfg.LogLevel),
+		Level: trader.ParseLogLevel(cfg.LogLevel),
 	}))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -45,13 +45,12 @@ func main() {
 		}
 	}
 
-	var prices pricesource.PriceSource
-	switch cfg.PriceSource {
-	case "polygon":
-		prices = pricesource.NewPolygonPriceSource(cfg.Polygon, cfg.PolygonKey, symbols, log)
-	case "static":
-		prices = pricesource.NewStaticPriceSource(cfg.StaticPrices)
-	}
+	prices := trader.SetupPriceSource(trader.PriceSourceConfig{
+		PriceSource:  cfg.PriceSource,
+		PolygonKey:   cfg.PolygonKey,
+		Polygon:      cfg.Polygon,
+		StaticPrices: cfg.StaticPrices,
+	}, symbols, log)
 
 	go func() {
 		if err := prices.Start(ctx); err != nil && ctx.Err() == nil {
@@ -81,15 +80,3 @@ func main() {
 	log.Info("noise trader shutdown complete")
 }
 
-func parseLogLevel(s string) slog.Level {
-	switch strings.ToLower(s) {
-	case "debug":
-		return slog.LevelDebug
-	case "warn":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
-}

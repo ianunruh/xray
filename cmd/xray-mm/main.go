@@ -14,7 +14,7 @@ import (
 	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
 	"github.com/ianunruh/xray/internal/mm"
-	"github.com/ianunruh/xray/internal/pricesource"
+	"github.com/ianunruh/xray/internal/trader"
 )
 
 func main() {
@@ -28,7 +28,7 @@ func main() {
 	}
 
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: parseLogLevel(cfg.LogLevel),
+		Level: trader.ParseLogLevel(cfg.LogLevel),
 	}))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -43,13 +43,12 @@ func main() {
 		symbols[i] = s.Symbol
 	}
 
-	var priceSource pricesource.PriceSource
-	switch cfg.PriceSource {
-	case "polygon":
-		priceSource = pricesource.NewPolygonPriceSource(cfg.Polygon, cfg.PolygonKey, symbols, log)
-	case "static":
-		priceSource = pricesource.NewStaticPriceSource(cfg.StaticPrices)
-	}
+	priceSource := trader.SetupPriceSource(trader.PriceSourceConfig{
+		PriceSource:  cfg.PriceSource,
+		PolygonKey:   cfg.PolygonKey,
+		Polygon:      cfg.Polygon,
+		StaticPrices: cfg.StaticPrices,
+	}, symbols, log)
 
 	go func() {
 		if err := priceSource.Start(ctx); err != nil && ctx.Err() == nil {
@@ -80,15 +79,3 @@ func main() {
 	log.Info("market maker shutdown complete")
 }
 
-func parseLogLevel(s string) slog.Level {
-	switch strings.ToLower(s) {
-	case "debug":
-		return slog.LevelDebug
-	case "warn":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
-}
