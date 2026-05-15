@@ -399,6 +399,19 @@ func (r *Reactor) executeHoldCash(ctx context.Context, sagaID string) error {
 	amount := computeHoldAmount(state.orderType, state.side, state.price, state.quantity)
 	r.mu.Unlock()
 
+	if amount == 0 {
+		cmd := RecordCashHeld{SagaID: sagaID, AmountHeld: 0}
+		err := r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
+			return ExecuteRecordCashHeld(saga, cmd)
+		})
+		if err != nil {
+			r.log.Error("failed to record cash held", "saga_id", sagaID, "error", err)
+			return r.emitActionFailed(ctx, sagaID, "hold_cash")
+		}
+		r.log.Info("order saga cash hold skipped (no hold needed)", "saga_id", sagaID)
+		return nil
+	}
+
 	holdCmd := portfolio.HoldCash{
 		AccountID:   accountID,
 		OrderSagaID: sagaID,

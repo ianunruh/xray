@@ -303,6 +303,35 @@ func TestReactor_PriceImprovement_RemainingCashReleased(t *testing.T) {
 	assert.Equal(t, int64(149000000), p.Holdings["AAPL"].TotalCost) // cost basis at actual fill price
 }
 
+func TestReactor_SellOrder_NoCashHold(t *testing.T) {
+	env := setupReactorTest(t)
+
+	// Deposit cash and buy shares so we have a holding to sell.
+	depositCash(t, env, "acct-1", 150000000)
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1500000, 100)
+	env.pub.events = nil
+	startOrderSaga(t, env, "saga-buy", "acct-1", "AAPL", orderbookv1.Side_SIDE_BUY, 1500000, 100)
+	env.flush()
+
+	// Verify we own 100 AAPL.
+	p := loadPortfolio(t, env, "acct-1")
+	require.Equal(t, int64(100), p.Holdings["AAPL"].Quantity)
+
+	// Place resting buy liquidity for the sell order to match against.
+	placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1550000, 50)
+	env.pub.events = nil
+
+	// Start sell order saga: sell 50 AAPL at $155 (no cash hold needed).
+	startOrderSaga(t, env, "saga-sell", "acct-1", "AAPL", orderbookv1.Side_SIDE_SELL, 1550000, 50)
+	env.flush()
+
+	// Verify sell saga completed.
+	s := loadSaga(t, env, "saga-sell")
+	assert.Equal(t, ordersaga.Completed, s.Status)
+	assert.Equal(t, int64(50), s.FilledQty)
+	assert.Equal(t, int64(0), s.AmountHeld)
+}
+
 func TestReactor_Recovery_FillsDuringReplay(t *testing.T) {
 	registry := newFullTestRegistry()
 	store := memstore.New()
