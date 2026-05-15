@@ -190,6 +190,42 @@ func ExecuteSettleTrade(p *Portfolio, cmd SettleTrade) ([]es.Event, error) {
 	return []es.Event{evt}, nil
 }
 
+type CreditShares struct {
+	AccountID    string
+	Symbol       string
+	Quantity     int64
+	CostPerShare int64
+}
+
+func (c CreditShares) AggregateID() string {
+	return AggregateID(c.AccountID)
+}
+
+func ExecuteCreditShares(p *Portfolio, cmd CreditShares) ([]es.Event, error) {
+	if cmd.Quantity <= 0 {
+		return nil, ErrInvalidQuantity
+	}
+
+	now := time.Now()
+	evt := es.Event{
+		AggregateID: p.AggregateID(),
+		Type:        EventSharesCredited,
+		Timestamp:   now,
+		Data: &portfoliov1.SharesCredited{
+			AccountId:    cmd.AccountID,
+			Symbol:       cmd.Symbol,
+			Quantity:     cmd.Quantity,
+			CostPerShare: cmd.CostPerShare,
+			CreditedAt:   timestamppb.New(now),
+		},
+	}
+
+	if err := p.Apply(evt); err != nil {
+		return nil, err
+	}
+	return []es.Event{evt}, nil
+}
+
 type HoldShares struct {
 	AccountID   string
 	OrderSagaID string

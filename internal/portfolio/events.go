@@ -13,6 +13,7 @@ const (
 	EventCashHeld       = "CashHeld"
 	EventCashReleased   = "CashReleased"
 	EventCashSettled    = "CashSettled"
+	EventSharesCredited = "SharesCredited"
 	EventSharesDebited  = "SharesDebited"
 	EventSharesHeld     = "SharesHeld"
 	EventSharesReleased = "SharesReleased"
@@ -25,6 +26,7 @@ func RegisterEvents(r *es.Registry) {
 	r.Register(EventCashHeld, func() proto.Message { return new(portfoliov1.CashHeld) })
 	r.Register(EventCashReleased, func() proto.Message { return new(portfoliov1.CashReleased) })
 	r.Register(EventCashSettled, func() proto.Message { return new(portfoliov1.CashSettled) })
+	r.Register(EventSharesCredited, func() proto.Message { return new(portfoliov1.SharesCredited) })
 	r.Register(EventSharesDebited, func() proto.Message { return new(portfoliov1.SharesDebited) })
 	r.Register(EventSharesHeld, func() proto.Message { return new(portfoliov1.SharesHeld) })
 	r.Register(EventSharesReleased, func() proto.Message { return new(portfoliov1.SharesReleased) })

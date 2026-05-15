@@ -89,6 +89,26 @@ func (s *Server) Withdraw(ctx context.Context, req *connect.Request[portfoliov1.
 	return connect.NewResponse(&portfoliov1.WithdrawResponse{}), nil
 }
 
+func (s *Server) CreditShares(ctx context.Context, req *connect.Request[portfoliov1.CreditSharesRequest]) (*connect.Response[portfoliov1.CreditSharesResponse], error) {
+	msg := req.Msg
+
+	if msg.Quantity <= 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, ErrInvalidQuantity)
+	}
+
+	cmd := CreditShares{AccountID: msg.AccountId, Symbol: msg.Symbol, Quantity: msg.Quantity, CostPerShare: msg.CostPerShare}
+	err := s.portfolioHandler.Handle(ctx, cmd, func(p *Portfolio) ([]es.Event, error) {
+		return ExecuteCreditShares(p, cmd)
+	})
+	if err != nil {
+		s.log.Error("CreditShares failed", "account_id", msg.AccountId, "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	s.log.Info("CreditShares", "account_id", msg.AccountId, "symbol", msg.Symbol, "quantity", msg.Quantity)
+	return connect.NewResponse(&portfoliov1.CreditSharesResponse{}), nil
+}
+
 func (s *Server) GetPortfolio(ctx context.Context, req *connect.Request[portfoliov1.GetPortfolioRequest]) (*connect.Response[portfoliov1.GetPortfolioResponse], error) {
 	resp, err := s.reader.GetPortfolio(ctx, req.Msg.AccountId)
 	if err != nil {

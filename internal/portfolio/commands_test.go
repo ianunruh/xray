@@ -449,3 +449,59 @@ func TestSettleSale_PartialFill(t *testing.T) {
 	assert.Equal(t, int64(40), p.Holdings["AAPL"].Quantity)
 	assert.Equal(t, int64(60000000), p.Holdings["AAPL"].TotalCost) // 40/100 * 150M = 60M
 }
+
+func TestCreditShares(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	// Credit 100 shares at $150.00 per share
+	cmd := portfolio.CreditShares{AccountID: "acct-1", Symbol: "AAPL", Quantity: 100, CostPerShare: 1500000}
+	err := handler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteCreditShares(p, cmd)
+	})
+	require.NoError(t, err)
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, "acct-1", p.AccountID)
+	assert.Equal(t, int64(100), p.Holdings["AAPL"].Quantity)
+	assert.Equal(t, int64(150000000), p.Holdings["AAPL"].TotalCost) // 100 * 1500000
+}
+
+func TestCreditShares_InvalidQuantity(t *testing.T) {
+	p := portfolio.NewPortfolio(portfolio.AggregateID("acct-1"))
+	_, err := portfolio.ExecuteCreditShares(p, portfolio.CreditShares{AccountID: "acct-1", Symbol: "AAPL", Quantity: 0})
+	assert.ErrorIs(t, err, portfolio.ErrInvalidQuantity)
+
+	_, err = portfolio.ExecuteCreditShares(p, portfolio.CreditShares{AccountID: "acct-1", Symbol: "AAPL", Quantity: -10})
+	assert.ErrorIs(t, err, portfolio.ErrInvalidQuantity)
+}
+
+func TestCreditShares_Accumulation(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	// First credit: 100 shares at $150.00
+	cmd1 := portfolio.CreditShares{AccountID: "acct-1", Symbol: "AAPL", Quantity: 100, CostPerShare: 1500000}
+	err := handler.Handle(ctx, cmd1, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteCreditShares(p, cmd1)
+	})
+	require.NoError(t, err)
+
+	// Second credit: 50 shares at $100.00
+	cmd2 := portfolio.CreditShares{AccountID: "acct-1", Symbol: "AAPL", Quantity: 50, CostPerShare: 1000000}
+	err = handler.Handle(ctx, cmd2, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteCreditShares(p, cmd2)
+	})
+	require.NoError(t, err)
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(150), p.Holdings["AAPL"].Quantity)
+	// Total cost = (100 * $150) + (50 * $100) = $15,000 + $5,000 = $20,000
+	assert.Equal(t, int64(200000000), p.Holdings["AAPL"].TotalCost)
+}

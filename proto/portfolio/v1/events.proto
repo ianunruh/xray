@@ -45,6 +45,14 @@ message CashSettled {
   google.protobuf.Timestamp settled_at = 7;
 }
 
+message SharesCredited {
+  string account_id = 1;
+  string symbol = 2;
+  int64 quantity = 3;
+  int64 cost_per_share = 4;
+  google.protobuf.Timestamp credited_at = 5;
+}
+
 message SharesDebited {
   string account_id = 1;
   string symbol = 2;

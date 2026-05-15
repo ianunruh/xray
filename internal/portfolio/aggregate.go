@@ -58,6 +58,8 @@ func (p *Portfolio) Apply(evt es.Event) error {
 		p.applyCashReleased(data)
 	case *portfoliov1.CashSettled:
 		p.applyCashSettled(data)
+	case *portfoliov1.SharesCredited:
+		p.applySharesCredited(data)
 	case *portfoliov1.SharesDebited:
 		p.applySharesDebited(data)
 	case *portfoliov1.SharesHeld:
@@ -101,6 +103,17 @@ func (p *Portfolio) applyCashSettled(data *portfoliov1.CashSettled) {
 		delete(p.HoldsBySaga, data.OrderSagaId)
 	}
 
+	h, ok := p.Holdings[data.Symbol]
+	if !ok {
+		h = &Holding{}
+		p.Holdings[data.Symbol] = h
+	}
+	h.Quantity += data.Quantity
+	h.TotalCost += data.CostPerShare * data.Quantity
+}
+
+func (p *Portfolio) applySharesCredited(data *portfoliov1.SharesCredited) {
+	p.AccountID = data.AccountId
 	h, ok := p.Holdings[data.Symbol]
 	if !ok {
 		h = &Holding{}

@@ -10,6 +10,7 @@ import "orderbook/v1/events.proto";
 service PortfolioService {
   rpc Deposit(DepositRequest) returns (DepositResponse);
   rpc Withdraw(WithdrawRequest) returns (WithdrawResponse);
+  rpc CreditShares(CreditSharesRequest) returns (CreditSharesResponse);
   rpc GetPortfolio(GetPortfolioRequest) returns (GetPortfolioResponse);
   rpc PlaceOrder(PortfolioPlaceOrderRequest) returns (PortfolioPlaceOrderResponse);
   rpc GetOrderStatus(GetOrderStatusRequest) returns (GetOrderStatusResponse);
@@ -28,6 +29,15 @@ message WithdrawRequest {
 }
 
 message WithdrawResponse {}
+
+message CreditSharesRequest {
+  string account_id = 1;
+  string symbol = 2;
+  int64 quantity = 3;
+  int64 cost_per_share = 4;
+}
+
+message CreditSharesResponse {}
 
 message GetPortfolioRequest {
   string account_id = 1;
