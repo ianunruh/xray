@@ -81,19 +81,30 @@ func (e *Engine) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
+			e.drainResolves()
+			e.log.Info("shutting down, cancelling orders", "tracked_orders", len(e.orders))
 			e.cancelAllOrders(context.Background())
 			return ctx.Err()
 
 		case <-requoteTicker.C:
+			if ctx.Err() != nil {
+				continue
+			}
 			e.requote(ctx)
 
 		case <-priceCheckTicker.C:
+			if ctx.Err() != nil {
+				continue
+			}
 			e.checkPriceMove(ctx)
 
 		case trade, ok := <-fillCh:
 			if !ok {
 				fillCh = make(chan *orderbookv1.Trade, 64)
 				go e.streamTrades(ctx, fillCh)
+				continue
+			}
+			if ctx.Err() != nil {
 				continue
 			}
 			e.handleFill(ctx, trade)
@@ -238,15 +249,39 @@ func (e *Engine) requote(ctx context.Context) {
 	}
 }
 
+func (e *Engine) drainResolves() {
+	for {
+		select {
+		case res := <-e.resolveCh:
+			e.handleResolve(res)
+		default:
+			return
+		}
+	}
+}
+
 func (e *Engine) cancelAllOrders(ctx context.Context) {
 	for sagaID, tracked := range e.orders {
-		if tracked.orderID != "" {
+		orderID := tracked.orderID
+		if orderID == "" {
+			resp, err := e.pfClient.GetOrderStatus(ctx, connect.NewRequest(&portfoliov1.GetOrderStatusRequest{
+				SagaId: sagaID,
+			}))
+			if err == nil && resp.Msg.OrderId != "" {
+				orderID = resp.Msg.OrderId
+			} else {
+				e.log.Warn("could not resolve order_id for cancel", "saga_id", sagaID, "error", err)
+			}
+		}
+		if orderID != "" {
 			_, err := e.obClient.CancelOrder(ctx, connect.NewRequest(&orderbookv1.CancelOrderRequest{
 				Symbol:  e.cfg.Symbol,
-				OrderId: tracked.orderID,
+				OrderId: orderID,
 			}))
 			if err != nil && connect.CodeOf(err) != connect.CodeNotFound {
-				e.log.Error("failed to cancel order", "order_id", tracked.orderID, "error", err)
+				e.log.Error("failed to cancel order", "order_id", orderID, "error", err)
+			} else {
+				e.log.Info("cancelled order", "order_id", orderID)
 			}
 		}
 		delete(e.orderIDIndex, tracked.orderID)
