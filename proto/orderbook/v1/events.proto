@@ -25,6 +25,7 @@ enum TimeInForce {
   TIME_IN_FORCE_GTC = 1;
   TIME_IN_FORCE_IOC = 2;
   TIME_IN_FORCE_FOK = 3;
+  TIME_IN_FORCE_DAY = 4;
 }
 
 message OrderPlaced {
@@ -60,6 +61,11 @@ message StopTriggered {
   int64 stop_price = 3;
   int64 trigger_price = 4;
   OrderType activated_as = 5;
+}
+
+message MarketClosed {
+  string symbol = 1;
+  google.protobuf.Timestamp closed_at = 2;
 }
 
 // Saga lifecycle events — stored under aggregate ID "saga:{uuid}".

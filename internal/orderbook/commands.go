@@ -59,7 +59,7 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 
 	switch cmd.OrderType {
 	case Market:
-		if cmd.TimeInForce == GTC {
+		if cmd.TimeInForce == GTC || cmd.TimeInForce == Day {
 			return nil, ErrMarketGTC
 		}
 		if cmd.Price != 0 {
@@ -241,6 +241,60 @@ func activatedOrderType(ot OrderType) orderbookv1.OrderType {
 	default:
 		return orderbookv1.OrderType_ORDER_TYPE_UNSPECIFIED
 	}
+}
+
+// CloseMarket is a command to close the market for a symbol, cancelling all Day orders.
+type CloseMarket struct {
+	Symbol string
+}
+
+func (c CloseMarket) AggregateID() string {
+	return AggregateID(c.Symbol)
+}
+
+// ExecuteCloseMarket produces a MarketClosed event followed by OrderCancelled
+// events for every resting order with Day time-in-force.
+func ExecuteCloseMarket(book *OrderBook, cmd CloseMarket) ([]es.Event, error) {
+	now := time.Now()
+
+	closedEvt := es.Event{
+		AggregateID: book.AggregateID(),
+		Type:        "MarketClosed",
+		Timestamp:   now,
+		Data: &orderbookv1.MarketClosed{
+			Symbol:   cmd.Symbol,
+			ClosedAt: timestamppb.New(now),
+		},
+	}
+
+	if err := book.Apply(closedEvt); err != nil {
+		return nil, fmt.Errorf("apply market closed: %w", err)
+	}
+
+	events := []es.Event{closedEvt}
+
+	var dayOrders []*Order
+	for _, order := range book.Orders {
+		if order.TimeInForce == Day && order.RemainingQty > 0 {
+			dayOrders = append(dayOrders, order)
+		}
+	}
+
+	for _, order := range dayOrders {
+		cancelEvt := es.Event{
+			AggregateID: book.AggregateID(),
+			Type:        "OrderCancelled",
+			Timestamp:   now,
+			Data: &orderbookv1.OrderCancelled{
+				OrderId: order.ID,
+				Symbol:  cmd.Symbol,
+			},
+		}
+		book.Apply(cancelEvt)
+		events = append(events, cancelEvt)
+	}
+
+	return events, nil
 }
 
 // ExecuteCancelOrder produces an OrderCancelled event if the order exists.

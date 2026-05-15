@@ -133,6 +133,7 @@ const (
 	TimeInForce_TIME_IN_FORCE_GTC         TimeInForce = 1
 	TimeInForce_TIME_IN_FORCE_IOC         TimeInForce = 2
 	TimeInForce_TIME_IN_FORCE_FOK         TimeInForce = 3
+	TimeInForce_TIME_IN_FORCE_DAY         TimeInForce = 4
 )
 
 // Enum value maps for TimeInForce.
@@ -142,12 +143,14 @@ var (
 		1: "TIME_IN_FORCE_GTC",
 		2: "TIME_IN_FORCE_IOC",
 		3: "TIME_IN_FORCE_FOK",
+		4: "TIME_IN_FORCE_DAY",
 	}
 	TimeInForce_value = map[string]int32{
 		"TIME_IN_FORCE_UNSPECIFIED": 0,
 		"TIME_IN_FORCE_GTC":         1,
 		"TIME_IN_FORCE_IOC":         2,
 		"TIME_IN_FORCE_FOK":         3,
+		"TIME_IN_FORCE_DAY":         4,
 	}
 )
 
@@ -506,6 +509,58 @@ func (x *StopTriggered) GetActivatedAs() OrderType {
 	return OrderType_ORDER_TYPE_UNSPECIFIED
 }
 
+type MarketClosed struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	ClosedAt      *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=closed_at,json=closedAt,proto3" json:"closed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MarketClosed) Reset() {
+	*x = MarketClosed{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MarketClosed) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MarketClosed) ProtoMessage() {}
+
+func (x *MarketClosed) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MarketClosed.ProtoReflect.Descriptor instead.
+func (*MarketClosed) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *MarketClosed) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *MarketClosed) GetClosedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ClosedAt
+	}
+	return nil
+}
+
 type SagaStarted struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	SagaId          string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
@@ -523,7 +578,7 @@ type SagaStarted struct {
 
 func (x *SagaStarted) Reset() {
 	*x = SagaStarted{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[4]
+	mi := &file_orderbook_v1_events_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -535,7 +590,7 @@ func (x *SagaStarted) String() string {
 func (*SagaStarted) ProtoMessage() {}
 
 func (x *SagaStarted) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[4]
+	mi := &file_orderbook_v1_events_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -548,7 +603,7 @@ func (x *SagaStarted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SagaStarted.ProtoReflect.Descriptor instead.
 func (*SagaStarted) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{4}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *SagaStarted) GetSagaId() string {
@@ -626,7 +681,7 @@ type EntryFilled struct {
 
 func (x *EntryFilled) Reset() {
 	*x = EntryFilled{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[5]
+	mi := &file_orderbook_v1_events_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -638,7 +693,7 @@ func (x *EntryFilled) String() string {
 func (*EntryFilled) ProtoMessage() {}
 
 func (x *EntryFilled) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[5]
+	mi := &file_orderbook_v1_events_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -651,7 +706,7 @@ func (x *EntryFilled) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntryFilled.ProtoReflect.Descriptor instead.
 func (*EntryFilled) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{5}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *EntryFilled) GetSagaId() string {
@@ -694,7 +749,7 @@ type ExitFilled struct {
 
 func (x *ExitFilled) Reset() {
 	*x = ExitFilled{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[6]
+	mi := &file_orderbook_v1_events_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -706,7 +761,7 @@ func (x *ExitFilled) String() string {
 func (*ExitFilled) ProtoMessage() {}
 
 func (x *ExitFilled) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[6]
+	mi := &file_orderbook_v1_events_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -719,7 +774,7 @@ func (x *ExitFilled) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExitFilled.ProtoReflect.Descriptor instead.
 func (*ExitFilled) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{6}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ExitFilled) GetSagaId() string {
@@ -760,7 +815,7 @@ type SagaCompleted struct {
 
 func (x *SagaCompleted) Reset() {
 	*x = SagaCompleted{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[7]
+	mi := &file_orderbook_v1_events_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -772,7 +827,7 @@ func (x *SagaCompleted) String() string {
 func (*SagaCompleted) ProtoMessage() {}
 
 func (x *SagaCompleted) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[7]
+	mi := &file_orderbook_v1_events_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -785,7 +840,7 @@ func (x *SagaCompleted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SagaCompleted.ProtoReflect.Descriptor instead.
 func (*SagaCompleted) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{7}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SagaCompleted) GetSagaId() string {
@@ -813,7 +868,7 @@ type SagaFailed struct {
 
 func (x *SagaFailed) Reset() {
 	*x = SagaFailed{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[8]
+	mi := &file_orderbook_v1_events_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -825,7 +880,7 @@ func (x *SagaFailed) String() string {
 func (*SagaFailed) ProtoMessage() {}
 
 func (x *SagaFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[8]
+	mi := &file_orderbook_v1_events_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -838,7 +893,7 @@ func (x *SagaFailed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SagaFailed.ProtoReflect.Descriptor instead.
 func (*SagaFailed) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{8}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SagaFailed) GetSagaId() string {
@@ -874,7 +929,7 @@ type SagaActionFailed struct {
 
 func (x *SagaActionFailed) Reset() {
 	*x = SagaActionFailed{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[9]
+	mi := &file_orderbook_v1_events_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -886,7 +941,7 @@ func (x *SagaActionFailed) String() string {
 func (*SagaActionFailed) ProtoMessage() {}
 
 func (x *SagaActionFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[9]
+	mi := &file_orderbook_v1_events_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -899,7 +954,7 @@ func (x *SagaActionFailed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SagaActionFailed.ProtoReflect.Descriptor instead.
 func (*SagaActionFailed) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{9}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SagaActionFailed) GetSagaId() string {
@@ -966,7 +1021,10 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\n" +
 	"stop_price\x18\x03 \x01(\x03R\tstopPrice\x12#\n" +
 	"\rtrigger_price\x18\x04 \x01(\x03R\ftriggerPrice\x12:\n" +
-	"\factivated_as\x18\x05 \x01(\x0e2\x17.orderbook.v1.OrderTypeR\vactivatedAs\"\xee\x02\n" +
+	"\factivated_as\x18\x05 \x01(\x0e2\x17.orderbook.v1.OrderTypeR\vactivatedAs\"_\n" +
+	"\fMarketClosed\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x127\n" +
+	"\tclosed_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bclosedAt\"\xee\x02\n" +
 	"\vSagaStarted\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x121\n" +
@@ -1013,12 +1071,13 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\x10ORDER_TYPE_LIMIT\x10\x01\x12\x15\n" +
 	"\x11ORDER_TYPE_MARKET\x10\x02\x12\x1a\n" +
 	"\x16ORDER_TYPE_STOP_MARKET\x10\x03\x12\x19\n" +
-	"\x15ORDER_TYPE_STOP_LIMIT\x10\x04*q\n" +
+	"\x15ORDER_TYPE_STOP_LIMIT\x10\x04*\x88\x01\n" +
 	"\vTimeInForce\x12\x1d\n" +
 	"\x19TIME_IN_FORCE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11TIME_IN_FORCE_GTC\x10\x01\x12\x15\n" +
 	"\x11TIME_IN_FORCE_IOC\x10\x02\x12\x15\n" +
-	"\x11TIME_IN_FORCE_FOK\x10\x03B7Z5github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1b\x06proto3"
+	"\x11TIME_IN_FORCE_FOK\x10\x03\x12\x15\n" +
+	"\x11TIME_IN_FORCE_DAY\x10\x04B7Z5github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1b\x06proto3"
 
 var (
 	file_orderbook_v1_events_proto_rawDescOnce sync.Once
@@ -1033,7 +1092,7 @@ func file_orderbook_v1_events_proto_rawDescGZIP() []byte {
 }
 
 var file_orderbook_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_orderbook_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_orderbook_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_orderbook_v1_events_proto_goTypes = []any{
 	(Side)(0),                     // 0: orderbook.v1.Side
 	(OrderType)(0),                // 1: orderbook.v1.OrderType
@@ -1042,33 +1101,35 @@ var file_orderbook_v1_events_proto_goTypes = []any{
 	(*OrderCancelled)(nil),        // 4: orderbook.v1.OrderCancelled
 	(*TradeExecuted)(nil),         // 5: orderbook.v1.TradeExecuted
 	(*StopTriggered)(nil),         // 6: orderbook.v1.StopTriggered
-	(*SagaStarted)(nil),           // 7: orderbook.v1.SagaStarted
-	(*EntryFilled)(nil),           // 8: orderbook.v1.EntryFilled
-	(*ExitFilled)(nil),            // 9: orderbook.v1.ExitFilled
-	(*SagaCompleted)(nil),         // 10: orderbook.v1.SagaCompleted
-	(*SagaFailed)(nil),            // 11: orderbook.v1.SagaFailed
-	(*SagaActionFailed)(nil),      // 12: orderbook.v1.SagaActionFailed
-	(*timestamppb.Timestamp)(nil), // 13: google.protobuf.Timestamp
+	(*MarketClosed)(nil),          // 7: orderbook.v1.MarketClosed
+	(*SagaStarted)(nil),           // 8: orderbook.v1.SagaStarted
+	(*EntryFilled)(nil),           // 9: orderbook.v1.EntryFilled
+	(*ExitFilled)(nil),            // 10: orderbook.v1.ExitFilled
+	(*SagaCompleted)(nil),         // 11: orderbook.v1.SagaCompleted
+	(*SagaFailed)(nil),            // 12: orderbook.v1.SagaFailed
+	(*SagaActionFailed)(nil),      // 13: orderbook.v1.SagaActionFailed
+	(*timestamppb.Timestamp)(nil), // 14: google.protobuf.Timestamp
 }
 var file_orderbook_v1_events_proto_depIdxs = []int32{
 	0,  // 0: orderbook.v1.OrderPlaced.side:type_name -> orderbook.v1.Side
-	13, // 1: orderbook.v1.OrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
+	14, // 1: orderbook.v1.OrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
 	1,  // 2: orderbook.v1.OrderPlaced.order_type:type_name -> orderbook.v1.OrderType
 	2,  // 3: orderbook.v1.OrderPlaced.time_in_force:type_name -> orderbook.v1.TimeInForce
-	13, // 4: orderbook.v1.TradeExecuted.executed_at:type_name -> google.protobuf.Timestamp
+	14, // 4: orderbook.v1.TradeExecuted.executed_at:type_name -> google.protobuf.Timestamp
 	1,  // 5: orderbook.v1.StopTriggered.activated_as:type_name -> orderbook.v1.OrderType
-	0,  // 6: orderbook.v1.SagaStarted.entry_side:type_name -> orderbook.v1.Side
-	13, // 7: orderbook.v1.SagaStarted.started_at:type_name -> google.protobuf.Timestamp
-	13, // 8: orderbook.v1.EntryFilled.filled_at:type_name -> google.protobuf.Timestamp
-	13, // 9: orderbook.v1.ExitFilled.filled_at:type_name -> google.protobuf.Timestamp
-	13, // 10: orderbook.v1.SagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
-	13, // 11: orderbook.v1.SagaFailed.failed_at:type_name -> google.protobuf.Timestamp
-	13, // 12: orderbook.v1.SagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
-	13, // [13:13] is the sub-list for method output_type
-	13, // [13:13] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	14, // 6: orderbook.v1.MarketClosed.closed_at:type_name -> google.protobuf.Timestamp
+	0,  // 7: orderbook.v1.SagaStarted.entry_side:type_name -> orderbook.v1.Side
+	14, // 8: orderbook.v1.SagaStarted.started_at:type_name -> google.protobuf.Timestamp
+	14, // 9: orderbook.v1.EntryFilled.filled_at:type_name -> google.protobuf.Timestamp
+	14, // 10: orderbook.v1.ExitFilled.filled_at:type_name -> google.protobuf.Timestamp
+	14, // 11: orderbook.v1.SagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
+	14, // 12: orderbook.v1.SagaFailed.failed_at:type_name -> google.protobuf.Timestamp
+	14, // 13: orderbook.v1.SagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
+	14, // [14:14] is the sub-list for method output_type
+	14, // [14:14] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_orderbook_v1_events_proto_init() }
@@ -1082,7 +1143,7 @@ func file_orderbook_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_orderbook_v1_events_proto_rawDesc), len(file_orderbook_v1_events_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   10,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

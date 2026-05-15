@@ -21,6 +21,7 @@ func newTestRegistry() *es.Registry {
 	r.Register("TradeExecuted", func() proto.Message { return new(orderbookv1.TradeExecuted) })
 	r.Register("OrderCancelled", func() proto.Message { return new(orderbookv1.OrderCancelled) })
 	r.Register("StopTriggered", func() proto.Message { return new(orderbookv1.StopTriggered) })
+	r.Register("MarketClosed", func() proto.Message { return new(orderbookv1.MarketClosed) })
 	return r
 }
 
@@ -728,6 +729,141 @@ func TestCancelOrder_StopOrder(t *testing.T) {
 	// Verify the order is gone.
 	book, err := handler.Load(ctx, orderbook.AggregateID("AAPL"))
 	require.NoError(t, err)
+	assert.Empty(t, book.Orders)
+}
+
+func TestPlaceOrder_MarketDay_Rejected(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        orderbook.Buy,
+		Price:       0,
+		Quantity:    100,
+		OrderType:   orderbook.Market,
+		TimeInForce: orderbook.Day,
+	})
+	assert.ErrorIs(t, err, orderbook.ErrMarketGTC)
+}
+
+func TestPlaceOrder_Day_RestsOnBook(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	events, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        orderbook.Buy,
+		Price:       1500000,
+		Quantity:    100,
+		TimeInForce: orderbook.Day,
+	})
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	assert.Equal(t, "OrderPlaced", events[0].Type)
+
+	placed := events[0].Data.(*orderbookv1.OrderPlaced)
+	assert.Equal(t, orderbookv1.TimeInForce_TIME_IN_FORCE_DAY, placed.TimeInForce)
+
+	assert.Len(t, book.Orders, 1)
+}
+
+func TestCloseMarket_CancelsDayOrders(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
+		return orderbook.NewOrderBook(id)
+	}, slog.Default())
+	ctx := context.Background()
+
+	// Place a Day buy order.
+	placeOrder(t, handler, ctx, orderbook.PlaceOrder{
+		Symbol: "AAPL", Side: orderbook.Buy, Price: 1500000, Quantity: 100,
+		TimeInForce: orderbook.Day,
+	})
+
+	// Place a Day sell order.
+	placeOrder(t, handler, ctx, orderbook.PlaceOrder{
+		Symbol: "AAPL", Side: orderbook.Sell, Price: 1600000, Quantity: 50,
+		TimeInForce: orderbook.Day,
+	})
+
+	// Place a GTC buy order — should survive market close.
+	placeOrder(t, handler, ctx, orderbook.PlaceOrder{
+		Symbol: "AAPL", Side: orderbook.Buy, Price: 1400000, Quantity: 200,
+	})
+
+	// Close the market.
+	var produced []es.Event
+	closeCmd := orderbook.CloseMarket{Symbol: "AAPL"}
+	err := handler.Handle(ctx, closeCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		events, err := orderbook.ExecuteCloseMarket(book, closeCmd)
+		produced = events
+		return events, err
+	})
+	require.NoError(t, err)
+
+	// Should have: MarketClosed + 2 OrderCancelled (one for each Day order).
+	require.Len(t, produced, 3)
+	assert.Equal(t, "MarketClosed", produced[0].Type)
+	assert.Equal(t, "OrderCancelled", produced[1].Type)
+	assert.Equal(t, "OrderCancelled", produced[2].Type)
+
+	// Verify the GTC order is still on the book.
+	book, err := handler.Load(ctx, orderbook.AggregateID("AAPL"))
+	require.NoError(t, err)
+	assert.Len(t, book.Orders, 1)
+
+	for _, order := range book.Orders {
+		assert.Equal(t, orderbook.GTC, order.TimeInForce)
+	}
+}
+
+func TestCloseMarket_NoDayOrders(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	// Place a GTC order.
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:   "AAPL",
+		Side:     orderbook.Buy,
+		Price:    1500000,
+		Quantity: 100,
+	})
+	require.NoError(t, err)
+
+	// Close the market — should only emit MarketClosed, no cancellations.
+	events, err := orderbook.ExecuteCloseMarket(book, orderbook.CloseMarket{Symbol: "AAPL"})
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	assert.Equal(t, "MarketClosed", events[0].Type)
+
+	assert.Len(t, book.Orders, 1)
+}
+
+func TestCloseMarket_DayStopOrders(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	// Place a Day stop-limit order.
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        orderbook.Sell,
+		Price:       1440000,
+		StopPrice:   1450000,
+		Quantity:    50,
+		OrderType:   orderbook.StopLimit,
+		TimeInForce: orderbook.Day,
+	})
+	require.NoError(t, err)
+
+	// Close the market — should cancel the Day stop order.
+	events, err := orderbook.ExecuteCloseMarket(book, orderbook.CloseMarket{Symbol: "AAPL"})
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	assert.Equal(t, "MarketClosed", events[0].Type)
+	assert.Equal(t, "OrderCancelled", events[1].Type)
+
 	assert.Empty(t, book.Orders)
 }
 

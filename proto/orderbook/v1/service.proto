@@ -18,6 +18,7 @@ enum OrderStatus {
 service OrderBookService {
   rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
   rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+  rpc CloseMarket(CloseMarketRequest) returns (CloseMarketResponse);
   rpc GetOrderBook(GetOrderBookRequest) returns (GetOrderBookResponse);
   rpc GetMarketDepth(GetMarketDepthRequest) returns (GetMarketDepthResponse);
   rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
@@ -48,6 +49,14 @@ message CancelOrderRequest {
 }
 
 message CancelOrderResponse {}
+
+message CloseMarketRequest {
+  string symbol = 1;
+}
+
+message CloseMarketResponse {
+  int32 cancelled_orders = 1;
+}
 
 message GetOrderBookRequest {
   string symbol = 1;

@@ -12,4 +12,5 @@ func RegisterEvents(r *es.Registry) {
 	r.Register("TradeExecuted", func() proto.Message { return new(orderbookv1.TradeExecuted) })
 	r.Register("OrderCancelled", func() proto.Message { return new(orderbookv1.OrderCancelled) })
 	r.Register("StopTriggered", func() proto.Message { return new(orderbookv1.StopTriggered) })
+	r.Register("MarketClosed", func() proto.Message { return new(orderbookv1.MarketClosed) })
 }

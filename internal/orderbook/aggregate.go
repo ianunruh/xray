@@ -51,6 +51,8 @@ func (ob *OrderBook) Apply(evt es.Event) error {
 		ob.applyOrderCancelled(data)
 	case *orderbookv1.StopTriggered:
 		ob.applyStopTriggered(data)
+	case *orderbookv1.MarketClosed:
+		// State changes are handled by the subsequent OrderCancelled events.
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}

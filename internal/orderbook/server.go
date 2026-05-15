@@ -106,6 +106,38 @@ func (s *Server) CancelOrder(ctx context.Context, req *connect.Request[orderbook
 	return connect.NewResponse(&orderbookv1.CancelOrderResponse{}), nil
 }
 
+func (s *Server) CloseMarket(ctx context.Context, req *connect.Request[orderbookv1.CloseMarketRequest]) (*connect.Response[orderbookv1.CloseMarketResponse], error) {
+	msg := req.Msg
+
+	cmd := CloseMarket{
+		Symbol: msg.Symbol,
+	}
+
+	var cancelledOrders int32
+	err := s.handler.Handle(ctx, cmd, func(book *OrderBook) ([]es.Event, error) {
+		events, err := ExecuteCloseMarket(book, cmd)
+		if err != nil {
+			return nil, err
+		}
+		for _, evt := range events {
+			if _, ok := evt.Data.(*orderbookv1.OrderCancelled); ok {
+				cancelledOrders++
+			}
+		}
+		return events, nil
+	})
+	if err != nil {
+		s.log.Warn("CloseMarket failed", "symbol", msg.Symbol, "error", err)
+		return nil, mapError(err)
+	}
+
+	s.log.Info("CloseMarket", "symbol", msg.Symbol, "cancelled_orders", cancelledOrders)
+
+	return connect.NewResponse(&orderbookv1.CloseMarketResponse{
+		CancelledOrders: cancelledOrders,
+	}), nil
+}
+
 func (s *Server) GetOrderBook(ctx context.Context, req *connect.Request[orderbookv1.GetOrderBookRequest]) (*connect.Response[orderbookv1.GetOrderBookResponse], error) {
 	book, err := s.replayAggregate(ctx, req.Msg.Symbol)
 	if err != nil {

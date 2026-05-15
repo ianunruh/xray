@@ -27,6 +27,7 @@ const (
 	GTC TimeInForce = 0
 	IOC TimeInForce = 1
 	FOK TimeInForce = 2
+	Day TimeInForce = 3
 )
 
 // Order represents an order on the book.
