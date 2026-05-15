@@ -46,6 +46,13 @@ The server exposes RPCs via Connect (gRPC, gRPC-Web, and JSON-over-HTTP on the s
 - `GetOrderBook` — Get full book state (bids and asks) for a symbol
 - `GetOrder` — Look up a single order by symbol and order ID
 
+**PortfolioService:**
+
+- `Deposit` — Deposit cash into a portfolio account
+- `Withdraw` — Withdraw cash from a portfolio account
+- `GetPortfolio` — Get portfolio state (cash balance, holdings, pending orders)
+- `PlaceOrder` — Place an order through the portfolio (holds cash, places order, settles trades)
+
 **SagaService:**
 
 - `PlaceBracketOrder` — Place an entry order with automatic take-profit and stop-loss exits
@@ -83,6 +90,26 @@ buf curl --protocol grpc --http2-prior-knowledge \
 buf curl --protocol grpc --http2-prior-knowledge \
   --schema proto http://localhost:8080/orderbook.v1.SagaService/GetSaga \
   -d '{"saga_id":"<saga_id from above>"}'
+
+# Deposit cash into a portfolio
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/portfolio.v1.PortfolioService/Deposit \
+  -d '{"account_id":"acct-1","amount":"50000000"}'
+
+# Place an order through the portfolio (holds cash, places in order book, settles fills)
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/portfolio.v1.PortfolioService/PlaceOrder \
+  -d '{"account_id":"acct-1","symbol":"AAPL","side":"SIDE_BUY","price":"1500000","quantity":"100","order_type":"ORDER_TYPE_LIMIT","time_in_force":"TIME_IN_FORCE_GTC"}'
+
+# Get portfolio (balance, holdings, pending orders)
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/portfolio.v1.PortfolioService/GetPortfolio \
+  -d '{"account_id":"acct-1"}'
+
+# Withdraw cash
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/portfolio.v1.PortfolioService/Withdraw \
+  -d '{"account_id":"acct-1","amount":"1000000"}'
 ```
 
 ## Development
