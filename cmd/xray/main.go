@@ -126,6 +126,7 @@ func main() {
 	orderProjection := orderbook.NewPgOrderProjection(pool)
 	portfolioProjection := portfolio.NewPgPortfolioProjection(pool)
 	depthProjection := orderbook.NewDepthProjection()
+	candleProjection := orderbook.NewCandleProjection()
 	broker := orderbook.NewBroker()
 	bracketReactor := bracket.NewReactor(bracketHandler, obHandler, log)
 	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
@@ -134,7 +135,7 @@ func main() {
 	// Ephemeral projections (in-memory) always replay from the beginning.
 	// Persistent projections (Pg-backed) resume from the last checkpoint.
 	consumer := natsstore.NewProjectionConsumer(js, registry, log).
-		WithEphemeral(depthProjection, broker, bracketReactor, orderSagaReactor).
+		WithEphemeral(depthProjection, candleProjection, broker, bracketReactor, orderSagaReactor).
 		WithPersistent(store, tradeProjection, orderProjection, portfolioProjection)
 	if err := consumer.Start(ctx); err != nil {
 		log.Error("failed to start projection consumer", "error", err)
@@ -144,7 +145,7 @@ func main() {
 	bracketReactor.SetReady(ctx)
 	orderSagaReactor.SetReady(ctx)
 
-	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, depthProjection, broker)
+	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, depthProjection, candleProjection, broker)
 	bracketSrv := bracket.NewServer(bracketHandler, obHandler, log)
 	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, ordersaga.NewPlaceOrderFunc(orderSagaHandler), ordersaga.NewGetOrderStatusFunc(orderSagaHandler), log)
 

@@ -22,17 +22,19 @@ type Server struct {
 	trades  TradeReader
 	orders  OrderReader
 	depth   DepthReader
+	candles CandleReader
 	broker  *Broker
 }
 
 // NewServer creates a new Server with the given dependencies.
-func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeReader, orders OrderReader, depth DepthReader, broker *Broker) *Server {
+func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeReader, orders OrderReader, depth DepthReader, candles CandleReader, broker *Broker) *Server {
 	return &Server{
 		handler: handler,
 		log:     log,
 		trades:  trades,
 		orders:  orders,
 		depth:   depth,
+		candles: candles,
 		broker:  broker,
 	}
 }
@@ -284,6 +286,57 @@ func (s *Server) StreamTrades(ctx context.Context, req *connect.Request[orderboo
 					Quantity:    data.Quantity,
 					ExecutedAt:  data.ExecutedAt,
 				}); err != nil {
+					return err
+				}
+			}
+		}
+	}
+}
+
+func (s *Server) GetCandles(ctx context.Context, req *connect.Request[orderbookv1.GetCandlesRequest]) (*connect.Response[orderbookv1.GetCandlesResponse], error) {
+	msg := req.Msg
+	candles := s.candles.GetCandles(msg.Symbol, msg.Interval, msg.From.AsTime(), msg.To.AsTime())
+
+	s.log.Info("GetCandles", "symbol", msg.Symbol, "interval", msg.Interval, "count", len(candles))
+
+	return connect.NewResponse(&orderbookv1.GetCandlesResponse{
+		Candles: candles,
+	}), nil
+}
+
+func (s *Server) StreamCandles(ctx context.Context, req *connect.Request[orderbookv1.StreamCandlesRequest], stream *connect.ServerStream[orderbookv1.Candle]) error {
+	symbol := req.Msg.Symbol
+	interval := req.Msg.Interval
+
+	if latest := s.candles.GetLatestCandle(symbol, interval); latest != nil {
+		if err := stream.Send(latest); err != nil {
+			return err
+		}
+	}
+
+	id, ch := s.broker.Subscribe(symbol)
+	defer s.broker.Unsubscribe(id)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case events, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			hasTrade := false
+			for _, evt := range events {
+				if _, ok := evt.Data.(*orderbookv1.TradeExecuted); ok {
+					hasTrade = true
+					break
+				}
+			}
+			if !hasTrade {
+				continue
+			}
+			if latest := s.candles.GetLatestCandle(symbol, interval); latest != nil {
+				if err := stream.Send(latest); err != nil {
 					return err
 				}
 			}

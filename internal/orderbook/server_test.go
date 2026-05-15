@@ -27,8 +27,9 @@ func newTestServer(t *testing.T) (orderbookv1connect.OrderBookServiceClient, *ht
 	tradeProjection := orderbook.NewTradeProjection()
 	orderProjection := orderbook.NewOrderProjection()
 	depthProjection := orderbook.NewDepthProjection()
+	candleProjection := orderbook.NewCandleProjection()
 
-	publisher := es.NewFanOutPublisher(slog.Default(), tradeProjection, orderProjection, depthProjection)
+	publisher := es.NewFanOutPublisher(slog.Default(), tradeProjection, orderProjection, depthProjection, candleProjection)
 
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
@@ -36,7 +37,7 @@ func newTestServer(t *testing.T) (orderbookv1connect.OrderBookServiceClient, *ht
 
 	broker := orderbook.NewBroker()
 
-	srv := orderbook.NewServer(handler, slog.Default(), tradeProjection, orderProjection, depthProjection, broker)
+	srv := orderbook.NewServer(handler, slog.Default(), tradeProjection, orderProjection, depthProjection, candleProjection, broker)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)

@@ -26,6 +26,8 @@ service OrderBookService {
   rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
   rpc StreamMarketDepth(StreamMarketDepthRequest) returns (stream GetMarketDepthResponse);
   rpc StreamTrades(StreamTradesRequest) returns (stream Trade);
+  rpc GetCandles(GetCandlesRequest) returns (GetCandlesResponse);
+  rpc StreamCandles(StreamCandlesRequest) returns (stream Candle);
 }
 
 message PlaceOrderRequest {
@@ -140,6 +142,42 @@ message StreamMarketDepthRequest {
 
 message StreamTradesRequest {
   string symbol = 1;
+}
+
+enum CandleInterval {
+  CANDLE_INTERVAL_UNSPECIFIED = 0;
+  CANDLE_INTERVAL_1M = 1;
+  CANDLE_INTERVAL_5M = 2;
+  CANDLE_INTERVAL_15M = 3;
+  CANDLE_INTERVAL_1H = 4;
+  CANDLE_INTERVAL_1D = 5;
+}
+
+message Candle {
+  string symbol = 1;
+  CandleInterval interval = 2;
+  google.protobuf.Timestamp open_time = 3;
+  int64 open = 4;
+  int64 high = 5;
+  int64 low = 6;
+  int64 close = 7;
+  int64 volume = 8;
+}
+
+message GetCandlesRequest {
+  string symbol = 1;
+  CandleInterval interval = 2;
+  google.protobuf.Timestamp from = 3;
+  google.protobuf.Timestamp to = 4;
+}
+
+message GetCandlesResponse {
+  repeated Candle candles = 1;
+}
+
+message StreamCandlesRequest {
+  string symbol = 1;
+  CandleInterval interval = 2;
 }
 
 message ListOrdersResponse {

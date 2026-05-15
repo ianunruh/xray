@@ -1,6 +1,10 @@
 package orderbook
 
-import orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
+import (
+	"time"
+
+	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
+)
 
 // TradeReader provides read access to the trade projection.
 type TradeReader interface {
@@ -16,4 +20,10 @@ type OrderReader interface {
 // DepthReader provides read access to the market depth projection.
 type DepthReader interface {
 	GetDepth(symbol string, depth int32) (bids, asks []*orderbookv1.PriceLevel)
+}
+
+// CandleReader provides read access to the OHLC candle projection.
+type CandleReader interface {
+	GetCandles(symbol string, interval orderbookv1.CandleInterval, from, to time.Time) []*orderbookv1.Candle
+	GetLatestCandle(symbol string, interval orderbookv1.CandleInterval) *orderbookv1.Candle
 }

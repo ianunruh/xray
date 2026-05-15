@@ -65,6 +65,12 @@ const (
 	// OrderBookServiceStreamTradesProcedure is the fully-qualified name of the OrderBookService's
 	// StreamTrades RPC.
 	OrderBookServiceStreamTradesProcedure = "/orderbook.v1.OrderBookService/StreamTrades"
+	// OrderBookServiceGetCandlesProcedure is the fully-qualified name of the OrderBookService's
+	// GetCandles RPC.
+	OrderBookServiceGetCandlesProcedure = "/orderbook.v1.OrderBookService/GetCandles"
+	// OrderBookServiceStreamCandlesProcedure is the fully-qualified name of the OrderBookService's
+	// StreamCandles RPC.
+	OrderBookServiceStreamCandlesProcedure = "/orderbook.v1.OrderBookService/StreamCandles"
 	// SagaServicePlaceBracketOrderProcedure is the fully-qualified name of the SagaService's
 	// PlaceBracketOrder RPC.
 	SagaServicePlaceBracketOrderProcedure = "/orderbook.v1.SagaService/PlaceBracketOrder"
@@ -86,6 +92,8 @@ type OrderBookServiceClient interface {
 	ListOrders(context.Context, *connect.Request[v1.ListOrdersRequest]) (*connect.Response[v1.ListOrdersResponse], error)
 	StreamMarketDepth(context.Context, *connect.Request[v1.StreamMarketDepthRequest]) (*connect.ServerStreamForClient[v1.GetMarketDepthResponse], error)
 	StreamTrades(context.Context, *connect.Request[v1.StreamTradesRequest]) (*connect.ServerStreamForClient[v1.Trade], error)
+	GetCandles(context.Context, *connect.Request[v1.GetCandlesRequest]) (*connect.Response[v1.GetCandlesResponse], error)
+	StreamCandles(context.Context, *connect.Request[v1.StreamCandlesRequest]) (*connect.ServerStreamForClient[v1.Candle], error)
 }
 
 // NewOrderBookServiceClient constructs a client for the orderbook.v1.OrderBookService service. By
@@ -159,6 +167,18 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(orderBookServiceMethods.ByName("StreamTrades")),
 			connect.WithClientOptions(opts...),
 		),
+		getCandles: connect.NewClient[v1.GetCandlesRequest, v1.GetCandlesResponse](
+			httpClient,
+			baseURL+OrderBookServiceGetCandlesProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("GetCandles")),
+			connect.WithClientOptions(opts...),
+		),
+		streamCandles: connect.NewClient[v1.StreamCandlesRequest, v1.Candle](
+			httpClient,
+			baseURL+OrderBookServiceStreamCandlesProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("StreamCandles")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -174,6 +194,8 @@ type orderBookServiceClient struct {
 	listOrders        *connect.Client[v1.ListOrdersRequest, v1.ListOrdersResponse]
 	streamMarketDepth *connect.Client[v1.StreamMarketDepthRequest, v1.GetMarketDepthResponse]
 	streamTrades      *connect.Client[v1.StreamTradesRequest, v1.Trade]
+	getCandles        *connect.Client[v1.GetCandlesRequest, v1.GetCandlesResponse]
+	streamCandles     *connect.Client[v1.StreamCandlesRequest, v1.Candle]
 }
 
 // PlaceOrder calls orderbook.v1.OrderBookService.PlaceOrder.
@@ -226,6 +248,16 @@ func (c *orderBookServiceClient) StreamTrades(ctx context.Context, req *connect.
 	return c.streamTrades.CallServerStream(ctx, req)
 }
 
+// GetCandles calls orderbook.v1.OrderBookService.GetCandles.
+func (c *orderBookServiceClient) GetCandles(ctx context.Context, req *connect.Request[v1.GetCandlesRequest]) (*connect.Response[v1.GetCandlesResponse], error) {
+	return c.getCandles.CallUnary(ctx, req)
+}
+
+// StreamCandles calls orderbook.v1.OrderBookService.StreamCandles.
+func (c *orderBookServiceClient) StreamCandles(ctx context.Context, req *connect.Request[v1.StreamCandlesRequest]) (*connect.ServerStreamForClient[v1.Candle], error) {
+	return c.streamCandles.CallServerStream(ctx, req)
+}
+
 // OrderBookServiceHandler is an implementation of the orderbook.v1.OrderBookService service.
 type OrderBookServiceHandler interface {
 	PlaceOrder(context.Context, *connect.Request[v1.PlaceOrderRequest]) (*connect.Response[v1.PlaceOrderResponse], error)
@@ -238,6 +270,8 @@ type OrderBookServiceHandler interface {
 	ListOrders(context.Context, *connect.Request[v1.ListOrdersRequest]) (*connect.Response[v1.ListOrdersResponse], error)
 	StreamMarketDepth(context.Context, *connect.Request[v1.StreamMarketDepthRequest], *connect.ServerStream[v1.GetMarketDepthResponse]) error
 	StreamTrades(context.Context, *connect.Request[v1.StreamTradesRequest], *connect.ServerStream[v1.Trade]) error
+	GetCandles(context.Context, *connect.Request[v1.GetCandlesRequest]) (*connect.Response[v1.GetCandlesResponse], error)
+	StreamCandles(context.Context, *connect.Request[v1.StreamCandlesRequest], *connect.ServerStream[v1.Candle]) error
 }
 
 // NewOrderBookServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -307,6 +341,18 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 		connect.WithSchema(orderBookServiceMethods.ByName("StreamTrades")),
 		connect.WithHandlerOptions(opts...),
 	)
+	orderBookServiceGetCandlesHandler := connect.NewUnaryHandler(
+		OrderBookServiceGetCandlesProcedure,
+		svc.GetCandles,
+		connect.WithSchema(orderBookServiceMethods.ByName("GetCandles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	orderBookServiceStreamCandlesHandler := connect.NewServerStreamHandler(
+		OrderBookServiceStreamCandlesProcedure,
+		svc.StreamCandles,
+		connect.WithSchema(orderBookServiceMethods.ByName("StreamCandles")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/orderbook.v1.OrderBookService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case OrderBookServicePlaceOrderProcedure:
@@ -329,6 +375,10 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 			orderBookServiceStreamMarketDepthHandler.ServeHTTP(w, r)
 		case OrderBookServiceStreamTradesProcedure:
 			orderBookServiceStreamTradesHandler.ServeHTTP(w, r)
+		case OrderBookServiceGetCandlesProcedure:
+			orderBookServiceGetCandlesHandler.ServeHTTP(w, r)
+		case OrderBookServiceStreamCandlesProcedure:
+			orderBookServiceStreamCandlesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -376,6 +426,14 @@ func (UnimplementedOrderBookServiceHandler) StreamMarketDepth(context.Context, *
 
 func (UnimplementedOrderBookServiceHandler) StreamTrades(context.Context, *connect.Request[v1.StreamTradesRequest], *connect.ServerStream[v1.Trade]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.StreamTrades is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) GetCandles(context.Context, *connect.Request[v1.GetCandlesRequest]) (*connect.Response[v1.GetCandlesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.GetCandles is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) StreamCandles(context.Context, *connect.Request[v1.StreamCandlesRequest], *connect.ServerStream[v1.Candle]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.StreamCandles is not implemented"))
 }
 
 // SagaServiceClient is a client for the orderbook.v1.SagaService service.
