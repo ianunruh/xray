@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
@@ -38,37 +39,11 @@ func (s *Server) PlaceBracketOrder(ctx context.Context, req *connect.Request[ord
 		return nil, connect.NewError(connect.CodeInvalidArgument, ErrInvalidQuantity)
 	}
 
-	// Place the entry order on the order book.
-	placeCmd := orderbook.PlaceOrder{
-		Symbol:      msg.Symbol,
-		Side:        orderbook.SideFromProto(msg.Side),
-		Price:       msg.Price,
-		Quantity:    msg.Quantity,
-		OrderType:   orderbook.Limit,
-		TimeInForce: orderbook.GTC,
-	}
-
-	var entryOrderID string
-	err := s.orderbookHandler.Handle(ctx, placeCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
-		events, err := orderbook.ExecutePlaceOrder(book, placeCmd)
-		if err != nil {
-			return nil, err
-		}
-		for _, evt := range events {
-			if placed, ok := evt.Data.(*orderbookv1.OrderPlaced); ok {
-				entryOrderID = placed.OrderId
-				break
-			}
-		}
-		return events, nil
-	})
-	if err != nil {
-		s.log.Warn("PlaceBracketOrder: entry order failed", "symbol", msg.Symbol, "error", err)
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-
-	// Create the saga aggregate.
 	sagaID := NewSagaID()
+	entryOrderID := uuid.New().String()
+
+	// Create the saga first so the reactor has the order mapping before any
+	// trades can occur.
 	startCmd := StartSaga{
 		SagaID:          sagaID,
 		Symbol:          msg.Symbol,
@@ -80,11 +55,36 @@ func (s *Server) PlaceBracketOrder(ctx context.Context, req *connect.Request[ord
 		EntryOrderID:    entryOrderID,
 	}
 
-	err = s.sagaHandler.Handle(ctx, startCmd, func(saga *BracketSaga) ([]es.Event, error) {
+	err := s.sagaHandler.Handle(ctx, startCmd, func(saga *BracketSaga) ([]es.Event, error) {
 		return ExecuteStartSaga(saga, startCmd)
 	})
 	if err != nil {
 		s.log.Error("PlaceBracketOrder: saga creation failed", "saga_id", sagaID, "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	// Place the entry order on the order book.
+	placeCmd := orderbook.PlaceOrder{
+		Symbol:      msg.Symbol,
+		Side:        orderbook.SideFromProto(msg.Side),
+		Price:       msg.Price,
+		Quantity:    msg.Quantity,
+		OrderType:   orderbook.Limit,
+		TimeInForce: orderbook.GTC,
+		OrderID:     entryOrderID,
+	}
+
+	err = s.orderbookHandler.Handle(ctx, placeCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecutePlaceOrder(book, placeCmd)
+	})
+	if err != nil {
+		s.log.Warn("PlaceBracketOrder: entry order failed, failing saga", "saga_id", sagaID, "symbol", msg.Symbol, "error", err)
+		failCmd := RecordSagaFailed{SagaID: sagaID, Reason: "entry order placement failed"}
+		if failErr := s.sagaHandler.Handle(ctx, failCmd, func(saga *BracketSaga) ([]es.Event, error) {
+			return ExecuteRecordSagaFailed(saga, failCmd)
+		}); failErr != nil {
+			s.log.Error("PlaceBracketOrder: failed to record saga failure", "saga_id", sagaID, "error", failErr)
+		}
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 

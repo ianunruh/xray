@@ -106,6 +106,53 @@ func TestRecordSagaFailed_InvalidState(t *testing.T) {
 	assert.ErrorIs(t, err, saga.ErrInvalidState)
 }
 
+func TestRecordSagaFailed_FromPendingExit(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+
+	handler := es.NewHandler(store, registry, func(id string) *saga.BracketSaga {
+		return saga.NewBracketSaga(id)
+	}, slog.Default())
+
+	ctx := context.Background()
+	sagaID := "fail-exit-test"
+
+	startCmd := saga.StartSaga{
+		SagaID:          sagaID,
+		Symbol:          "AAPL",
+		EntrySide:       orderbookv1.Side_SIDE_BUY,
+		EntryPrice:      1500000,
+		EntryQty:        100,
+		TakeProfitPrice: 1550000,
+		StopLossPrice:   1450000,
+		EntryOrderID:    "order-1",
+	}
+	err := handler.Handle(ctx, startCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
+		return saga.ExecuteStartSaga(s, startCmd)
+	})
+	require.NoError(t, err)
+
+	filledCmd := saga.RecordEntryFilled{
+		SagaID:            sagaID,
+		TakeProfitOrderID: "tp-1",
+		StopLossOrderID:   "sl-1",
+	}
+	err = handler.Handle(ctx, filledCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
+		return saga.ExecuteRecordEntryFilled(s, filledCmd)
+	})
+	require.NoError(t, err)
+
+	failCmd := saga.RecordSagaFailed{SagaID: sagaID, Reason: "exit order rejected"}
+	err = handler.Handle(ctx, failCmd, func(s *saga.BracketSaga) ([]es.Event, error) {
+		return saga.ExecuteRecordSagaFailed(s, failCmd)
+	})
+	require.NoError(t, err)
+
+	sagaAgg, err := handler.Load(ctx, saga.AggregateID(sagaID))
+	require.NoError(t, err)
+	assert.Equal(t, saga.Failed, sagaAgg.Status)
+}
+
 func TestRecordActionFailed_EmitsSagaActionFailed(t *testing.T) {
 	registry := newTestRegistry()
 	store := memstore.New()

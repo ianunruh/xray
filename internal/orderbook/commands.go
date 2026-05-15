@@ -34,6 +34,7 @@ type PlaceOrder struct {
 	Quantity    int64
 	OrderType   OrderType
 	TimeInForce TimeInForce
+	OrderID     string
 }
 
 func (c PlaceOrder) AggregateID() string {
@@ -95,7 +96,10 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 	}
 
 	now := time.Now()
-	orderID := uuid.New().String()
+	orderID := cmd.OrderID
+	if orderID == "" {
+		orderID = uuid.New().String()
+	}
 
 	placedEvt := es.Event{
 		AggregateID: book.AggregateID(),

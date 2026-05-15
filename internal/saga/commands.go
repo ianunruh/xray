@@ -155,7 +155,7 @@ func (c RecordSagaFailed) AggregateID() string {
 }
 
 func ExecuteRecordSagaFailed(saga *BracketSaga, cmd RecordSagaFailed) ([]es.Event, error) {
-	if saga.Status != PendingEntry {
+	if saga.Status != PendingEntry && saga.Status != PendingExit {
 		return nil, ErrInvalidState
 	}
 
