@@ -15,11 +15,14 @@ Event-sourced order book — a learning project implementing a simple but realis
 - `internal/ordersaga/` — Order saga reactor (portfolio-aware order orchestration)
 - `internal/bracket/` — Bracket order saga (entry + take-profit/stop-loss exits)
 - `internal/pricesource/` — Shared price source interface and implementations (Polygon, static)
+- `internal/trader/` — Shared trader utilities (bootstrap, order tracking, portfolio queries, trade streaming)
 - `internal/mm/` — Market maker (strategy, engine)
 - `internal/noise/` — Noise trader (random order flow generator)
+- `internal/trend/` — Trend follower (EMA crossover strategy)
 - `cmd/xray/` — HTTP/gRPC server entry point
 - `cmd/xray-mm/` — Market maker binary
 - `cmd/xray-noise/` — Noise trader binary
+- `cmd/xray-trend/` — Trend follower binary
 
 ## Key design decisions
 
@@ -220,6 +223,52 @@ symbols:
 - **Position limits**: Flips to the opposite side when at max position, skips if both sides are limited
 - **Directional bias**: `buy_bias` controls the probability of buying vs selling (0.5 = neutral)
 - **Bootstrapping**: Same as the market maker — deposits initial cash and credits shares on first startup
+
+## Trend Follower
+
+The `xray-trend` binary is an EMA crossover trend follower that buys when the fast EMA crosses above the slow EMA and sells when it crosses below. It streams live trades from the order book to update its EMAs in real-time.
+
+### Running
+
+```sh
+go run ./cmd/xray-trend -config trend.yaml
+```
+
+### Configuration
+
+```yaml
+server_url: "http://localhost:8080"
+polygon_api_key: "key"             # or set POLYGON_API_KEY env var
+log_level: "info"
+price_source: "polygon"            # "polygon" or "static"
+
+symbols:
+  - symbol: AAPL
+    account_id: trend-AAPL
+    initial_deposit: 5000000000    # $500K
+    initial_shares: 500            # credited on first startup
+    fast_period: 10                # fast EMA period (in trades)
+    slow_period: 30                # slow EMA period (in trades)
+    quantity: 50                   # shares per order
+    max_position: 200              # target long position on buy signal
+    order_timeout: 30s             # cancel unfilled orders after this duration
+    price_offset: 5000             # $0.50 — offset from last trade price for limit orders
+
+polygon:
+  base_url: "https://api.polygon.io"
+  poll_interval: 30s
+```
+
+### How it works
+
+- **EMA crossover**: Computes fast and slow exponential moving averages from the live trade stream. Generates a buy signal when fast crosses above slow, sell signal when it crosses below.
+- **Warm-up period**: Waits for `slow_period` trades before generating any signals to let EMAs converge.
+- **Position targeting**: On buy signal, targets `max_position` shares long. On sell signal, targets flat (0 shares). Places orders incrementally up to `quantity` per signal.
+- **Limit orders with offset**: Places limit orders at `last_trade_price +/- price_offset` rather than market orders, avoiding adverse fills in thin books.
+- **Order expiry**: Cancels unfilled orders after `order_timeout` to avoid stale resting orders.
+- **Cancel-on-signal**: Cancels all outstanding orders before acting on a new signal to avoid conflicting positions.
+- **Bootstrapping**: Same as other traders — deposits initial cash and credits shares on first startup.
+- **Graceful shutdown**: Cancels all outstanding orders on SIGTERM/SIGINT.
 
 ## Development
 
