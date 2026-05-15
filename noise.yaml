@@ -4,7 +4,7 @@ price_source: polygon
 symbols:
   - symbol: AAPL
     account_id: noise-AAPL
-    instances: 3
+    instances: 20
     initial_deposit: 5000000000 # $500K
     initial_shares: 500
     order_interval: 3s
