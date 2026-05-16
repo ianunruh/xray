@@ -212,7 +212,7 @@ export function DiagnosticsPanel({
       </Group>
 
       <Group align="flex-start" gap="md" wrap="nowrap">
-        <Stack gap="xs" w={320}>
+        <Stack gap="xs" w={440}>
           <Text size="sm" c="dimmed">
             Aggregates ({aggregates.length})
           </Text>
@@ -237,11 +237,21 @@ export function DiagnosticsPanel({
                     }
                   >
                     <Table.Td>
-                      <Stack gap={0}>
-                        <Text size="xs" ff="monospace">
-                          {a.aggregateId}
-                        </Text>
-                        <Text size="10px" c="dimmed">
+                      <Stack gap={2}>
+                        <Group gap={6} wrap="nowrap">
+                          <Badge
+                            size="sm"
+                            variant="light"
+                            color="grape"
+                            style={{ flexShrink: 0 }}
+                          >
+                            {a.type}
+                          </Badge>
+                          <Text size="xs" ff="monospace" truncate>
+                            {a.aggregateId.slice(a.type.length + 1)}
+                          </Text>
+                        </Group>
+                        <Text size="xs" c="dimmed">
                           {a.lastEventAt
                             ? timestampDate(a.lastEventAt).toLocaleString()
                             : ""}
@@ -249,9 +259,9 @@ export function DiagnosticsPanel({
                       </Stack>
                     </Table.Td>
                     <Table.Td ta="right">
-                      <Badge size="sm" variant="light">
-                        {a.eventCount}
-                      </Badge>
+                      <Text size="xs" ff="monospace" fw={600}>
+                        {a.eventCount.toString()}
+                      </Text>
                     </Table.Td>
                   </Table.Tr>
                 ))}
