@@ -17,11 +17,13 @@ import (
 	"github.com/ianunruh/xray/gen/diagnostics/v1/diagnosticsv1connect"
 	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
+	"github.com/ianunruh/xray/gen/saga/v1/sagav1connect"
 	"github.com/ianunruh/xray/internal/bracket"
 	"github.com/ianunruh/xray/internal/diagnostics"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
 	"github.com/ianunruh/xray/internal/portfolio"
+	"github.com/ianunruh/xray/internal/sagasvc"
 	"github.com/ianunruh/xray/pkg/es"
 	"github.com/ianunruh/xray/pkg/es/natsstore"
 	"github.com/ianunruh/xray/pkg/es/pgstore"
@@ -129,6 +131,7 @@ func main() {
 	orderProjection := orderbook.NewPgOrderProjection(pool)
 	portfolioProjection := portfolio.NewPgPortfolioProjection(pool)
 	pnlProjection := portfolio.NewPgPnLProjection(pool)
+	sagaProjection := sagasvc.NewPgProjection(pool)
 	depthProjection := orderbook.NewDepthProjection()
 	candleProjection := orderbook.NewCandleProjection()
 	broker := orderbook.NewBroker()
@@ -155,6 +158,8 @@ func main() {
 			WithPersistent(store, orderSagaReactor),
 		natsstore.NewProjectionConsumer(js, registry, log, "bracket-reactor").
 			WithPersistent(store, bracketReactor),
+		natsstore.NewProjectionConsumer(js, registry, log, "saga-projection").
+			WithPersistent(store, sagaProjection),
 	}
 	for _, c := range consumers {
 		if err := c.Start(ctx); err != nil {
@@ -168,6 +173,7 @@ func main() {
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, broker)
 	bracketSrv := bracket.NewServer(bracketHandler, obHandler, log)
 	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, pnlProjection, ordersaga.NewPlaceOrderFunc(orderSagaHandler), ordersaga.NewReplaceOrderFunc(orderSagaHandler), ordersaga.NewGetOrderStatusFunc(orderSagaHandler), portfolioBroker, log)
+	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, obHandler, sagaProjection, log)
 	diagnosticsSrv := diagnostics.NewServer(store, registry, log)
 
 	mux := http.NewServeMux()
@@ -177,6 +183,8 @@ func main() {
 	mux.Handle(bracketPath, bracketH)
 	portfolioPath, portfolioH := portfoliov1connect.NewPortfolioServiceHandler(portfolioSrv)
 	mux.Handle(portfolioPath, portfolioH)
+	sagaPath, sagaH := sagav1connect.NewSagaServiceHandler(sagaSrv)
+	mux.Handle(sagaPath, sagaH)
 	diagnosticsPath, diagnosticsH := diagnosticsv1connect.NewDiagnosticsServiceHandler(diagnosticsSrv)
 	mux.Handle(diagnosticsPath, diagnosticsH)
 	mux.Handle("/", web.Handler())
