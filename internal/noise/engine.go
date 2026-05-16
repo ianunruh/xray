@@ -145,6 +145,9 @@ func (e *Engine) wouldSelfTrade(
 	orderType orderbookv1.OrderType,
 ) bool {
 	for _, po := range pending {
+		if po.Status == portfoliov1.OrderStatus_ORDER_STATUS_COMPLETED || po.Status == portfoliov1.OrderStatus_ORDER_STATUS_FAILED {
+			continue
+		}
 		if po.Symbol != e.cfg.Symbol {
 			continue
 		}

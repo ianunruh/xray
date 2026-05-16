@@ -240,7 +240,7 @@ func (t *OrderTracker) CleanupOrphans(ctx context.Context, accountID string) {
 		if po.Symbol != t.Symbol {
 			continue
 		}
-		if po.Status != portfoliov1.PendingOrderStatus_PENDING_ORDER_STATUS_ORDER_PLACED {
+		if po.Status != portfoliov1.OrderStatus_ORDER_STATUS_ORDER_PLACED {
 			continue
 		}
 

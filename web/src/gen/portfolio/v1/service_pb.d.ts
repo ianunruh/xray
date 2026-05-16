@@ -259,14 +259,24 @@ export declare type PendingOrder = Message<"portfolio.v1.PendingOrder"> & {
   filledQuantity: bigint;
 
   /**
-   * @generated from field: portfolio.v1.PendingOrderStatus status = 9;
+   * @generated from field: portfolio.v1.OrderStatus status = 9;
    */
-  status: PendingOrderStatus;
+  status: OrderStatus;
 
   /**
    * @generated from field: google.protobuf.Timestamp started_at = 10;
    */
   startedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: string fail_reason = 11;
+   */
+  failReason: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp ended_at = 12;
+   */
+  endedAt?: Timestamp | undefined;
 };
 
 /**
@@ -663,36 +673,6 @@ export declare type ListPortfoliosResponse = Message<"portfolio.v1.ListPortfolio
  * Use `create(ListPortfoliosResponseSchema)` to create a new message.
  */
 export declare const ListPortfoliosResponseSchema: GenMessage<ListPortfoliosResponse>;
-
-/**
- * @generated from enum portfolio.v1.PendingOrderStatus
- */
-export enum PendingOrderStatus {
-  /**
-   * @generated from enum value: PENDING_ORDER_STATUS_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * @generated from enum value: PENDING_ORDER_STATUS_STARTED = 1;
-   */
-  STARTED = 1,
-
-  /**
-   * @generated from enum value: PENDING_ORDER_STATUS_CASH_HELD = 2;
-   */
-  CASH_HELD = 2,
-
-  /**
-   * @generated from enum value: PENDING_ORDER_STATUS_ORDER_PLACED = 3;
-   */
-  ORDER_PLACED = 3,
-}
-
-/**
- * Describes the enum portfolio.v1.PendingOrderStatus.
- */
-export declare const PendingOrderStatusSchema: GenEnum<PendingOrderStatus>;
 
 /**
  * @generated from enum portfolio.v1.OrderStatus

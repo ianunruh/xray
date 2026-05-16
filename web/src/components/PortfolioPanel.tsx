@@ -16,7 +16,7 @@ import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { formatMoney, formatPrice, formatQuantity, moneyToPrice } from "../format";
 import { Side } from "../gen/orderbook/v1/events_pb";
-import { PendingOrderStatus } from "../gen/portfolio/v1/service_pb";
+import { OrderStatus } from "../gen/portfolio/v1/service_pb";
 import { usePortfolio } from "../hooks/usePortfolio";
 import { orderBookClient, portfolioClient } from "../client";
 
@@ -31,16 +31,31 @@ function sideName(side: Side): string {
   }
 }
 
-function pendingStatusName(status: PendingOrderStatus): string {
+function orderStatusName(status: OrderStatus): string {
   switch (status) {
-    case PendingOrderStatus.STARTED:
+    case OrderStatus.STARTED:
       return "Started";
-    case PendingOrderStatus.CASH_HELD:
+    case OrderStatus.CASH_HELD:
       return "Cash Held";
-    case PendingOrderStatus.ORDER_PLACED:
+    case OrderStatus.ORDER_PLACED:
       return "Order Placed";
+    case OrderStatus.COMPLETED:
+      return "Completed";
+    case OrderStatus.FAILED:
+      return "Failed";
     default:
       return "?";
+  }
+}
+
+function orderStatusColor(status: OrderStatus): string | undefined {
+  switch (status) {
+    case OrderStatus.COMPLETED:
+      return "green";
+    case OrderStatus.FAILED:
+      return "red";
+    default:
+      return undefined;
   }
 }
 
@@ -318,6 +333,15 @@ export function PortfolioPanel({
     0n,
   );
 
+  const activeOrders = portfolio.pendingOrders.filter(
+    (o) =>
+      o.status !== OrderStatus.COMPLETED && o.status !== OrderStatus.FAILED,
+  );
+  const recentOrders = portfolio.pendingOrders.filter(
+    (o) =>
+      o.status === OrderStatus.COMPLETED || o.status === OrderStatus.FAILED,
+  );
+
   return (
     <Card withBorder>
       <Stack gap="sm">
@@ -406,7 +430,7 @@ export function PortfolioPanel({
           </>
         )}
 
-        {portfolio.pendingOrders.length > 0 && (
+        {activeOrders.length > 0 && (
           <>
             <Title order={6}>Pending Orders</Title>
             <Table striped highlightOnHover>
@@ -422,7 +446,7 @@ export function PortfolioPanel({
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {[...portfolio.pendingOrders]
+                {activeOrders
                   .sort((a, b) => Number(a.price - b.price))
                   .map((o) => (
                     <Table.Tr key={o.sagaId}>
@@ -437,7 +461,7 @@ export function PortfolioPanel({
                       <Table.Td ta="right">
                         {formatQuantity(o.filledQuantity)}
                       </Table.Td>
-                      <Table.Td>{pendingStatusName(o.status)}</Table.Td>
+                      <Table.Td>{orderStatusName(o.status)}</Table.Td>
                       <Table.Td>
                         <ActionIcon
                           size="xs"
@@ -452,6 +476,50 @@ export function PortfolioPanel({
                       </Table.Td>
                     </Table.Tr>
                   ))}
+              </Table.Tbody>
+            </Table>
+          </>
+        )}
+
+        {recentOrders.length > 0 && (
+          <>
+            <Title order={6}>Recent Orders</Title>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Symbol</Table.Th>
+                  <Table.Th>Side</Table.Th>
+                  <Table.Th ta="right">Price</Table.Th>
+                  <Table.Th ta="right">Qty</Table.Th>
+                  <Table.Th ta="right">Filled</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>Reason</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {recentOrders.map((o) => (
+                  <Table.Tr key={o.sagaId}>
+                    <Table.Td>{o.symbol}</Table.Td>
+                    <Table.Td c={o.side === Side.BUY ? "green" : "red"}>
+                      {sideName(o.side)}
+                    </Table.Td>
+                    <Table.Td ta="right">{formatPrice(o.price)}</Table.Td>
+                    <Table.Td ta="right">
+                      {formatQuantity(o.quantity)}
+                    </Table.Td>
+                    <Table.Td ta="right">
+                      {formatQuantity(o.filledQuantity)}
+                    </Table.Td>
+                    <Table.Td c={orderStatusColor(o.status)}>
+                      {orderStatusName(o.status)}
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="xs" c="dimmed">
+                        {o.failReason}
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
               </Table.Tbody>
             </Table>
           </>

@@ -110,18 +110,18 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 				data.SagaId, data.AccountId, data.Symbol,
 				int32(data.Side), data.Price, data.Quantity,
 				int32(data.OrderType), int32(data.TimeInForce),
-				int32(portfoliov1.PendingOrderStatus_PENDING_ORDER_STATUS_STARTED),
+				int32(portfoliov1.OrderStatus_ORDER_STATUS_STARTED),
 				data.StartedAt.AsTime(),
 			)
 		case *portfoliov1.OrderSagaCashHeld:
 			batch.Queue(
 				`UPDATE projection_pending_orders SET status = $1 WHERE saga_id = $2`,
-				int32(portfoliov1.PendingOrderStatus_PENDING_ORDER_STATUS_CASH_HELD), data.SagaId,
+				int32(portfoliov1.OrderStatus_ORDER_STATUS_CASH_HELD), data.SagaId,
 			)
 		case *portfoliov1.OrderSagaOrderPlaced:
 			batch.Queue(
 				`UPDATE projection_pending_orders SET status = $1 WHERE saga_id = $2`,
-				int32(portfoliov1.PendingOrderStatus_PENDING_ORDER_STATUS_ORDER_PLACED), data.SagaId,
+				int32(portfoliov1.OrderStatus_ORDER_STATUS_ORDER_PLACED), data.SagaId,
 			)
 		case *portfoliov1.OrderSagaFillRecorded:
 			batch.Queue(
@@ -129,9 +129,15 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 				data.FillQuantity, data.SagaId,
 			)
 		case *portfoliov1.OrderSagaCompleted:
-			batch.Queue(`DELETE FROM projection_pending_orders WHERE saga_id = $1`, data.SagaId)
+			batch.Queue(
+				`UPDATE projection_pending_orders SET status = $1, ended_at = $2 WHERE saga_id = $3`,
+				int32(portfoliov1.OrderStatus_ORDER_STATUS_COMPLETED), data.CompletedAt.AsTime(), data.SagaId,
+			)
 		case *portfoliov1.OrderSagaFailed:
-			batch.Queue(`DELETE FROM projection_pending_orders WHERE saga_id = $1`, data.SagaId)
+			batch.Queue(
+				`UPDATE projection_pending_orders SET status = $1, reason = $2, ended_at = $3 WHERE saga_id = $4`,
+				int32(portfoliov1.OrderStatus_ORDER_STATUS_FAILED), data.Reason, data.FailedAt.AsTime(), data.SagaId,
+			)
 		}
 	}
 
@@ -210,10 +216,13 @@ func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID stri
 		resp.Holdings = append(resp.Holdings, h)
 	}
 
+	terminalCutoff := time.Now().Add(-5 * time.Minute)
 	orderRows, err := p.pool.Query(ctx,
-		`SELECT saga_id, symbol, side, price, quantity, order_type, time_in_force, filled_qty, status, started_at
-		FROM projection_pending_orders WHERE account_id = $1`,
-		accountID,
+		`SELECT saga_id, symbol, side, price, quantity, order_type, time_in_force, filled_qty, status, started_at, reason, ended_at
+		FROM projection_pending_orders
+		WHERE account_id = $1 AND (status < $2 OR ended_at > $3)
+		ORDER BY started_at DESC`,
+		accountID, int32(portfoliov1.OrderStatus_ORDER_STATUS_COMPLETED), terminalCutoff,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query pending orders: %w", err)
@@ -228,18 +237,24 @@ func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID stri
 			timeInForce int32
 			status      int32
 			startedAt   time.Time
+			reason      string
+			endedAt     *time.Time
 		)
 		if err := orderRows.Scan(
 			&o.SagaId, &o.Symbol, &side, &o.Price, &o.Quantity,
-			&orderType, &timeInForce, &o.FilledQuantity, &status, &startedAt,
+			&orderType, &timeInForce, &o.FilledQuantity, &status, &startedAt, &reason, &endedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan pending order: %w", err)
 		}
 		o.Side = orderbookv1.Side(side)
 		o.OrderType = orderbookv1.OrderType(orderType)
 		o.TimeInForce = orderbookv1.TimeInForce(timeInForce)
-		o.Status = portfoliov1.PendingOrderStatus(status)
+		o.Status = portfoliov1.OrderStatus(status)
 		o.StartedAt = timestamppb.New(startedAt)
+		o.FailReason = reason
+		if endedAt != nil {
+			o.EndedAt = timestamppb.New(*endedAt)
+		}
 		resp.PendingOrders = append(resp.PendingOrders, &o)
 	}
 

@@ -64,13 +64,6 @@ message Holding {
   int64 realized_pnl = 6;
 }
 
-enum PendingOrderStatus {
-  PENDING_ORDER_STATUS_UNSPECIFIED = 0;
-  PENDING_ORDER_STATUS_STARTED = 1;
-  PENDING_ORDER_STATUS_CASH_HELD = 2;
-  PENDING_ORDER_STATUS_ORDER_PLACED = 3;
-}
-
 message PendingOrder {
   string saga_id = 1;
   string symbol = 2;
@@ -80,8 +73,10 @@ message PendingOrder {
   orderbook.v1.OrderType order_type = 6;
   orderbook.v1.TimeInForce time_in_force = 7;
   int64 filled_quantity = 8;
-  PendingOrderStatus status = 9;
+  OrderStatus status = 9;
   google.protobuf.Timestamp started_at = 10;
+  string fail_reason = 11;
+  google.protobuf.Timestamp ended_at = 12;
 }
 
 message PortfolioPlaceOrderRequest {
