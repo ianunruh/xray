@@ -171,16 +171,13 @@ func main() {
 	portfolioBroker.SetReady()
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, broker)
-	bracketSrv := bracket.NewServer(bracketHandler, obHandler, log)
-	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, pnlProjection, ordersaga.NewPlaceOrderFunc(orderSagaHandler), ordersaga.NewReplaceOrderFunc(orderSagaHandler), ordersaga.NewGetOrderStatusFunc(orderSagaHandler), portfolioBroker, log)
+	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, pnlProjection, portfolioBroker, log)
 	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, obHandler, sagaProjection, log)
 	diagnosticsSrv := diagnostics.NewServer(store, registry, log)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
 	mux.Handle(path, h)
-	bracketPath, bracketH := orderbookv1connect.NewSagaServiceHandler(bracketSrv)
-	mux.Handle(bracketPath, bracketH)
 	portfolioPath, portfolioH := portfoliov1connect.NewPortfolioServiceHandler(portfolioSrv)
 	mux.Handle(portfolioPath, portfolioH)
 	sagaPath, sagaH := sagav1connect.NewSagaServiceHandler(sagaSrv)

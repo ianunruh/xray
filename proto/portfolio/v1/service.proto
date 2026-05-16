@@ -14,9 +14,6 @@ service PortfolioService {
   rpc GetPortfolio(GetPortfolioRequest) returns (GetPortfolioResponse);
   rpc StreamPortfolio(StreamPortfolioRequest) returns (stream GetPortfolioResponse);
   rpc GetPnL(GetPnLRequest) returns (GetPnLResponse);
-  rpc PlaceOrder(PortfolioPlaceOrderRequest) returns (PortfolioPlaceOrderResponse);
-  rpc ReplaceOrder(PortfolioReplaceOrderRequest) returns (PortfolioReplaceOrderResponse);
-  rpc GetOrderStatus(GetOrderStatusRequest) returns (GetOrderStatusResponse);
   rpc ListPortfolios(ListPortfoliosRequest) returns (ListPortfoliosResponse);
 }
 
@@ -79,39 +76,9 @@ message PendingOrder {
   google.protobuf.Timestamp ended_at = 12;
 }
 
-message PortfolioPlaceOrderRequest {
-  string account_id = 1;
-  string symbol = 2;
-  orderbook.v1.Side side = 3;
-  int64 price = 4;
-  int64 quantity = 5;
-  orderbook.v1.OrderType order_type = 6;
-  orderbook.v1.TimeInForce time_in_force = 7;
-}
-
-message PortfolioPlaceOrderResponse {
-  string saga_id = 1;
-}
-
-message PortfolioReplaceOrderRequest {
-  string account_id = 1;
-  string symbol = 2;
-  string old_order_id = 3;
-  orderbook.v1.Side side = 4;
-  int64 price = 5;
-  int64 quantity = 6;
-  orderbook.v1.OrderType order_type = 7;
-  orderbook.v1.TimeInForce time_in_force = 8;
-}
-
-message PortfolioReplaceOrderResponse {
-  string saga_id = 1;
-}
-
-message GetOrderStatusRequest {
-  string saga_id = 1;
-}
-
+// OrderStatus is kept for the PendingOrder field on GetPortfolioResponse,
+// which the portfolio projection still surfaces inline. The dedicated
+// per-saga GetOrderStatus RPC has moved to saga.v1.SagaService.Get.
 enum OrderStatus {
   ORDER_STATUS_UNSPECIFIED = 0;
   ORDER_STATUS_STARTED = 1;
@@ -119,22 +86,6 @@ enum OrderStatus {
   ORDER_STATUS_ORDER_PLACED = 3;
   ORDER_STATUS_COMPLETED = 4;
   ORDER_STATUS_FAILED = 5;
-}
-
-message GetOrderStatusResponse {
-  string saga_id = 1;
-  string account_id = 2;
-  string symbol = 3;
-  orderbook.v1.Side side = 4;
-  int64 price = 5;
-  int64 quantity = 6;
-  orderbook.v1.OrderType order_type = 7;
-  orderbook.v1.TimeInForce time_in_force = 8;
-  OrderStatus status = 9;
-  int64 filled_quantity = 10;
-  int64 amount_held = 11;
-  int64 cash_settled = 12;
-  string order_id = 13;
 }
 
 message StreamPortfolioRequest {

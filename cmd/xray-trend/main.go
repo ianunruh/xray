@@ -13,6 +13,7 @@ import (
 
 	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
+	"github.com/ianunruh/xray/gen/saga/v1/sagav1connect"
 	"github.com/ianunruh/xray/internal/trader"
 	"github.com/ianunruh/xray/internal/trend"
 )
@@ -37,6 +38,7 @@ func main() {
 	httpClient := &http.Client{}
 	obClient := orderbookv1connect.NewOrderBookServiceClient(httpClient, cfg.ServerURL)
 	pfClient := portfoliov1connect.NewPortfolioServiceClient(httpClient, cfg.ServerURL)
+	sagaClient := sagav1connect.NewSagaServiceClient(httpClient, cfg.ServerURL)
 
 	seen := make(map[string]bool)
 	var symbols []string
@@ -63,7 +65,7 @@ func main() {
 	var wg sync.WaitGroup
 	for _, symCfg := range cfg.Symbols {
 		strategy := trend.NewStrategy(symCfg)
-		engine := trend.NewEngine(symCfg, strategy, prices, obClient, pfClient, log)
+		engine := trend.NewEngine(symCfg, strategy, prices, obClient, pfClient, sagaClient, log)
 
 		wg.Add(1)
 		go func() {

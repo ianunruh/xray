@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
+	"github.com/ianunruh/xray/gen/saga/v1/sagav1connect"
 	"github.com/ianunruh/xray/internal/noise"
 	"github.com/ianunruh/xray/internal/trader"
 )
@@ -35,6 +36,7 @@ func main() {
 
 	httpClient := &http.Client{}
 	pfClient := portfoliov1connect.NewPortfolioServiceClient(httpClient, cfg.ServerURL)
+	sagaClient := sagav1connect.NewSagaServiceClient(httpClient, cfg.ServerURL)
 
 	seen := make(map[string]bool)
 	var symbols []string
@@ -60,7 +62,7 @@ func main() {
 
 	var wg sync.WaitGroup
 	for _, symCfg := range cfg.Symbols {
-		engine := noise.NewEngine(symCfg, prices, pfClient, log)
+		engine := noise.NewEngine(symCfg, prices, pfClient, sagaClient, log)
 
 		wg.Add(1)
 		go func() {

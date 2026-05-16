@@ -8,6 +8,7 @@ import (
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
+	"github.com/ianunruh/xray/gen/saga/v1/sagav1connect"
 	"github.com/ianunruh/xray/internal/pricesource"
 	"github.com/ianunruh/xray/internal/trader"
 )
@@ -28,6 +29,7 @@ func NewEngine(
 	prices pricesource.PriceSource,
 	obClient orderbookv1connect.OrderBookServiceClient,
 	pfClient portfoliov1connect.PortfolioServiceClient,
+	sagaClient sagav1connect.SagaServiceClient,
 	log *slog.Logger,
 ) *Engine {
 	log = log.With("symbol", cfg.Symbol, "account", cfg.AccountID)
@@ -36,7 +38,7 @@ func NewEngine(
 		strategy: strategy,
 		state:    &EMAState{},
 		prices:   prices,
-		tracker:  trader.NewOrderTracker(cfg.Symbol, obClient, pfClient, log),
+		tracker:  trader.NewOrderTracker(cfg.Symbol, obClient, sagaClient, log),
 		pfClient: pfClient,
 		log:      log,
 	}

@@ -11,28 +11,33 @@ import (
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
+	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
+	"github.com/ianunruh/xray/gen/saga/v1/sagav1connect"
 	"github.com/ianunruh/xray/internal/pricesource"
 	"github.com/ianunruh/xray/internal/trader"
 )
 
 type Engine struct {
-	cfg      SymbolConfig
-	prices   pricesource.PriceSource
-	pfClient portfoliov1connect.PortfolioServiceClient
-	log      *slog.Logger
+	cfg        SymbolConfig
+	prices     pricesource.PriceSource
+	pfClient   portfoliov1connect.PortfolioServiceClient
+	sagaClient sagav1connect.SagaServiceClient
+	log        *slog.Logger
 }
 
 func NewEngine(
 	cfg SymbolConfig,
 	prices pricesource.PriceSource,
 	pfClient portfoliov1connect.PortfolioServiceClient,
+	sagaClient sagav1connect.SagaServiceClient,
 	log *slog.Logger,
 ) *Engine {
 	return &Engine{
-		cfg:      cfg,
-		prices:   prices,
-		pfClient: pfClient,
-		log:      log.With("symbol", cfg.Symbol, "account", cfg.AccountID),
+		cfg:        cfg,
+		prices:     prices,
+		pfClient:   pfClient,
+		sagaClient: sagaClient,
+		log:        log.With("symbol", cfg.Symbol, "account", cfg.AccountID),
 	}
 }
 
@@ -114,14 +119,18 @@ func (e *Engine) placeRandomOrder(ctx context.Context) {
 		return
 	}
 
-	resp, err := e.pfClient.PlaceOrder(ctx, connect.NewRequest(&portfoliov1.PortfolioPlaceOrderRequest{
-		AccountId:   e.cfg.AccountID,
-		Symbol:      e.cfg.Symbol,
-		Side:        side,
-		Price:       price,
-		Quantity:    qty,
-		OrderType:   orderType,
-		TimeInForce: tif,
+	resp, err := e.sagaClient.Place(ctx, connect.NewRequest(&sagav1.PlaceSagaRequest{
+		AccountId: e.cfg.AccountID,
+		Plan: &sagav1.PlaceSagaRequest_SingleOrder{
+			SingleOrder: &sagav1.SingleOrderPlan{
+				Symbol:      e.cfg.Symbol,
+				Side:        side,
+				Price:       price,
+				Quantity:    qty,
+				OrderType:   orderType,
+				TimeInForce: tif,
+			},
+		},
 	}))
 	if err != nil {
 		e.log.Error("failed to place order", "error", err)
