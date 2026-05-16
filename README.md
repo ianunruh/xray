@@ -6,25 +6,195 @@ Event-sourced order book — a learning project implementing a simple but realis
 
 ## Architecture
 
-- `proto/` — Protobuf definitions (source of truth for event and service schemas)
-- `gen/` — Generated Go code from protobuf (do not edit)
-- `gen/orderbook/v1/orderbookv1connect/` — Generated Connect service handler and client
-- `pkg/es/` — Reusable event sourcing framework (registry, aggregates, store interface, command handler)
-- `pkg/es/memstore/` — In-memory EventStore for tests
-- `pkg/es/pgstore/` — PostgreSQL EventStore (pgxpool)
-- `internal/orderbook/` — Order book domain (aggregate, commands, matching engine, gRPC server)
-- `internal/portfolio/` — Portfolio domain (cash/share tracking, order sagas)
-- `internal/ordersaga/` — Order saga reactor (portfolio-aware order orchestration)
-- `internal/bracket/` — Bracket order saga (entry + take-profit/stop-loss exits)
-- `internal/pricesource/` — Shared price source interface and implementations (Polygon, static)
-- `internal/trader/` — Shared trader utilities (bootstrap, order tracking, portfolio queries, trade streaming)
-- `internal/mm/` — Market maker (strategy, engine)
-- `internal/noise/` — Noise trader (random order flow generator)
-- `internal/trend/` — Trend follower (EMA crossover strategy)
-- `cmd/xray/` — HTTP/gRPC server entry point
-- `cmd/xray-mm/` — Market maker binary
-- `cmd/xray-noise/` — Noise trader binary
-- `cmd/xray-trend/` — Trend follower binary
+xray is an event-sourced CQRS system. Aggregates own state and emit events; events fan out via NATS to reactors (which issue follow-up commands), projections (which build read models), and brokers (which push live updates to subscribers).
+
+```mermaid
+graph TB
+    Client((Client / Web UI / Strategies))
+
+    subgraph services["RPC services"]
+        OBSvc[OrderBookService]
+        PortSvc[PortfolioService]
+        SagaSvc[SagaService]
+    end
+
+    subgraph aggregates["Aggregates (write-side, event-sourced)"]
+        OrderBook[OrderBook]
+        Portfolio[Portfolio]
+        OrderSaga[OrderSaga]
+        BracketSaga[BracketSaga]
+        OCOSaga[OCOSaga]
+    end
+
+    EventStore[("Postgres event log")]
+    NATS{{"NATS JetStream<br/>per-consumer durable cursors"}}
+
+    subgraph reactors["Reactors (drive sagas)"]
+        OSR[OrderSaga Reactor]
+        BR[Bracket Reactor]
+        OCR[OCOSaga Reactor]
+    end
+
+    subgraph projections["Projections (read-side)"]
+        direction LR
+        TradeP[trades]
+        OrderP[orders]
+        PortP[portfolio]
+        PnLP[pnl]
+        SagaP[sagas]
+        DepthP[depth*]
+        CandleP[candles*]
+    end
+
+    subgraph brokers["Brokers (live push)"]
+        OBB[OrderBook Broker]
+        PB[Portfolio Broker]
+    end
+
+    Reconciler[Periodic Reconciler]
+
+    Client -->|RPC| OBSvc
+    Client -->|RPC| PortSvc
+    Client -->|RPC| SagaSvc
+
+    OBSvc ==>|commands| OrderBook
+    PortSvc ==>|commands| Portfolio
+    SagaSvc ==>|StartOrderSaga| OrderSaga
+    SagaSvc ==>|StartSaga| BracketSaga
+    SagaSvc ==>|StartOCOSaga| OCOSaga
+
+    OrderBook -.->|events| EventStore
+    Portfolio -.->|events| EventStore
+    OrderSaga -.->|events| EventStore
+    BracketSaga -.->|events| EventStore
+    OCOSaga -.->|events| EventStore
+    EventStore -.-> NATS
+
+    NATS -.-> OSR
+    NATS -.-> BR
+    NATS -.-> OCR
+    NATS -.-> projections
+    NATS -.-> OBB
+    NATS -.-> PB
+
+    OSR ==>|RecordCashHeld<br/>RecordOrderPlaced<br/>RecordFill| OrderSaga
+    OSR ==>|HoldCash / SettleTrade<br/>HoldShares / SettleSale| Portfolio
+    OSR ==>|PlaceOrder<br/>CancelOrder| OrderBook
+
+    BR ==>|RecordEntryFilled<br/>RecordExitFilled| BracketSaga
+    BR ==>|StartOrderSaga<br/>entry leg| OrderSaga
+    BR ==>|StartOCOSaga<br/>exit leg| OCOSaga
+
+    OCR ==>|RecordSharesHeld<br/>RecordExitPlaced<br/>RecordFill| OCOSaga
+    OCR ==>|HoldShares / SettleSale<br/>ReleaseShares| Portfolio
+    OCR ==>|PlaceOrder<br/>TP + SL with OCO group| OrderBook
+
+    OBSvc -.->|reads| TradeP
+    OBSvc -.->|reads| OrderP
+    OBSvc -.->|reads| DepthP
+    OBSvc -.->|reads| CandleP
+    PortSvc -.->|reads| PortP
+    PortSvc -.->|reads| PnLP
+    SagaSvc -.->|reads| SagaP
+
+    OBB -.->|stream| Client
+    PB -.->|stream| Client
+
+    Reconciler -.->|active sagas| SagaP
+    Reconciler ==>|Reconcile / ReplayTrade| OSR
+    Reconciler ==>|Reconcile| BR
+    Reconciler ==>|Reconcile / ReplayTrade| OCR
+
+    classDef agg fill:#e8f4ff,stroke:#0066cc,color:#000
+    classDef svc fill:#e8ffe8,stroke:#009900,color:#000
+    classDef rct fill:#fff4e8,stroke:#cc6600,color:#000
+    classDef prj fill:#f4e8ff,stroke:#6600cc,color:#000
+    classDef brk fill:#ffe8f4,stroke:#cc0066,color:#000
+    classDef infra fill:#f0f0f0,stroke:#333,color:#000
+
+    class OrderBook,Portfolio,OrderSaga,BracketSaga,OCOSaga agg
+    class OBSvc,PortSvc,SagaSvc svc
+    class OSR,BR,OCR rct
+    class TradeP,OrderP,PortP,PnLP,SagaP,DepthP,CandleP prj
+    class OBB,PB brk
+    class EventStore,NATS,Reconciler infra
+```
+
+**Legend:**
+- Thick arrows (`==>`) = synchronous commands; thin solid (`-->`) = RPC requests; dashed (`-.->`) = async event flow or read queries.
+- Projections marked `*` are in-memory (rebuilt on every boot); the others are PG-backed with durable cursors.
+- Each persistent consumer has its own NATS cursor, so projections can advance independently and the saga reactors don't replay from event 0 on every restart.
+
+### Bracket order lifecycle
+
+Brackets compose: the bracket aggregate is a thin orchestrator that spawns an entry `OrderSaga`, observes its completion, then spawns an exit `OCOSaga`. The bracket reactor never touches the portfolio or the orderbook directly — all of that lives in the two child sagas.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Svc as SagaService
+    participant B as BracketSaga
+    participant BR as Bracket Reactor
+    participant O as OrderSaga (entry)
+    participant OSR as OrderSaga Reactor
+    participant C as OCOSaga (exit)
+    participant OCR as OCOSaga Reactor
+    participant Pf as Portfolio
+    participant OB as OrderBook
+
+    User->>Svc: Place(BracketPlan)
+    Svc->>B: StartSaga
+    B-->>BR: SagaStarted
+
+    BR->>O: StartOrderSaga
+    O-->>OSR: OrderSagaStarted
+    OSR->>Pf: HoldCash
+    OSR->>OB: PlaceOrder (entry)
+    OB-->>OSR: TradeExecuted
+    OSR->>Pf: SettleTrade (per-trade idempotent)
+    OSR->>O: RecordFill / RecordCompleted
+
+    O-->>BR: OrderSagaCompleted
+    BR->>C: StartOCOSaga
+    BR->>B: RecordEntryFilled
+
+    C-->>OCR: OCOSagaStarted
+    OCR->>Pf: HoldShares
+    OCR->>OB: PlaceOrder TP + SL (shared OCO group)
+    Note over OB: TP fills → orderbook<br/>atomically cancels SL
+    OB-->>OCR: TradeExecuted (TP)
+    OB-->>OCR: OrderCancelled (SL, reason=oco_triggered)
+    OCR->>Pf: SettleSale
+    OCR->>C: RecordFill / RecordCompleted
+
+    C-->>BR: OCOSagaCompleted
+    BR->>B: RecordExitFilled / SagaCompleted
+```
+
+If the user cancels mid-flight, the bracket reactor fails the affected child saga (the entry ordersaga during `PendingEntry`, the exit OCOSaga during `PendingExit`); each child cleans up its own portfolio holds, and the bracket observes the resulting failure event to mark itself `Failed`.
+
+### Package layout
+
+- `proto/` — protobuf definitions (source of truth for events and services)
+- `gen/` — generated Go code from protobuf (do not edit)
+- `pkg/es/` — reusable event sourcing framework (aggregates, registry, store interface, command handler, snapshots, projection consumer)
+- `pkg/es/memstore/` — in-memory EventStore for tests
+- `pkg/es/pgstore/` — PostgreSQL EventStore + migrations
+- `pkg/es/natsstore/` — NATS publisher + projection consumer with per-name durable cursors
+- `internal/orderbook/` — OrderBook aggregate, matching engine, order/trade/depth/candle projections, broker, RPC server
+- `internal/portfolio/` — Portfolio aggregate (cash + share holds with per-saga and per-trade idempotency), projections, broker, RPC server
+- `internal/ordersaga/` — OrderSaga aggregate + stateless reactor (one order, full portfolio coordination)
+- `internal/bracket/` — BracketSaga aggregate + reactor (entry ordersaga + exit OCOSaga orchestration)
+- `internal/ocosaga/` — OCOSaga aggregate + reactor (OCO exit: hold shares, TP+SL, settle whichever wins)
+- `internal/sagasvc/` — Unified `saga.v1.SagaService` (Place/Get/Cancel/List) + cross-kind projection
+- `internal/reconciler/` — Periodic reconciler for stuck sagas and lost trade settlements
+- `internal/diagnostics/` — Diagnostics RPCs (event log inspection)
+- `internal/pricesource/` — Price source interface + implementations (Polygon, static)
+- `internal/trader/` — Shared strategy utilities (bootstrap, order tracking, trade streaming)
+- `internal/mm/`, `internal/noise/`, `internal/trend/` — Strategy engines
+- `cmd/xray/` — HTTP/gRPC server entry point (registers all services, projections, reactors, reconciler)
+- `cmd/xray-mm/`, `cmd/xray-noise/`, `cmd/xray-trend/` — Strategy client binaries
 
 ## Key design decisions
 
