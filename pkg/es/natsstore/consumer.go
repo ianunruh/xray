@@ -108,7 +108,7 @@ func (c *ProjectionConsumer) catchUp(ctx context.Context, consumer jetstream.Con
 			break
 		}
 	}
-	c.log.Info("projections caught up from NATS", "event_count", total, "checkpoint", checkpointSeq)
+	c.log.Info("projections caught up from NATS", "name", c.name, "event_count", total, "checkpoint", checkpointSeq)
 	return checkpointSeq, nil
 }
 
