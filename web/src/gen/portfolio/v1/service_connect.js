@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CreditSharesRequest, CreditSharesResponse, DepositRequest, DepositResponse, GetOrderStatusRequest, GetOrderStatusResponse, GetPnLRequest, GetPnLResponse, GetPortfolioRequest, GetPortfolioResponse, ListPortfoliosRequest, ListPortfoliosResponse, PortfolioPlaceOrderRequest, PortfolioPlaceOrderResponse, PortfolioReplaceOrderRequest, PortfolioReplaceOrderResponse, StreamPortfolioRequest, WithdrawRequest, WithdrawResponse } from "./service_pb.js";
+import { CreditSharesRequest, CreditSharesResponse, DepositRequest, DepositResponse, GetPnLRequest, GetPnLResponse, GetPortfolioRequest, GetPortfolioResponse, ListPortfoliosRequest, ListPortfoliosResponse, StreamPortfolioRequest, WithdrawRequest, WithdrawResponse } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -64,33 +64,6 @@ export const PortfolioService = {
       name: "GetPnL",
       I: GetPnLRequest,
       O: GetPnLResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc portfolio.v1.PortfolioService.PlaceOrder
-     */
-    placeOrder: {
-      name: "PlaceOrder",
-      I: PortfolioPlaceOrderRequest,
-      O: PortfolioPlaceOrderResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc portfolio.v1.PortfolioService.ReplaceOrder
-     */
-    replaceOrder: {
-      name: "ReplaceOrder",
-      I: PortfolioReplaceOrderRequest,
-      O: PortfolioReplaceOrderResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc portfolio.v1.PortfolioService.GetOrderStatus
-     */
-    getOrderStatus: {
-      name: "GetOrderStatus",
-      I: GetOrderStatusRequest,
-      O: GetOrderStatusResponse,
       kind: MethodKind.Unary,
     },
     /**

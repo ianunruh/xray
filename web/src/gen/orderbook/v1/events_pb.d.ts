@@ -241,6 +241,10 @@ export declare type SagaStarted = Message<"orderbook.v1.SagaStarted"> & {
   stopLossPrice: bigint;
 
   /**
+   * entry_order_id is set on the SagaStarted event for backward
+   * compatibility with previously-stored events. New brackets derive
+   * the entry order ID from the entry ordersaga (ordersaga.OrderID).
+   *
    * @generated from field: string entry_order_id = 8;
    */
   entryOrderId: string;
@@ -249,6 +253,11 @@ export declare type SagaStarted = Message<"orderbook.v1.SagaStarted"> & {
    * @generated from field: google.protobuf.Timestamp started_at = 9;
    */
   startedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: string account_id = 10;
+   */
+  accountId: string;
 };
 
 /**

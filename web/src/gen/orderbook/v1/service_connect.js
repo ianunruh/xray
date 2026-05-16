@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, GetSagaRequest, GetSagaResponse, ListOrdersRequest, ListOrdersResponse, ListSagasRequest, ListSagasResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, PlaceBracketOrderRequest, PlaceBracketOrderResponse, PlaceOrderRequest, PlaceOrderResponse, ReplaceOrderRequest, ReplaceOrderResponse, StreamCandlesRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade } from "./service_pb.js";
+import { CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, ListOrdersRequest, ListOrdersResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, PlaceOrderRequest, PlaceOrderResponse, ReplaceOrderRequest, ReplaceOrderResponse, StreamCandlesRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -137,42 +137,6 @@ export const OrderBookService = {
       I: StreamCandlesRequest,
       O: Candle,
       kind: MethodKind.ServerStreaming,
-    },
-  }
-};
-
-/**
- * @generated from service orderbook.v1.SagaService
- */
-export const SagaService = {
-  typeName: "orderbook.v1.SagaService",
-  methods: {
-    /**
-     * @generated from rpc orderbook.v1.SagaService.PlaceBracketOrder
-     */
-    placeBracketOrder: {
-      name: "PlaceBracketOrder",
-      I: PlaceBracketOrderRequest,
-      O: PlaceBracketOrderResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc orderbook.v1.SagaService.GetSaga
-     */
-    getSaga: {
-      name: "GetSaga",
-      I: GetSagaRequest,
-      O: GetSagaResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc orderbook.v1.SagaService.ListSagas
-     */
-    listSagas: {
-      name: "ListSagas",
-      I: ListSagasRequest,
-      O: ListSagasResponse,
-      kind: MethodKind.Unary,
     },
   }
 };

@@ -11,7 +11,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Side, OrderType, TimeInForce } from "../gen/orderbook/v1/events_pb";
-import { portfolioClient } from "../client";
+import { sagaClient } from "../client";
 import { moneyToPrice } from "../format";
 
 const ORDER_TYPES: Record<string, OrderType> = {
@@ -79,14 +79,19 @@ export function OrderForm({
 
     setLoading(true);
     try {
-      await portfolioClient.placeOrder({
+      await sagaClient.place({
         accountId,
-        symbol,
-        side: side === "BUY" ? Side.BUY : Side.SELL,
-        orderType: ORDER_TYPES[orderType] ?? OrderType.MARKET,
-        price: isMarket ? 0n : moneyToPrice(prc),
-        quantity: BigInt(qty),
-        timeInForce: TIME_IN_FORCE[tif] ?? TimeInForce.IOC,
+        plan: {
+          case: "singleOrder",
+          value: {
+            symbol,
+            side: side === "BUY" ? Side.BUY : Side.SELL,
+            orderType: ORDER_TYPES[orderType] ?? OrderType.MARKET,
+            price: isMarket ? 0n : moneyToPrice(prc),
+            quantity: BigInt(qty),
+            timeInForce: TIME_IN_FORCE[tif] ?? TimeInForce.IOC,
+          },
+        },
       });
       notifications.show({
         title: "Order placed",

@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, GetSagaRequest, GetSagaResponse, ListOrdersRequest, ListOrdersResponse, ListSagasRequest, ListSagasResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, PlaceBracketOrderRequest, PlaceBracketOrderResponse, PlaceOrderRequest, PlaceOrderResponse, ReplaceOrderRequest, ReplaceOrderResponse, StreamCandlesRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade } from "./service_pb.js";
+import { CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, ListOrdersRequest, ListOrdersResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, PlaceOrderRequest, PlaceOrderResponse, ReplaceOrderRequest, ReplaceOrderResponse, StreamCandlesRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -137,42 +137,6 @@ export declare const OrderBookService: {
       readonly I: typeof StreamCandlesRequest,
       readonly O: typeof Candle,
       readonly kind: MethodKind.ServerStreaming,
-    },
-  }
-};
-
-/**
- * @generated from service orderbook.v1.SagaService
- */
-export declare const SagaService: {
-  readonly typeName: "orderbook.v1.SagaService",
-  readonly methods: {
-    /**
-     * @generated from rpc orderbook.v1.SagaService.PlaceBracketOrder
-     */
-    readonly placeBracketOrder: {
-      readonly name: "PlaceBracketOrder",
-      readonly I: typeof PlaceBracketOrderRequest,
-      readonly O: typeof PlaceBracketOrderResponse,
-      readonly kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc orderbook.v1.SagaService.GetSaga
-     */
-    readonly getSaga: {
-      readonly name: "GetSaga",
-      readonly I: typeof GetSagaRequest,
-      readonly O: typeof GetSagaResponse,
-      readonly kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc orderbook.v1.SagaService.ListSagas
-     */
-    readonly listSagas: {
-      readonly name: "ListSagas",
-      readonly I: typeof ListSagasRequest,
-      readonly O: typeof ListSagasResponse,
-      readonly kind: MethodKind.Unary,
     },
   }
 };

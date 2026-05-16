@@ -164,6 +164,14 @@ export declare type CashSettled = Message<"portfolio.v1.CashSettled"> & {
    * @generated from field: google.protobuf.Timestamp settled_at = 7;
    */
   settledAt?: Timestamp | undefined;
+
+  /**
+   * trade_id deduplicates settlement events per saga; legacy events
+   * pre-dating this field have it empty and bypass dedup.
+   *
+   * @generated from field: string trade_id = 8;
+   */
+  tradeId: string;
 };
 
 /**
@@ -354,6 +362,14 @@ export declare type SharesSettled = Message<"portfolio.v1.SharesSettled"> & {
    * @generated from field: google.protobuf.Timestamp settled_at = 7;
    */
   settledAt?: Timestamp | undefined;
+
+  /**
+   * trade_id deduplicates settlement events per saga; legacy events
+   * pre-dating this field have it empty and bypass dedup.
+   *
+   * @generated from field: string trade_id = 8;
+   */
+  tradeId: string;
 };
 
 /**

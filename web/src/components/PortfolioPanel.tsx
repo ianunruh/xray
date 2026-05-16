@@ -18,7 +18,7 @@ import { formatMoney, formatPrice, formatQuantity, moneyToPrice } from "../forma
 import { Side } from "../gen/orderbook/v1/events_pb";
 import { OrderStatus } from "../gen/portfolio/v1/service_pb";
 import { usePortfolio } from "../hooks/usePortfolio";
-import { orderBookClient, portfolioClient } from "../client";
+import { portfolioClient, sagaClient } from "../client";
 
 function sideName(side: Side): string {
   switch (side) {
@@ -291,19 +291,7 @@ export function PortfolioPanel({
   async function handleCancel(sagaId: string, symbol: string) {
     setCancellingId(sagaId);
     try {
-      const status = await portfolioClient.getOrderStatus({ sagaId });
-      if (!status.orderId) {
-        notifications.show({
-          title: "Cannot cancel",
-          message: "Order has not been placed on the book yet",
-          color: "yellow",
-        });
-        return;
-      }
-      await orderBookClient.cancelOrder({
-        symbol,
-        orderId: status.orderId,
-      });
+      await sagaClient.cancel({ sagaId });
       notifications.show({
         title: "Order cancelled",
         message: `Cancelled order for ${symbol}`,

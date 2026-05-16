@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CreditSharesRequest, CreditSharesResponse, DepositRequest, DepositResponse, GetOrderStatusRequest, GetOrderStatusResponse, GetPnLRequest, GetPnLResponse, GetPortfolioRequest, GetPortfolioResponse, ListPortfoliosRequest, ListPortfoliosResponse, PortfolioPlaceOrderRequest, PortfolioPlaceOrderResponse, PortfolioReplaceOrderRequest, PortfolioReplaceOrderResponse, StreamPortfolioRequest, WithdrawRequest, WithdrawResponse } from "./service_pb.js";
+import { CreditSharesRequest, CreditSharesResponse, DepositRequest, DepositResponse, GetPnLRequest, GetPnLResponse, GetPortfolioRequest, GetPortfolioResponse, ListPortfoliosRequest, ListPortfoliosResponse, StreamPortfolioRequest, WithdrawRequest, WithdrawResponse } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -64,33 +64,6 @@ export declare const PortfolioService: {
       readonly name: "GetPnL",
       readonly I: typeof GetPnLRequest,
       readonly O: typeof GetPnLResponse,
-      readonly kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc portfolio.v1.PortfolioService.PlaceOrder
-     */
-    readonly placeOrder: {
-      readonly name: "PlaceOrder",
-      readonly I: typeof PortfolioPlaceOrderRequest,
-      readonly O: typeof PortfolioPlaceOrderResponse,
-      readonly kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc portfolio.v1.PortfolioService.ReplaceOrder
-     */
-    readonly replaceOrder: {
-      readonly name: "ReplaceOrder",
-      readonly I: typeof PortfolioReplaceOrderRequest,
-      readonly O: typeof PortfolioReplaceOrderResponse,
-      readonly kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc portfolio.v1.PortfolioService.GetOrderStatus
-     */
-    readonly getOrderStatus: {
-      readonly name: "GetOrderStatus",
-      readonly I: typeof GetOrderStatusRequest,
-      readonly O: typeof GetOrderStatusResponse,
       readonly kind: MethodKind.Unary,
     },
     /**
