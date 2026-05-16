@@ -40,6 +40,34 @@ func NewOrderBook(id string) *OrderBook {
 	return ob
 }
 
+// EstimateMarketBuyCost walks the ask side in price-time priority and sums
+// the cost of buying `quantity` shares against current resting liquidity.
+// If depth is insufficient, the remainder is extrapolated at the deepest
+// observed ask price. Returns (0, false) if there is no ask liquidity.
+func (ob *OrderBook) EstimateMarketBuyCost(quantity int64) (int64, bool) {
+	if quantity <= 0 {
+		return 0, false
+	}
+	var cost, lastPrice int64
+	remaining := quantity
+	for order := range ob.Asks.All() {
+		if remaining <= 0 {
+			break
+		}
+		take := min(order.RemainingQty, remaining)
+		cost += take * order.Price
+		remaining -= take
+		lastPrice = order.Price
+	}
+	if lastPrice == 0 {
+		return 0, false
+	}
+	if remaining > 0 {
+		cost += remaining * lastPrice
+	}
+	return cost, true
+}
+
 // Apply updates the order book state from a domain event.
 func (ob *OrderBook) Apply(evt es.Event) error {
 	switch data := evt.Data.(type) {

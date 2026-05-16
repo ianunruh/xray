@@ -97,8 +97,16 @@ func (p *Portfolio) applyCashReleased(data *portfoliov1.CashReleased) {
 }
 
 func (p *Portfolio) applyCashSettled(data *portfoliov1.CashSettled) {
-	p.CashHeld -= data.Amount
-	p.HoldsBySaga[data.OrderSagaId] -= data.Amount
+	// Cap the hold deduction so CashHeld can never go negative. The hold is
+	// an estimate (especially for market BUYs walking the ask book); if the
+	// execution price exceeded that estimate, the overrun is debited
+	// directly from CashBalance rather than silently masked.
+	fromHold := min(data.Amount, p.HoldsBySaga[data.OrderSagaId])
+	overflow := data.Amount - fromHold
+
+	p.CashHeld -= fromHold
+	p.CashBalance -= overflow
+	p.HoldsBySaga[data.OrderSagaId] -= fromHold
 	if p.HoldsBySaga[data.OrderSagaId] <= 0 {
 		delete(p.HoldsBySaga, data.OrderSagaId)
 	}

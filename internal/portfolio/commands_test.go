@@ -284,6 +284,94 @@ func TestSettleTrade_PartialFill(t *testing.T) {
 	assert.Equal(t, int64(60), p.Holdings["AAPL"].Quantity)
 }
 
+func TestSettleTrade_OverflowDebitsCashBalance(t *testing.T) {
+	// When a fill costs more than was held (market BUY that swept higher
+	// than the hold estimated), CashHeld is capped at zero and the overrun
+	// is taken from CashBalance — never silently dropped.
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	deposit := portfolio.DepositCash{AccountID: "acct-1", Amount: 15000000}
+	err := handler.Handle(ctx, deposit, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, deposit)
+	})
+	require.NoError(t, err)
+
+	hold := portfolio.HoldCash{AccountID: "acct-1", OrderSagaID: "saga-1", Amount: 10000000}
+	err = handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCash(p, hold)
+	})
+	require.NoError(t, err)
+
+	// Fill exceeds the hold by 500,000.
+	settle := portfolio.SettleTrade{
+		AccountID: "acct-1", OrderSagaID: "saga-1",
+		Amount: 10500000, Symbol: "AAPL", Quantity: 70, CostPerShare: 150000,
+	}
+	err = handler.Handle(ctx, settle, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteSettleTrade(p, settle)
+	})
+	require.NoError(t, err)
+
+	p := mustLoad(t, handler, ctx, "acct-1")
+	// Deposit 15M, held 10M (balance → 5M), settle 10.5M (10M from hold + 0.5M from balance).
+	assert.Equal(t, int64(4500000), p.CashBalance)
+	assert.Equal(t, int64(0), p.CashHeld)
+	assert.Empty(t, p.HoldsBySaga)
+	assert.Equal(t, int64(70), p.Holdings["AAPL"].Quantity)
+}
+
+func TestSettleTrade_PartialFillThenOverflow(t *testing.T) {
+	// Two-fill case: first fill is within the hold, second fill exceeds the
+	// remaining hold and the overrun hits CashBalance.
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	deposit := portfolio.DepositCash{AccountID: "acct-1", Amount: 20000000}
+	err := handler.Handle(ctx, deposit, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, deposit)
+	})
+	require.NoError(t, err)
+
+	hold := portfolio.HoldCash{AccountID: "acct-1", OrderSagaID: "saga-1", Amount: 10000000}
+	err = handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCash(p, hold)
+	})
+	require.NoError(t, err)
+
+	// First fill: 7M, well within the 10M hold.
+	fill1 := portfolio.SettleTrade{
+		AccountID: "acct-1", OrderSagaID: "saga-1",
+		Amount: 7000000, Symbol: "AAPL", Quantity: 50, CostPerShare: 140000,
+	}
+	err = handler.Handle(ctx, fill1, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteSettleTrade(p, fill1)
+	})
+	require.NoError(t, err)
+
+	// Second fill: 4M, but only 3M of hold remains. 1M should come from balance.
+	fill2 := portfolio.SettleTrade{
+		AccountID: "acct-1", OrderSagaID: "saga-1",
+		Amount: 4000000, Symbol: "AAPL", Quantity: 25, CostPerShare: 160000,
+	}
+	err = handler.Handle(ctx, fill2, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteSettleTrade(p, fill2)
+	})
+	require.NoError(t, err)
+
+	p := mustLoad(t, handler, ctx, "acct-1")
+	// Deposit 20M, hold moves 10M → CashHeld. After both fills hold should be 0.
+	// Cash balance: started at 10M after hold, second fill overflowed by 1M → 9M.
+	assert.Equal(t, int64(9000000), p.CashBalance)
+	assert.Equal(t, int64(0), p.CashHeld)
+	assert.Empty(t, p.HoldsBySaga)
+	assert.Equal(t, int64(75), p.Holdings["AAPL"].Quantity)
+}
+
 func setupPortfolioWithHolding(t *testing.T, handler *es.Handler[*portfolio.Portfolio], ctx context.Context, accountID, symbol string, qty, costPerShare int64) {
 	t.Helper()
 

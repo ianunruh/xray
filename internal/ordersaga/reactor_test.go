@@ -957,3 +957,72 @@ func TestReactor_ReplaceOrder_NoMatch_RestingThenCancel(t *testing.T) {
 	assert.Equal(t, int64(301000000), p.CashBalance)
 	assert.Equal(t, int64(0), p.CashHeld)
 }
+
+func startMarketBuySaga(t *testing.T, env *reactorTestEnv, sagaID, accountID, symbol string, qty int64) {
+	t.Helper()
+	cmd := ordersaga.StartOrderSaga{
+		SagaID:      sagaID,
+		AccountID:   accountID,
+		Symbol:      symbol,
+		Side:        orderbookv1.Side_SIDE_BUY,
+		Price:       0,
+		Quantity:    qty,
+		OrderType:   orderbookv1.OrderType_ORDER_TYPE_MARKET,
+		TimeInForce: orderbookv1.TimeInForce_TIME_IN_FORCE_IOC,
+	}
+	err := env.sagaHandler.Handle(env.ctx, cmd, func(s *ordersaga.OrderSaga) ([]es.Event, error) {
+		return ordersaga.ExecuteStartOrderSaga(s, cmd)
+	})
+	require.NoError(t, err)
+}
+
+func TestReactor_MarketBuy_SweepMultipleLevels(t *testing.T) {
+	// A market BUY that sweeps across multiple ask levels must hold the
+	// walked-book cost plus a slippage buffer, then release the buffer
+	// remainder on completion — never leave CashHeld negative.
+	env := setupReactorTest(t)
+
+	depositCash(t, env, "acct-1", 1000000000) // $100,000 — plenty
+
+	// Two ask levels: 50 @ $150 and 50 @ $160.
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1500000, 50)
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1600000, 50)
+	env.pub.events = nil
+
+	startMarketBuySaga(t, env, "saga-1", "acct-1", "AAPL", 100)
+	env.flush()
+
+	s := loadSaga(t, env, "saga-1")
+	assert.Equal(t, ordersaga.Completed, s.Status)
+	assert.Equal(t, int64(100), s.FilledQty)
+
+	// Walked cost: 50*1,500,000 + 50*1,600,000 = 155,000,000.
+	// Hold with 5% buffer (10500 bps): 155,000,000 * 1.05 = 162,750,000.
+	assert.Equal(t, int64(162750000), s.AmountHeld)
+
+	// Actual spend: 155,000,000. CashHeld must end at 0 (buffer released).
+	p := loadPortfolio(t, env, "acct-1")
+	assert.Equal(t, int64(0), p.CashHeld)
+	assert.Empty(t, p.HoldsBySaga)
+	assert.Equal(t, int64(845000000), p.CashBalance) // 1,000,000,000 - 155,000,000
+	assert.Equal(t, int64(100), p.Holdings["AAPL"].Quantity)
+	assert.Equal(t, int64(155000000), p.Holdings["AAPL"].TotalCost)
+}
+
+func TestReactor_MarketBuy_NoLiquidity_SagaFails(t *testing.T) {
+	env := setupReactorTest(t)
+
+	depositCash(t, env, "acct-1", 1000000000)
+
+	startMarketBuySaga(t, env, "saga-1", "acct-1", "AAPL", 100)
+	for i := 0; i < ordersaga.MaxActionAttempts+1; i++ {
+		env.flush()
+	}
+
+	s := loadSaga(t, env, "saga-1")
+	assert.Equal(t, ordersaga.Failed, s.Status)
+
+	p := loadPortfolio(t, env, "acct-1")
+	assert.Equal(t, int64(1000000000), p.CashBalance)
+	assert.Equal(t, int64(0), p.CashHeld)
+}

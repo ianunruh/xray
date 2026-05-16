@@ -436,20 +436,24 @@ func (r *Reactor) executeHoldCash(ctx context.Context, sagaID string) error {
 	quantity := state.quantity
 	r.mu.Unlock()
 
+	var cashAmount int64
 	if oType == orderbook.Market && side == orderbookv1.Side_SIDE_BUY {
 		book, err := r.orderbookHandler.Load(ctx, orderbook.AggregateID(symbol))
 		if err != nil {
 			r.log.Error("failed to load orderbook for market order hold", "saga_id", sagaID, "error", err)
 			return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
 		}
-		price = book.Asks.BestPrice()
-		if price == 0 {
+		swept, ok := book.EstimateMarketBuyCost(quantity)
+		if !ok {
 			r.log.Error("no ask liquidity for market buy hold", "saga_id", sagaID)
 			return r.emitActionFailed(ctx, sagaID, "hold_cash", "no ask liquidity for market buy")
 		}
+		// Pad the swept-book estimate for slippage between hold and execution.
+		// Rounding up ensures a 1¢ estimate still gets a buffer.
+		cashAmount = (swept*marketBuySlippageBps + slippageBpsScale - 1) / slippageBpsScale
+	} else {
+		cashAmount = computeHoldAmount(oType, side, price, quantity)
 	}
-
-	cashAmount := computeHoldAmount(oType, side, price, quantity)
 	shareQty := computeShareHoldQuantity(oType, side, quantity)
 
 	if side == orderbookv1.Side_SIDE_SELL && shareQty > 0 {
@@ -988,6 +992,13 @@ func (r *Reactor) emitActionFailed(ctx context.Context, sagaID, action, reason s
 	}
 	return nil
 }
+
+// marketBuySlippageBps pads the hold computed from walking the ask book to
+// cover slippage between hold time and execution time. 10500 bps = 1.05×.
+const (
+	marketBuySlippageBps = 10500
+	slippageBpsScale     = 10000
+)
 
 func computeHoldAmount(orderType orderbook.OrderType, side orderbookv1.Side, price, quantity int64) int64 {
 	if side == orderbookv1.Side_SIDE_SELL {
