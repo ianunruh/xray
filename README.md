@@ -9,105 +9,56 @@ Event-sourced order book — a learning project implementing a simple but realis
 xray is an event-sourced CQRS system. Aggregates own state and emit events; events fan out via NATS to reactors (which issue follow-up commands), projections (which build read models), and brokers (which push live updates to subscribers).
 
 ```mermaid
-graph TB
-    Client((Client / Web UI / Strategies))
+flowchart TB
+    Client(["Client / Web UI / Strategies"])
 
-    subgraph services["RPC services"]
-        direction TB
-        OBSvc[OrderBookService]
-        PortSvc[PortfolioService]
-        SagaSvc[SagaService]
+    subgraph svc["RPC services"]
+        OBSvc["OrderBookService"]
+        PortSvc["PortfolioService"]
+        SagaSvc["SagaService"]
     end
 
-    subgraph aggregates["Aggregates (write-side, event-sourced)"]
-        direction TB
-        OrderBook[OrderBook]
-        Portfolio[Portfolio]
-        OrderSaga[OrderSaga]
-        BracketSaga[BracketSaga]
-        OCOSaga[OCOSaga]
+    subgraph agg["Aggregates · write-side"]
+        OrderBook["OrderBook"]
+        Portfolio["Portfolio"]
+        OrderSaga["OrderSaga"]
+        BracketSaga["BracketSaga"]
+        OCOSaga["OCOSaga"]
     end
 
     EventStore[("Postgres event log")]
-    NATS{{"NATS JetStream<br/>per-consumer durable cursors"}}
+    NATS{{"NATS JetStream"}}
 
-    subgraph reactors["Reactors (drive sagas)"]
-        direction TB
-        OSR[OrderSaga Reactor]
-        BR[Bracket Reactor]
-        OCR[OCOSaga Reactor]
+    subgraph rct["Reactors · drive sagas"]
+        OSR["OrderSaga Reactor"]
+        BR["Bracket Reactor"]
+        OCR["OCOSaga Reactor"]
     end
 
-    subgraph projections["Projections (read-side)"]
-        direction TB
-        TradeP[trades]
-        OrderP[orders]
-        PortP[portfolio]
-        PnLP[pnl]
-        SagaP[sagas]
-        DepthP[depth*]
-        CandleP[candles*]
+    subgraph prj["Projections · read-side"]
+        PgProj["PG: trades, orders,<br/>portfolio, pnl, sagas"]
+        MemProj["In-memory: depth, candles"]
     end
 
-    subgraph brokers["Brokers (live push)"]
-        direction TB
-        OBB[OrderBook Broker]
-        PB[Portfolio Broker]
+    subgraph brk["Brokers · live push"]
+        OBB["OrderBook Broker"]
+        PB["Portfolio Broker"]
     end
 
-    Reconciler[Periodic Reconciler]
+    Reconciler["Periodic Reconciler"]
 
-    Client -->|RPC| OBSvc
-    Client -->|RPC| PortSvc
-    Client -->|RPC| SagaSvc
-
-    OBSvc ==>|commands| OrderBook
-    PortSvc ==>|commands| Portfolio
-    SagaSvc ==>|StartOrderSaga| OrderSaga
-    SagaSvc ==>|StartSaga| BracketSaga
-    SagaSvc ==>|StartOCOSaga| OCOSaga
-
-    OrderBook -.->|events| EventStore
-    Portfolio -.->|events| EventStore
-    OrderSaga -.->|events| EventStore
-    BracketSaga -.->|events| EventStore
-    OCOSaga -.->|events| EventStore
+    Client --> svc
+    svc ==>|commands| agg
+    agg -.->|events| EventStore
     EventStore -.-> NATS
-
-    NATS -.-> OSR
-    NATS -.-> BR
-    NATS -.-> OCR
-    NATS -.-> projections
-    NATS -.-> OBB
-    NATS -.-> PB
-
-    OSR ==>|RecordCashHeld<br/>RecordOrderPlaced<br/>RecordFill| OrderSaga
-    OSR ==>|HoldCash / SettleTrade<br/>HoldShares / SettleSale| Portfolio
-    OSR ==>|PlaceOrder<br/>CancelOrder| OrderBook
-
-    BR ==>|RecordEntryFilled<br/>RecordExitFilled| BracketSaga
-    BR ==>|StartOrderSaga<br/>entry leg| OrderSaga
-    BR ==>|StartOCOSaga<br/>exit leg| OCOSaga
-
-    OCR ==>|RecordSharesHeld<br/>RecordExitPlaced<br/>RecordFill| OCOSaga
-    OCR ==>|HoldShares / SettleSale<br/>ReleaseShares| Portfolio
-    OCR ==>|PlaceOrder<br/>TP + SL with OCO group| OrderBook
-
-    OBSvc -.->|reads| TradeP
-    OBSvc -.->|reads| OrderP
-    OBSvc -.->|reads| DepthP
-    OBSvc -.->|reads| CandleP
-    PortSvc -.->|reads| PortP
-    PortSvc -.->|reads| PnLP
-    SagaSvc -.->|reads| SagaP
-
-    OBB -.->|stream| Client
-    PB -.->|stream| Client
-
-    Reconciler -.->|active sagas| SagaP
-    Reconciler ==>|Reconcile / ReplayTrade| OSR
-    Reconciler ==>|Reconcile| BR
-    Reconciler ==>|Reconcile / ReplayTrade| OCR
+    NATS -.-> rct
+    NATS -.-> prj
+    NATS -.-> brk
+    rct ==>|commands| agg
+    prj -.->|reads| svc
+    brk -.->|streams| Client
+    Reconciler -.->|active sagas| prj
+    Reconciler ==>|Reconcile / ReplayTrade| rct
 
     classDef agg fill:#e8f4ff,stroke:#0066cc,color:#000
     classDef svc fill:#e8ffe8,stroke:#009900,color:#000
@@ -119,15 +70,22 @@ graph TB
     class OrderBook,Portfolio,OrderSaga,BracketSaga,OCOSaga agg
     class OBSvc,PortSvc,SagaSvc svc
     class OSR,BR,OCR rct
-    class TradeP,OrderP,PortP,PnLP,SagaP,DepthP,CandleP prj
+    class PgProj,MemProj prj
     class OBB,PB brk
     class EventStore,NATS,Reconciler infra
 ```
 
-**Legend:**
-- Thick arrows (`==>`) = synchronous commands; thin solid (`-->`) = RPC requests; dashed (`-.->`) = async event flow or read queries.
-- Projections marked `*` are in-memory (rebuilt on every boot); the others are PG-backed with durable cursors.
-- Each persistent consumer has its own NATS cursor, so projections can advance independently and the saga reactors don't replay from event 0 on every restart.
+**Legend:** thick arrows (`==>`) = synchronous commands; thin solid (`-->`) = RPC requests; dashed (`-.->`) = async events or read queries.
+
+**Where the reactor command loops close:**
+
+| Reactor | Owns aggregate | Commands portfolio | Commands orderbook | Spawns child saga |
+|---|---|---|---|---|
+| OrderSaga | OrderSaga (RecordCashHeld, RecordOrderPlaced, RecordFill, RecordCompleted) | HoldCash / SettleTrade (buys); HoldShares / SettleSale (sells); Release on cancel | PlaceOrder / CancelOrder | — |
+| Bracket  | BracketSaga (RecordEntryFilled, RecordExitFilled, RecordSagaFailed) | — | — | OrderSaga (entry); OCOSaga (exit) |
+| OCOSaga  | OCOSaga (RecordSharesHeld, RecordExitPlaced, RecordFill, RecordCompleted) | HoldShares / SettleSale; ReleaseShares on cancel | PlaceOrder (TP + SL with shared OCO group); CancelOrder | — |
+
+In-memory projections (depth, candles) rebuild on every boot. PG-backed projections (trades, orders, portfolio, pnl, sagas) and the saga reactors each have their own NATS durable cursor, so they advance independently and don't replay from event 0 across restarts.
 
 ### Bracket order lifecycle
 
