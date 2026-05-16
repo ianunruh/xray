@@ -174,7 +174,7 @@ func TestProjectionConsumer_CatchUp(t *testing.T) {
 	var received []es.Event
 	proj := &collectingProjection{events: &received}
 
-	consumer := natsstore.NewProjectionConsumer(js, registry, slog.Default()).
+	consumer := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "test-replay").
 		WithEphemeral(proj)
 	err = consumer.Start(ctx)
 	require.NoError(t, err)
@@ -198,7 +198,7 @@ func TestProjectionConsumer_Ongoing(t *testing.T) {
 	var received []es.Event
 	proj := &collectingProjection{events: &received}
 
-	consumer := natsstore.NewProjectionConsumer(js, registry, slog.Default()).
+	consumer := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "test-ongoing").
 		WithEphemeral(proj)
 	err = consumer.Start(ctx)
 	require.NoError(t, err)
@@ -282,7 +282,95 @@ func TestSubject(t *testing.T) {
 	assert.Equal(t, "events.orderbook.MSFT.TradeExecuted", natsstore.Subject("orderbook:MSFT", "TradeExecuted"))
 }
 
-func TestProjectionConsumer_Checkpoint(t *testing.T) {
+func publishOrderPlaced(t *testing.T, ctx context.Context, publisher *natsstore.Publisher, n, startVersion int) {
+	t.Helper()
+	now := time.Now()
+	for i := range n {
+		err := publisher.Publish(ctx, []es.Event{{
+			AggregateID: "orderbook:AAPL",
+			Type:        "OrderPlaced",
+			Version:     startVersion + i,
+			Timestamp:   now,
+			Data: &orderbookv1.OrderPlaced{
+				OrderId:  fmt.Sprintf("order-%d", startVersion+i),
+				Symbol:   "AAPL",
+				Side:     orderbookv1.Side_SIDE_BUY,
+				Price:    1500000,
+				Quantity: 10,
+				PlacedAt: timestamppb.New(now),
+			},
+		}})
+		require.NoError(t, err)
+	}
+}
+
+func TestProjectionConsumer_PersistentResumesFromCheckpoint(t *testing.T) {
+	// A persistent consumer keeps its JetStream cursor across restarts:
+	// the second boot only sees events past the saved checkpoint.
+	_, js := startNATS(t)
+	ctx := context.Background()
+	registry := newTestRegistry()
+
+	_, err := natsstore.EnsureStream(ctx, js)
+	require.NoError(t, err)
+
+	publisher := natsstore.NewPublisher(js, slog.Default())
+	publishOrderPlaced(t, ctx, publisher, 5, 1)
+
+	checkpoint := newMemCheckpointStore()
+
+	var received []es.Event
+	proj := &collectingProjection{events: &received}
+	consumer := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "test-resume").
+		WithPersistent(checkpoint, proj)
+	require.NoError(t, consumer.Start(ctx))
+
+	assert.Len(t, received, 5)
+	assert.Equal(t, uint64(5), checkpoint.seqs["test-resume"])
+
+	publishOrderPlaced(t, ctx, publisher, 2, 6)
+
+	received = nil
+	consumer2 := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "test-resume").
+		WithPersistent(checkpoint, proj)
+	require.NoError(t, consumer2.Start(ctx))
+
+	assert.Len(t, received, 2)
+	assert.Equal(t, uint64(7), checkpoint.seqs["test-resume"])
+}
+
+func TestProjectionConsumer_EphemeralReplaysFromZero(t *testing.T) {
+	// An ephemeral consumer (no checkpoint store) discards its JetStream
+	// cursor on every boot so in-memory projections rebuild from scratch.
+	_, js := startNATS(t)
+	ctx := context.Background()
+	registry := newTestRegistry()
+
+	_, err := natsstore.EnsureStream(ctx, js)
+	require.NoError(t, err)
+
+	publisher := natsstore.NewPublisher(js, slog.Default())
+	publishOrderPlaced(t, ctx, publisher, 5, 1)
+
+	var received []es.Event
+	proj := &collectingProjection{events: &received}
+	consumer := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "test-replay-boot").
+		WithEphemeral(proj)
+	require.NoError(t, consumer.Start(ctx))
+	assert.Len(t, received, 5)
+
+	publishOrderPlaced(t, ctx, publisher, 2, 6)
+
+	received = nil
+	consumer2 := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "test-replay-boot").
+		WithEphemeral(proj)
+	require.NoError(t, consumer2.Start(ctx))
+	assert.Len(t, received, 7) // sees all 7 — cursor was reset on boot
+}
+
+func TestProjectionConsumer_IndependentCursorsPerName(t *testing.T) {
+	// Two consumers with different names must hold independent cursors:
+	// advancing "A" past some events must not skip those events for "B".
 	_, js := startNATS(t)
 	ctx := context.Background()
 	registry := newTestRegistry()
@@ -293,7 +381,7 @@ func TestProjectionConsumer_Checkpoint(t *testing.T) {
 	publisher := natsstore.NewPublisher(js, slog.Default())
 	now := time.Now()
 
-	for i := range 5 {
+	for i := range 3 {
 		err := publisher.Publish(ctx, []es.Event{{
 			AggregateID: "orderbook:AAPL",
 			Type:        "OrderPlaced",
@@ -311,54 +399,27 @@ func TestProjectionConsumer_Checkpoint(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	checkpoint := &memCheckpointStore{}
+	checkpoint := newMemCheckpointStore()
 
-	// First run: persistent projection sees all 5 events.
-	var ephemeralEvents, persistentEvents []es.Event
-	ephemeral := &collectingProjection{events: &ephemeralEvents}
-	persistent := &collectingProjection{events: &persistentEvents}
+	// Run consumer A: catches up through all 3 events, checkpoints.
+	var receivedA []es.Event
+	projA := &collectingProjection{events: &receivedA}
+	consumerA := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "consumer-a").
+		WithPersistent(checkpoint, projA)
+	require.NoError(t, consumerA.Start(ctx))
+	assert.Len(t, receivedA, 3)
+	assert.Equal(t, uint64(3), checkpoint.seqs["consumer-a"])
 
-	consumer := natsstore.NewProjectionConsumer(js, registry, slog.Default()).
-		WithEphemeral(ephemeral).
-		WithPersistent(checkpoint, persistent)
-	err = consumer.Start(ctx)
-	require.NoError(t, err)
-
-	assert.Len(t, ephemeralEvents, 5)
-	assert.Len(t, persistentEvents, 5)
-	assert.NotZero(t, checkpoint.seq)
-
-	// Publish 2 more events.
-	for i := range 2 {
-		err := publisher.Publish(ctx, []es.Event{{
-			AggregateID: "orderbook:AAPL",
-			Type:        "OrderPlaced",
-			Version:     6 + i,
-			Timestamp:   now,
-			Data: &orderbookv1.OrderPlaced{
-				OrderId:  fmt.Sprintf("order-%d", 6+i),
-				Symbol:   "AAPL",
-				Side:     orderbookv1.Side_SIDE_BUY,
-				Price:    1500000,
-				Quantity: 10,
-				PlacedAt: timestamppb.New(now),
-			},
-		}})
-		require.NoError(t, err)
-	}
-
-	// Second run: ephemeral sees all 7, persistent sees only 2 new.
-	ephemeralEvents = nil
-	persistentEvents = nil
-
-	consumer2 := natsstore.NewProjectionConsumer(js, registry, slog.Default()).
-		WithEphemeral(ephemeral).
-		WithPersistent(checkpoint, persistent)
-	err = consumer2.Start(ctx)
-	require.NoError(t, err)
-
-	assert.Len(t, ephemeralEvents, 7)
-	assert.Len(t, persistentEvents, 2)
+	// Consumer B starts fresh on the same store but with a different name:
+	// must see all 3 events regardless of consumer A's progress.
+	var receivedB []es.Event
+	projB := &collectingProjection{events: &receivedB}
+	consumerB := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "consumer-b").
+		WithPersistent(checkpoint, projB)
+	require.NoError(t, consumerB.Start(ctx))
+	assert.Len(t, receivedB, 3)
+	assert.Equal(t, uint64(3), checkpoint.seqs["consumer-b"])
+	assert.Equal(t, uint64(3), checkpoint.seqs["consumer-a"]) // unaffected
 }
 
 type collectingProjection struct {
@@ -371,14 +432,18 @@ func (p *collectingProjection) HandleEvents(_ context.Context, events []es.Event
 }
 
 type memCheckpointStore struct {
-	seq uint64
+	seqs map[string]uint64
 }
 
-func (s *memCheckpointStore) LoadCheckpoint(_ context.Context, _ string) (uint64, error) {
-	return s.seq, nil
+func newMemCheckpointStore() *memCheckpointStore {
+	return &memCheckpointStore{seqs: make(map[string]uint64)}
 }
 
-func (s *memCheckpointStore) SaveCheckpoint(_ context.Context, _ string, seq uint64) error {
-	s.seq = seq
+func (s *memCheckpointStore) LoadCheckpoint(_ context.Context, name string) (uint64, error) {
+	return s.seqs[name], nil
+}
+
+func (s *memCheckpointStore) SaveCheckpoint(_ context.Context, name string, seq uint64) error {
+	s.seqs[name] = seq
 	return nil
 }

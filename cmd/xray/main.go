@@ -136,15 +136,29 @@ func main() {
 	bracketReactor := bracket.NewReactor(bracketHandler, obHandler, log)
 	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
 
-	// Start NATS consumer: replays from stream, then consumes live events.
-	// Ephemeral projections (in-memory) always replay from the beginning.
-	// Persistent projections (Pg-backed) resume from the last checkpoint.
-	consumer := natsstore.NewProjectionConsumer(js, registry, log).
-		WithEphemeral(depthProjection, candleProjection, broker, portfolioBroker, bracketReactor, orderSagaReactor).
-		WithPersistent(store, tradeProjection, orderProjection, portfolioProjection, pnlProjection)
-	if err := consumer.Start(ctx); err != nil {
-		log.Error("failed to start projection consumer", "error", err)
-		os.Exit(1)
+	// One consumer per persistent projection so each one's cursor advances
+	// independently. Ephemeral projections (in-memory) share a single
+	// consumer whose JetStream cursor is reset on every boot, so their
+	// state rebuilds from the start of the stream.
+	consumers := []*natsstore.ProjectionConsumer{
+		natsstore.NewProjectionConsumer(js, registry, log, "ephemeral").
+			WithEphemeral(depthProjection, candleProjection, broker, portfolioBroker, bracketReactor),
+		natsstore.NewProjectionConsumer(js, registry, log, "trade-projection").
+			WithPersistent(store, tradeProjection),
+		natsstore.NewProjectionConsumer(js, registry, log, "order-projection").
+			WithPersistent(store, orderProjection),
+		natsstore.NewProjectionConsumer(js, registry, log, "portfolio-projection").
+			WithPersistent(store, portfolioProjection),
+		natsstore.NewProjectionConsumer(js, registry, log, "pnl-projection").
+			WithPersistent(store, pnlProjection),
+		natsstore.NewProjectionConsumer(js, registry, log, "saga-reactor").
+			WithPersistent(store, orderSagaReactor),
+	}
+	for _, c := range consumers {
+		if err := c.Start(ctx); err != nil {
+			log.Error("failed to start projection consumer", "error", err)
+			os.Exit(1)
+		}
 	}
 	broker.SetReady()
 	portfolioBroker.SetReady()

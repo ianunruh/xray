@@ -13,15 +13,15 @@ import (
 )
 
 const (
-	defaultBatchSize      = 256
-	defaultCheckpointName = "nats-consumer"
-	fetchTimeout          = 100 * time.Millisecond
+	defaultBatchSize = 256
+	fetchTimeout     = 100 * time.Millisecond
 )
 
 type ProjectionConsumer struct {
 	js        jetstream.JetStream
 	registry  *es.Registry
 	log       *slog.Logger
+	name      string
 	batchSize int
 
 	ephemeral  []es.Projection
@@ -29,11 +29,16 @@ type ProjectionConsumer struct {
 	checkpoint es.CheckpointStore
 }
 
-func NewProjectionConsumer(js jetstream.JetStream, registry *es.Registry, log *slog.Logger) *ProjectionConsumer {
+// NewProjectionConsumer creates a JetStream consumer named `name`. The same
+// name is used for the durable consumer on NATS and for the checkpoint row
+// in the checkpoint store, so two instances with different names hold
+// independent cursors and can be advanced independently.
+func NewProjectionConsumer(js jetstream.JetStream, registry *es.Registry, log *slog.Logger, name string) *ProjectionConsumer {
 	return &ProjectionConsumer{
 		js:        js,
 		registry:  registry,
 		log:       log,
+		name:      name,
 		batchSize: defaultBatchSize,
 	}
 }
@@ -57,7 +62,7 @@ func (c *ProjectionConsumer) Start(ctx context.Context) error {
 
 	var checkpointSeq uint64
 	if c.checkpoint != nil {
-		checkpointSeq, err = c.checkpoint.LoadCheckpoint(ctx, defaultCheckpointName)
+		checkpointSeq, err = c.checkpoint.LoadCheckpoint(ctx, c.name)
 		if err != nil {
 			return fmt.Errorf("load checkpoint: %w", err)
 		}
@@ -73,10 +78,15 @@ func (c *ProjectionConsumer) Start(ctx context.Context) error {
 }
 
 func (c *ProjectionConsumer) ensureConsumer(ctx context.Context) (jetstream.Consumer, error) {
-	_ = c.js.DeleteConsumer(ctx, StreamName, ConsumerName)
-
-	return c.js.CreateConsumer(ctx, StreamName, jetstream.ConsumerConfig{
-		Durable:       ConsumerName,
+	// Persistent consumers (with a checkpoint store) keep their JetStream
+	// cursor across boots so they can resume rather than replay.
+	// Consumers without a checkpoint store rebuild in-memory state on
+	// every boot, so we reset the cursor to deliver from the beginning.
+	if c.checkpoint == nil {
+		_ = c.js.DeleteConsumer(ctx, StreamName, c.name)
+	}
+	return c.js.CreateOrUpdateConsumer(ctx, StreamName, jetstream.ConsumerConfig{
+		Durable:       c.name,
 		DeliverPolicy: jetstream.DeliverAllPolicy,
 		AckPolicy:     jetstream.AckExplicitPolicy,
 		FilterSubject: "events.>",
@@ -186,7 +196,7 @@ func (c *ProjectionConsumer) fetchAndDispatch(ctx context.Context, consumer jets
 
 	// Save checkpoint after successful dispatch.
 	if c.checkpoint != nil && maxSeq > checkpointSeq {
-		if err := c.checkpoint.SaveCheckpoint(ctx, defaultCheckpointName, maxSeq); err != nil {
+		if err := c.checkpoint.SaveCheckpoint(ctx, c.name, maxSeq); err != nil {
 			c.log.Error("failed to save checkpoint", "error", err)
 		}
 	}

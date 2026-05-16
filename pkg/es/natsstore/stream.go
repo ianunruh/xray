@@ -8,10 +8,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-const (
-	StreamName   = "EVENTS"
-	ConsumerName = "projections"
-)
+const StreamName = "EVENTS"
 
 func EnsureStream(ctx context.Context, js jetstream.JetStream) (jetstream.Stream, error) {
 	return js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
