@@ -11,6 +11,7 @@ import (
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
+	"github.com/ianunruh/xray/internal/portfolio"
 	"github.com/ianunruh/xray/pkg/es"
 )
 
@@ -18,14 +19,22 @@ type actionKind int
 
 const (
 	actionSpawnEntrySaga actionKind = iota
-	actionPlaceExitOrders
-	actionRecordExit
+	actionPrepareExit
+	actionSettleExitFills
 	actionFailEntryFailed
+	actionReleaseExitShares
 )
 
 type action struct {
 	sagaID string
 	kind   actionKind
+}
+
+type exitFill struct {
+	tradeID  string
+	orderID  string
+	quantity int64
+	price    int64
 }
 
 type reactorState struct {
@@ -41,17 +50,22 @@ type reactorState struct {
 	slOrderID       string
 	status          Status
 
-	entrySpawned      bool
-	entryDone         bool
-	entryFailReason   string
-	exitFilledOrderID string
-	actionPending     bool
-	pendingCancels    []string
+	entrySpawned       bool
+	entryDone          bool
+	entryFailReason    string
+	exitSharesHeld     bool
+	exitSettledQty     int64
+	exitWinnerOrderID  string
+	pendingExitFills   []exitFill
+	needsReleaseShares bool
+	actionPending      bool
+	pendingCancels     []string
 }
 
 type Reactor struct {
 	sagaHandler      *es.Handler[*BracketSaga]
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga]
+	portfolioHandler *es.Handler[*portfolio.Portfolio]
 	orderbookHandler *es.Handler[*orderbook.OrderBook]
 	log              *slog.Logger
 
@@ -62,12 +76,14 @@ type Reactor struct {
 func NewReactor(
 	sagaHandler *es.Handler[*BracketSaga],
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga],
+	portfolioHandler *es.Handler[*portfolio.Portfolio],
 	orderbookHandler *es.Handler[*orderbook.OrderBook],
 	log *slog.Logger,
 ) *Reactor {
 	return &Reactor{
 		sagaHandler:      sagaHandler,
 		orderSagaHandler: orderSagaHandler,
+		portfolioHandler: portfolioHandler,
 		orderbookHandler: orderbookHandler,
 		log:              log,
 		sagas:            make(map[string]*reactorState),
@@ -161,6 +177,13 @@ func (r *Reactor) onSagaFailed(data *orderbookv1.SagaFailed) {
 		return
 	}
 	state.status = Failed
+	state.actionPending = false
+	// If the bracket failed while holding shares for the exit and not
+	// fully settled, defer cleanup until ReleaseShares runs.
+	if state.exitSharesHeld && state.exitSettledQty < state.entryQty {
+		state.needsReleaseShares = true
+		return
+	}
 	r.cleanupSaga(state)
 }
 
@@ -208,9 +231,15 @@ func (r *Reactor) onExitTrade(data *orderbookv1.TradeExecuted) {
 		if !ok || state.status != PendingExit {
 			continue
 		}
-		if (orderID == state.tpOrderID || orderID == state.slOrderID) && state.exitFilledOrderID == "" {
-			state.exitFilledOrderID = orderID
+		if orderID != state.tpOrderID && orderID != state.slOrderID {
+			continue
 		}
+		state.pendingExitFills = append(state.pendingExitFills, exitFill{
+			tradeID:  data.TradeId,
+			orderID:  orderID,
+			quantity: data.Quantity,
+			price:    data.Price,
+		})
 	}
 }
 
@@ -241,9 +270,11 @@ func (r *Reactor) actionForState(state *reactorState) (action, bool) {
 	case state.status == PendingEntry && state.entryFailReason != "":
 		return action{sagaID: state.sagaID, kind: actionFailEntryFailed}, true
 	case state.status == PendingEntry && state.entryDone:
-		return action{sagaID: state.sagaID, kind: actionPlaceExitOrders}, true
-	case state.status == PendingExit && state.exitFilledOrderID != "":
-		return action{sagaID: state.sagaID, kind: actionRecordExit}, true
+		return action{sagaID: state.sagaID, kind: actionPrepareExit}, true
+	case state.status == PendingExit && len(state.pendingExitFills) > 0:
+		return action{sagaID: state.sagaID, kind: actionSettleExitFills}, true
+	case state.status == Failed && state.needsReleaseShares:
+		return action{sagaID: state.sagaID, kind: actionReleaseExitShares}, true
 	}
 	return action{}, false
 }
@@ -255,12 +286,14 @@ func (r *Reactor) executeActions(ctx context.Context, actions []action) error {
 		switch a.kind {
 		case actionSpawnEntrySaga:
 			err = r.executeSpawnEntrySaga(ctx, a.sagaID)
-		case actionPlaceExitOrders:
-			err = r.executePlaceExitOrders(ctx, a.sagaID)
-		case actionRecordExit:
-			err = r.executeRecordExit(ctx, a.sagaID)
+		case actionPrepareExit:
+			err = r.executePrepareExit(ctx, a.sagaID)
+		case actionSettleExitFills:
+			err = r.executeSettleExitFills(ctx, a.sagaID)
 		case actionFailEntryFailed:
 			err = r.executeFailEntryFailed(ctx, a.sagaID)
+		case actionReleaseExitShares:
+			err = r.executeReleaseExitShares(ctx, a.sagaID)
 		}
 		if err != nil {
 			errs = append(errs, err)
@@ -311,13 +344,14 @@ func (r *Reactor) executeSpawnEntrySaga(ctx context.Context, sagaID string) erro
 	return nil
 }
 
-func (r *Reactor) executePlaceExitOrders(ctx context.Context, sagaID string) error {
+func (r *Reactor) executePrepareExit(ctx context.Context, sagaID string) error {
 	r.mu.Lock()
 	state, ok := r.sagas[sagaID]
 	if !ok || state.status != PendingEntry || !state.entryDone {
 		r.mu.Unlock()
 		return nil
 	}
+	accountID := state.accountID
 	symbol := state.symbol
 	entrySide := state.entrySide
 	tpPrice := state.takeProfitPrice
@@ -339,6 +373,28 @@ func (r *Reactor) executePlaceExitOrders(ctx context.Context, sagaID string) err
 		}
 	}
 
+	// Hold the entry shares against the portfolio so the OCO exit can
+	// settle into either leg without over-committing. Idempotent per
+	// saga ID.
+	holdCmd := portfolio.HoldShares{
+		AccountID:   accountID,
+		OrderSagaID: sagaID,
+		Symbol:      symbol,
+		Quantity:    entryQty,
+	}
+	if err := r.portfolioHandler.Handle(ctx, holdCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShares(p, holdCmd)
+	}); err != nil {
+		r.log.Error("failed to hold exit shares", "saga_id", sagaID, "error", err)
+		return r.emitActionFailed(ctx, sagaID, "prepare_exit", err.Error())
+	}
+
+	r.mu.Lock()
+	if s, ok := r.sagas[sagaID]; ok {
+		s.exitSharesHeld = true
+	}
+	r.mu.Unlock()
+
 	exitSide := orderbookv1.Side_SIDE_SELL
 	if entrySide == orderbookv1.Side_SIDE_SELL {
 		exitSide = orderbookv1.Side_SIDE_BUY
@@ -347,14 +403,14 @@ func (r *Reactor) executePlaceExitOrders(ctx context.Context, sagaID string) err
 	tpOrderID := TakeProfitOrderID(sagaID)
 	if err := r.placeExitOrder(ctx, symbol, exitSide, tpPrice, entryQty, orderbook.Limit, 0, tpOrderID); err != nil {
 		r.log.Error("failed to place take-profit order", "saga_id", sagaID, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "place_exit_orders", err.Error())
+		return r.emitActionFailed(ctx, sagaID, "prepare_exit", err.Error())
 	}
 
 	slOrderID := StopLossOrderID(sagaID)
 	if err := r.placeExitOrder(ctx, symbol, exitSide, 0, entryQty, orderbook.StopMarket, slPrice, slOrderID); err != nil {
 		r.log.Error("failed to place stop-loss order", "saga_id", sagaID, "error", err)
 		r.trackCancelFailure(ctx, sagaID, symbol, tpOrderID)
-		return r.emitActionFailed(ctx, sagaID, "place_exit_orders", err.Error())
+		return r.emitActionFailed(ctx, sagaID, "prepare_exit", err.Error())
 	}
 
 	cmd := RecordEntryFilled{
@@ -362,15 +418,13 @@ func (r *Reactor) executePlaceExitOrders(ctx context.Context, sagaID string) err
 		TakeProfitOrderID: tpOrderID,
 		StopLossOrderID:   slOrderID,
 	}
-
-	err := r.sagaHandler.Handle(ctx, cmd, func(saga *BracketSaga) ([]es.Event, error) {
+	if err := r.sagaHandler.Handle(ctx, cmd, func(saga *BracketSaga) ([]es.Event, error) {
 		return ExecuteRecordEntryFilled(saga, cmd)
-	})
-	if err != nil {
+	}); err != nil {
 		r.log.Error("failed to record entry filled", "saga_id", sagaID, "error", err)
 		r.trackCancelFailure(ctx, sagaID, symbol, tpOrderID)
 		r.trackCancelFailure(ctx, sagaID, symbol, slOrderID)
-		return r.emitActionFailed(ctx, sagaID, "place_exit_orders", err.Error())
+		return r.emitActionFailed(ctx, sagaID, "prepare_exit", err.Error())
 	}
 
 	r.log.Info("bracket saga entry filled, exit orders placed",
@@ -380,54 +434,143 @@ func (r *Reactor) executePlaceExitOrders(ctx context.Context, sagaID string) err
 	return nil
 }
 
-func (r *Reactor) executeRecordExit(ctx context.Context, sagaID string) error {
+func (r *Reactor) executeSettleExitFills(ctx context.Context, sagaID string) error {
 	r.mu.Lock()
 	state, ok := r.sagas[sagaID]
-	if !ok || state.status != PendingExit || state.exitFilledOrderID == "" {
+	if !ok || state.status != PendingExit {
 		r.mu.Unlock()
 		return nil
 	}
-	filledOrderID := state.exitFilledOrderID
+	fills := state.pendingExitFills
+	state.pendingExitFills = nil
+	accountID := state.accountID
 	symbol := state.symbol
-	cancelOrderID := state.slOrderID
-	if filledOrderID == state.slOrderID {
-		cancelOrderID = state.tpOrderID
-	}
+	tpOrderID := state.tpOrderID
+	slOrderID := state.slOrderID
+	winner := state.exitWinnerOrderID
 	r.mu.Unlock()
 
-	cancelCmd := orderbook.CancelOrder{
-		Symbol:  symbol,
-		OrderID: cancelOrderID,
-	}
-	err := r.orderbookHandler.Handle(ctx, cancelCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
-		return orderbook.ExecuteCancelOrder(book, cancelCmd)
-	})
-	if err != nil {
-		if errors.Is(err, orderbook.ErrOrderNotFound) || errors.Is(err, orderbook.ErrNoRemainingQty) {
-			r.log.Warn("sibling order already consumed", "saga_id", sagaID, "order_id", cancelOrderID, "error", err)
-		} else {
-			r.log.Error("failed to cancel sibling order", "saga_id", sagaID, "order_id", cancelOrderID, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "record_exit_filled", err.Error())
+	for _, f := range fills {
+		settleCmd := portfolio.SettleSale{
+			AccountID:     accountID,
+			OrderSagaID:   sagaID,
+			Symbol:        symbol,
+			Quantity:      f.quantity,
+			PricePerShare: f.price,
+			Proceeds:      f.price * f.quantity,
+		}
+		if err := r.portfolioHandler.Handle(ctx, settleCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteSettleSale(p, settleCmd)
+		}); err != nil {
+			r.log.Error("failed to settle exit fill", "saga_id", sagaID, "trade_id", f.tradeID, "error", err)
+			// Requeue the unprocessed fills so the next retry picks them up.
+			r.mu.Lock()
+			if s, ok := r.sagas[sagaID]; ok {
+				s.pendingExitFills = append([]exitFill{f}, s.pendingExitFills...)
+			}
+			r.mu.Unlock()
+			return r.emitActionFailed(ctx, sagaID, "settle_exit_fills", err.Error())
+		}
+
+		r.mu.Lock()
+		if s, ok := r.sagas[sagaID]; ok {
+			s.exitSettledQty += f.quantity
+		}
+		r.mu.Unlock()
+
+		// First settled fill picks the OCO winner; cancel the sibling
+		// best-effort (matching engine may have already consumed it).
+		if winner == "" {
+			winner = f.orderID
+			sibling := slOrderID
+			if winner == slOrderID {
+				sibling = tpOrderID
+			}
+			if err := r.cancelOrder(ctx, symbol, sibling); err != nil {
+				if !errors.Is(err, orderbook.ErrOrderNotFound) && !errors.Is(err, orderbook.ErrNoRemainingQty) {
+					r.log.Warn("failed to cancel OCO sibling", "saga_id", sagaID, "order_id", sibling, "error", err)
+				}
+			}
+			r.mu.Lock()
+			if s, ok := r.sagas[sagaID]; ok {
+				s.exitWinnerOrderID = winner
+			}
+			r.mu.Unlock()
 		}
 	}
 
+	r.mu.Lock()
+	state, ok = r.sagas[sagaID]
+	if !ok {
+		r.mu.Unlock()
+		return nil
+	}
+	complete := state.exitSettledQty >= state.entryQty
+	winnerForRecord := state.exitWinnerOrderID
+	r.mu.Unlock()
+	if !complete {
+		return nil
+	}
+
+	cancelled := slOrderID
+	if winnerForRecord == slOrderID {
+		cancelled = tpOrderID
+	}
 	cmd := RecordExitFilled{
 		SagaID:           sagaID,
-		FilledOrderID:    filledOrderID,
-		CancelledOrderID: cancelOrderID,
+		FilledOrderID:    winnerForRecord,
+		CancelledOrderID: cancelled,
 	}
-	err = r.sagaHandler.Handle(ctx, cmd, func(saga *BracketSaga) ([]es.Event, error) {
+	if err := r.sagaHandler.Handle(ctx, cmd, func(saga *BracketSaga) ([]es.Event, error) {
 		return ExecuteRecordExitFilled(saga, cmd)
-	})
-	if err != nil {
+	}); err != nil {
 		r.log.Error("failed to record exit filled", "saga_id", sagaID, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "record_exit_filled", err.Error())
+		return r.emitActionFailed(ctx, sagaID, "settle_exit_fills", err.Error())
 	}
 
 	r.log.Info("bracket saga completed",
 		"saga_id", sagaID,
-		"filled_order_id", filledOrderID,
-		"cancelled_order_id", cancelOrderID)
+		"filled_order_id", winnerForRecord,
+		"cancelled_order_id", cancelled)
+	return nil
+}
+
+func (r *Reactor) executeReleaseExitShares(ctx context.Context, sagaID string) error {
+	r.mu.Lock()
+	state, ok := r.sagas[sagaID]
+	if !ok || state.status != Failed || !state.needsReleaseShares {
+		r.mu.Unlock()
+		return nil
+	}
+	accountID := state.accountID
+	symbol := state.symbol
+	remaining := state.entryQty - state.exitSettledQty
+	r.mu.Unlock()
+
+	if remaining > 0 {
+		cmd := portfolio.ReleaseShares{
+			AccountID:   accountID,
+			OrderSagaID: sagaID,
+			Symbol:      symbol,
+			Quantity:    remaining,
+		}
+		if err := r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteReleaseShares(p, cmd)
+		}); err != nil {
+			r.log.Error("failed to release exit shares", "saga_id", sagaID, "error", err)
+			return r.emitActionFailed(ctx, sagaID, "release_exit_shares", err.Error())
+		}
+	}
+
+	r.mu.Lock()
+	if s, ok := r.sagas[sagaID]; ok {
+		s.needsReleaseShares = false
+		r.cleanupSaga(s)
+	}
+	r.mu.Unlock()
+
+	r.log.Info("bracket saga: exit shares released after failure",
+		"saga_id", sagaID, "released", remaining)
 	return nil
 }
 

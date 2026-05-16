@@ -136,7 +136,7 @@ func main() {
 	candleProjection := orderbook.NewCandleProjection()
 	broker := orderbook.NewBroker()
 	portfolioBroker := portfolio.NewPortfolioBroker()
-	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, obHandler, log)
+	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, portfolioHandler, obHandler, log)
 	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
 
 	// One consumer per persistent projection so each one's cursor advances

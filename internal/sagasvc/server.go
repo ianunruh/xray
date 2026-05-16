@@ -204,23 +204,32 @@ func (s *Server) cancelBracket(ctx context.Context, row *SagaRow) error {
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("load bracket: %w", err))
 	}
 
-	// PendingEntry: cancel the entry order. For new brackets the entry
-	// is an ordersaga; cancelling the orderbook order cascades into the
-	// entry ordersaga's failure path, which cascades into the bracket.
-	// PendingExit: cancel both exit legs; reactor handles partial
-	// cancels gracefully.
+	// PendingEntry: cancel the entry order. The entry is an ordersaga;
+	// cancelling its orderbook order cascades into the entry ordersaga's
+	// failure path, which cascades into the bracket.
+	// PendingExit: cancel both exit legs AND record the bracket as
+	// failed so the reactor can release the share hold.
 	switch b.Status {
 	case bracket.PendingEntry:
-		entryOrderID := b.EntryOrderID
-		if entryOrderID == "" {
-			entryOrderID = ordersaga.OrderID(row.SagaID)
+		entryOrderID := ordersaga.OrderID(bracket.EntryOrderSagaID(row.SagaID))
+		if b.EntryOrderID != "" {
+			entryOrderID = b.EntryOrderID
 		}
 		return s.cancelOrderbookOrder(ctx, row.Symbol, entryOrderID)
 	case bracket.PendingExit:
 		if err := s.cancelOrderbookOrder(ctx, row.Symbol, b.TakeProfitOrderID); err != nil {
 			return err
 		}
-		return s.cancelOrderbookOrder(ctx, row.Symbol, b.StopLossOrderID)
+		if err := s.cancelOrderbookOrder(ctx, row.Symbol, b.StopLossOrderID); err != nil {
+			return err
+		}
+		failCmd := bracket.RecordSagaFailed{SagaID: row.SagaID, Reason: "cancelled by user"}
+		if err := s.bracketHandler.Handle(ctx, failCmd, func(b *bracket.BracketSaga) ([]es.Event, error) {
+			return bracket.ExecuteRecordSagaFailed(b, failCmd)
+		}); err != nil {
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("record saga failed: %w", err))
+		}
+		return nil
 	default:
 		return connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("bracket %s is in unexpected state for cancel", row.SagaID))
