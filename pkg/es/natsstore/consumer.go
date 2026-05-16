@@ -157,13 +157,8 @@ func (c *ProjectionConsumer) fetchAndDispatch(ctx context.Context, consumer jets
 		return 0, 0, nil
 	}
 
-	// Ephemeral projections always receive all events.
-	for _, proj := range c.ephemeral {
-		if err := proj.HandleEvents(ctx, events); err != nil {
-			c.log.Error("projection failed to handle events", "error", err)
-		}
-	}
-
+	// Persistent projections run first so that subscribers woken up by
+	// ephemeral brokers/reactors see fully-updated state when they re-query.
 	// Persistent projections only receive events past the checkpoint.
 	if len(c.persistent) > 0 {
 		var newEvents []es.Event
@@ -179,6 +174,13 @@ func (c *ProjectionConsumer) fetchAndDispatch(ctx context.Context, consumer jets
 					c.log.Error("projection failed to handle events", "error", err)
 				}
 			}
+		}
+	}
+
+	// Ephemeral projections always receive all events.
+	for _, proj := range c.ephemeral {
+		if err := proj.HandleEvents(ctx, events); err != nil {
+			c.log.Error("projection failed to handle events", "error", err)
 		}
 	}
 
