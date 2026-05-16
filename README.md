@@ -13,12 +13,14 @@ graph TB
     Client((Client / Web UI / Strategies))
 
     subgraph services["RPC services"]
+        direction TB
         OBSvc[OrderBookService]
         PortSvc[PortfolioService]
         SagaSvc[SagaService]
     end
 
     subgraph aggregates["Aggregates (write-side, event-sourced)"]
+        direction TB
         OrderBook[OrderBook]
         Portfolio[Portfolio]
         OrderSaga[OrderSaga]
@@ -30,13 +32,14 @@ graph TB
     NATS{{"NATS JetStream<br/>per-consumer durable cursors"}}
 
     subgraph reactors["Reactors (drive sagas)"]
+        direction TB
         OSR[OrderSaga Reactor]
         BR[Bracket Reactor]
         OCR[OCOSaga Reactor]
     end
 
     subgraph projections["Projections (read-side)"]
-        direction LR
+        direction TB
         TradeP[trades]
         OrderP[orders]
         PortP[portfolio]
@@ -47,6 +50,7 @@ graph TB
     end
 
     subgraph brokers["Brokers (live push)"]
+        direction TB
         OBB[OrderBook Broker]
         PB[Portfolio Broker]
     end
