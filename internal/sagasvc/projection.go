@@ -54,9 +54,8 @@ func (p *PgProjection) HandleEvents(ctx context.Context, events []es.Event) erro
 				data.Reason, data.FailedAt.AsTime(), data.SagaId,
 			)
 
-		// Bracket saga lifecycle. Bracket's SagaStarted lives in the
-		// orderbook proto package since it predates the saga split; we
-		// inherit that shape until the next event-schema refactor.
+		// Bracket saga lifecycle. SagaStarted lives in the orderbook
+		// proto package since it predates the saga split.
 		case *orderbookv1.SagaStarted:
 			batch.Queue(
 				`INSERT INTO projection_sagas (saga_id, kind, status, account_id, symbol, started_at)
@@ -65,7 +64,7 @@ func (p *PgProjection) HandleEvents(ctx context.Context, events []es.Event) erro
 				data.SagaId,
 				int32(sagav1.SagaKind_SAGA_KIND_BRACKET),
 				int32(sagav1.SagaStatus_SAGA_STATUS_ACTIVE),
-				bracketAccountID(data), data.Symbol,
+				data.AccountId, data.Symbol,
 				data.StartedAt.AsTime(),
 			)
 		case *orderbookv1.SagaCompleted:
@@ -95,16 +94,6 @@ func (p *PgProjection) HandleEvents(ctx context.Context, events []es.Event) erro
 		}
 	}
 	return nil
-}
-
-// bracketAccountID extracts the account ID from a bracket SagaStarted event.
-// Brackets don't carry an account ID yet (added in a later commit); falls back
-// to empty string until then.
-func bracketAccountID(data *orderbookv1.SagaStarted) string {
-	// TODO(bracket-accounts): pull from data.AccountId once the bracket
-	// aggregate gains the field in C3.
-	_ = data
-	return ""
 }
 
 // SagaRow is the lookup result for kind-dispatch and listing.

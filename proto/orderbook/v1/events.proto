@@ -80,8 +80,12 @@ message SagaStarted {
   int64 entry_quantity = 5;
   int64 take_profit_price = 6;
   int64 stop_loss_price = 7;
+  // entry_order_id is set on the SagaStarted event for backward
+  // compatibility with previously-stored events. New brackets derive
+  // the entry order ID from the entry ordersaga (ordersaga.OrderID).
   string entry_order_id = 8;
   google.protobuf.Timestamp started_at = 9;
+  string account_id = 10;
 }
 
 message EntryFilled {

@@ -22,13 +22,13 @@ var (
 
 type StartSaga struct {
 	SagaID          string
+	AccountID       string
 	Symbol          string
 	EntrySide       orderbookv1.Side
 	EntryPrice      int64
 	EntryQty        int64
 	TakeProfitPrice int64
 	StopLossPrice   int64
-	EntryOrderID    string
 }
 
 func (c StartSaga) AggregateID() string {
@@ -47,14 +47,16 @@ func ExecuteStartSaga(saga *BracketSaga, cmd StartSaga) ([]es.Event, error) {
 		Timestamp:   now,
 		Data: &orderbookv1.SagaStarted{
 			SagaId:          cmd.SagaID,
+			AccountId:       cmd.AccountID,
 			Symbol:          cmd.Symbol,
 			EntrySide:       cmd.EntrySide,
 			EntryPrice:      cmd.EntryPrice,
 			EntryQuantity:   cmd.EntryQty,
 			TakeProfitPrice: cmd.TakeProfitPrice,
 			StopLossPrice:   cmd.StopLossPrice,
-			EntryOrderId:    cmd.EntryOrderID,
-			StartedAt:       timestamppb.New(now),
+			// EntryOrderId is derived from the entry ordersaga at
+			// placement time and recorded back via RecordEntryFilled.
+			StartedAt: timestamppb.New(now),
 		},
 	}
 

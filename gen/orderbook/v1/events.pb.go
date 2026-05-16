@@ -586,10 +586,14 @@ type SagaStarted struct {
 	EntryQuantity   int64                  `protobuf:"varint,5,opt,name=entry_quantity,json=entryQuantity,proto3" json:"entry_quantity,omitempty"`
 	TakeProfitPrice int64                  `protobuf:"varint,6,opt,name=take_profit_price,json=takeProfitPrice,proto3" json:"take_profit_price,omitempty"`
 	StopLossPrice   int64                  `protobuf:"varint,7,opt,name=stop_loss_price,json=stopLossPrice,proto3" json:"stop_loss_price,omitempty"`
-	EntryOrderId    string                 `protobuf:"bytes,8,opt,name=entry_order_id,json=entryOrderId,proto3" json:"entry_order_id,omitempty"`
-	StartedAt       *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// entry_order_id is set on the SagaStarted event for backward
+	// compatibility with previously-stored events. New brackets derive
+	// the entry order ID from the entry ordersaga (ordersaga.OrderID).
+	EntryOrderId  string                 `protobuf:"bytes,8,opt,name=entry_order_id,json=entryOrderId,proto3" json:"entry_order_id,omitempty"`
+	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	AccountId     string                 `protobuf:"bytes,10,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SagaStarted) Reset() {
@@ -683,6 +687,13 @@ func (x *SagaStarted) GetStartedAt() *timestamppb.Timestamp {
 		return x.StartedAt
 	}
 	return nil
+}
+
+func (x *SagaStarted) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
 }
 
 type EntryFilled struct {
@@ -1044,7 +1055,7 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\factivated_as\x18\x05 \x01(\x0e2\x17.orderbook.v1.OrderTypeR\vactivatedAs\"_\n" +
 	"\fMarketClosed\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x127\n" +
-	"\tclosed_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bclosedAt\"\xee\x02\n" +
+	"\tclosed_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bclosedAt\"\x8d\x03\n" +
 	"\vSagaStarted\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x121\n" +
@@ -1057,7 +1068,10 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\x0fstop_loss_price\x18\a \x01(\x03R\rstopLossPrice\x12$\n" +
 	"\x0eentry_order_id\x18\b \x01(\tR\fentryOrderId\x129\n" +
 	"\n" +
-	"started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\"\xbd\x01\n" +
+	"started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\n" +
+	" \x01(\tR\taccountId\"\xbd\x01\n" +
 	"\vEntryFilled\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12/\n" +
 	"\x14take_profit_order_id\x18\x02 \x01(\tR\x11takeProfitOrderId\x12+\n" +

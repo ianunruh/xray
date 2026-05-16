@@ -15,15 +15,10 @@ func AggregateID(sagaID string) string {
 	return AggregateType + ":" + sagaID
 }
 
-// EntryOrderID, TakeProfitOrderID, and StopLossOrderID return deterministic
-// orderbook orderIDs for a bracket saga's legs. Deriving them from sagaID
-// lets the reactor reverse-lookup which saga owns an order without
-// maintaining an in-memory map, and lets PlaceOrder retries after a crash
-// be treated as duplicates by the orderbook's idempotency check.
-func EntryOrderID(sagaID string) string {
-	return orderIDPrefix + sagaID + ":entry"
-}
-
+// TakeProfitOrderID and StopLossOrderID return deterministic orderbook
+// orderIDs for the bracket's exit legs. The entry leg is placed via an
+// entry ordersaga (whose orderID is derived from its own sagaID), so it
+// has no helper here.
 func TakeProfitOrderID(sagaID string) string {
 	return orderIDPrefix + sagaID + ":tp"
 }
@@ -32,18 +27,32 @@ func StopLossOrderID(sagaID string) string {
 	return orderIDPrefix + sagaID + ":sl"
 }
 
-const orderIDPrefix = "bracket-saga:"
+const (
+	orderIDPrefix          = "bracket-saga:"
+	entryOrderSagaIDPrefix = "bracket-entry:"
+)
 
-// sagaIDFromOrderID reverses any of the *OrderID helpers, returning
-// ok=false if the orderID wasn't placed by a bracket saga (e.g. resting
-// liquidity from another source). Recognizes the :entry, :tp, and :sl
-// suffixes.
-func sagaIDFromOrderID(orderID string) (string, bool) {
+// EntryOrderSagaID returns the ordersaga ID used for a bracket's entry leg.
+// The bracket and its entry ordersaga must have different IDs to avoid
+// colliding with the bracket aggregate (different prefix path on the wire).
+func EntryOrderSagaID(bracketID string) string {
+	return entryOrderSagaIDPrefix + bracketID
+}
+
+// bracketIDFromEntryOrderSagaID reverses EntryOrderSagaID; returns ok=false
+// for ordersagas that weren't spawned by a bracket.
+func bracketIDFromEntryOrderSagaID(orderSagaID string) (string, bool) {
+	return strings.CutPrefix(orderSagaID, entryOrderSagaIDPrefix)
+}
+
+// sagaIDFromExitOrderID reverses the TP/SL helpers, returning ok=false if
+// the orderID wasn't placed as an exit leg.
+func sagaIDFromExitOrderID(orderID string) (string, bool) {
 	rest, ok := strings.CutPrefix(orderID, orderIDPrefix)
 	if !ok {
 		return "", false
 	}
-	for _, suffix := range []string{":entry", ":tp", ":sl"} {
+	for _, suffix := range []string{":tp", ":sl"} {
 		if s, ok := strings.CutSuffix(rest, suffix); ok {
 			return s, true
 		}
@@ -65,6 +74,7 @@ type BracketSaga struct {
 	es.AggregateBase
 
 	SagaID            string
+	AccountID         string
 	Symbol            string
 	EntrySide         orderbook.Side
 	EntryPrice        int64
@@ -108,6 +118,7 @@ func (s *BracketSaga) Apply(evt es.Event) error {
 
 func (s *BracketSaga) applySagaStarted(data *orderbookv1.SagaStarted) {
 	s.SagaID = data.SagaId
+	s.AccountID = data.AccountId
 	s.Symbol = data.Symbol
 	s.EntrySide = orderbook.SideFromProto(data.EntrySide)
 	s.EntryPrice = data.EntryPrice

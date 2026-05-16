@@ -102,22 +102,15 @@ func (s *Server) placeBracket(ctx context.Context, accountID string, plan *sagav
 	}
 
 	sagaID := bracket.NewSagaID()
-	entryOrderID := bracket.EntryOrderID(sagaID)
-
-	// TODO(C3): pass accountID into bracket once it carries that field.
-	// For now we ignore it at the bracket layer — bracket reactor still
-	// bypasses the portfolio.
-	_ = accountID
-
 	startCmd := bracket.StartSaga{
 		SagaID:          sagaID,
+		AccountID:       accountID,
 		Symbol:          plan.Symbol,
 		EntrySide:       plan.EntrySide,
 		EntryPrice:      plan.EntryPrice,
 		EntryQty:        plan.EntryQuantity,
 		TakeProfitPrice: plan.TakeProfitPrice,
 		StopLossPrice:   plan.StopLossPrice,
-		EntryOrderID:    entryOrderID,
 	}
 	if err := s.bracketHandler.Handle(ctx, startCmd, func(b *bracket.BracketSaga) ([]es.Event, error) {
 		return bracket.ExecuteStartSaga(b, startCmd)
@@ -126,30 +119,8 @@ func (s *Server) placeBracket(ctx context.Context, accountID string, plan *sagav
 		return "", connect.NewError(connect.CodeInternal, err)
 	}
 
-	// Place the entry order on the orderbook. Until C3, the bracket
-	// still bypasses the portfolio — same shape as today's PlaceBracketOrder.
-	placeCmd := orderbook.PlaceOrder{
-		Symbol:      plan.Symbol,
-		Side:        orderbook.SideFromProto(plan.EntrySide),
-		Price:       plan.EntryPrice,
-		Quantity:    plan.EntryQuantity,
-		OrderType:   orderbook.Limit,
-		TimeInForce: orderbook.GTC,
-		OrderID:     entryOrderID,
-	}
-	if err := s.orderbookHandler.Handle(ctx, placeCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
-		return orderbook.ExecutePlaceOrder(book, placeCmd)
-	}); err != nil {
-		s.log.Warn("Place(bracket) entry order failed, failing saga", "saga_id", sagaID, "error", err)
-		failCmd := bracket.RecordSagaFailed{SagaID: sagaID, Reason: "entry order placement failed"}
-		if failErr := s.bracketHandler.Handle(ctx, failCmd, func(b *bracket.BracketSaga) ([]es.Event, error) {
-			return bracket.ExecuteRecordSagaFailed(b, failCmd)
-		}); failErr != nil {
-			s.log.Error("Place(bracket) failed to record saga failure", "saga_id", sagaID, "error", failErr)
-		}
-		return "", connect.NewError(connect.CodeInternal, err)
-	}
-
+	// The bracket reactor spawns the entry ordersaga once it observes
+	// SagaStarted; nothing to do here beyond creating the saga aggregate.
 	return sagaID, nil
 }
 
@@ -233,12 +204,18 @@ func (s *Server) cancelBracket(ctx context.Context, row *SagaRow) error {
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("load bracket: %w", err))
 	}
 
-	// PendingEntry: cancel the entry order; reactor's cancel handling
-	// propagates this into SagaFailed. PendingExit: cancel both exit
-	// legs; reactor handles partial cancels gracefully.
+	// PendingEntry: cancel the entry order. For new brackets the entry
+	// is an ordersaga; cancelling the orderbook order cascades into the
+	// entry ordersaga's failure path, which cascades into the bracket.
+	// PendingExit: cancel both exit legs; reactor handles partial
+	// cancels gracefully.
 	switch b.Status {
 	case bracket.PendingEntry:
-		return s.cancelOrderbookOrder(ctx, row.Symbol, b.EntryOrderID)
+		entryOrderID := b.EntryOrderID
+		if entryOrderID == "" {
+			entryOrderID = ordersaga.OrderID(row.SagaID)
+		}
+		return s.cancelOrderbookOrder(ctx, row.Symbol, entryOrderID)
 	case bracket.PendingExit:
 		if err := s.cancelOrderbookOrder(ctx, row.Symbol, b.TakeProfitOrderID); err != nil {
 			return err
@@ -320,6 +297,12 @@ func (s *Server) bracketDetails(ctx context.Context, sagaID string) (*sagav1.Bra
 	if err != nil {
 		return nil, fmt.Errorf("load bracket saga: %w", err)
 	}
+	entryOrderID := b.EntryOrderID
+	if entryOrderID == "" {
+		// New-style bracket: entry is placed by an ordersaga whose
+		// orderID is derived from the bracket's sagaID.
+		entryOrderID = ordersaga.OrderID(sagaID)
+	}
 	return &sagav1.BracketDetails{
 		Phase:             bracketPhase(b.Status),
 		EntrySide:         orderbook.SideToProto(b.EntrySide),
@@ -327,7 +310,7 @@ func (s *Server) bracketDetails(ctx context.Context, sagaID string) (*sagav1.Bra
 		EntryQuantity:     b.EntryQty,
 		TakeProfitPrice:   b.TakeProfitPrice,
 		StopLossPrice:     b.StopLossPrice,
-		EntryOrderId:      b.EntryOrderID,
+		EntryOrderId:      entryOrderID,
 		TakeProfitOrderId: b.TakeProfitOrderID,
 		StopLossOrderId:   b.StopLossOrderID,
 	}, nil

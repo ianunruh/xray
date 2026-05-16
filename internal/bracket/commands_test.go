@@ -41,7 +41,6 @@ func TestStartSaga_ThroughHandler(t *testing.T) {
 		EntryQty:        100,
 		TakeProfitPrice: 1550000,
 		StopLossPrice:   1450000,
-		EntryOrderID:    "order-1",
 	}
 
 	err := handler.Handle(ctx, cmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
@@ -63,7 +62,6 @@ func TestStartSaga_ThroughHandler(t *testing.T) {
 	assert.Equal(t, orderbookv1.Side_SIDE_BUY, data.EntrySide)
 	assert.Equal(t, int64(1500000), data.EntryPrice)
 	assert.Equal(t, int64(100), data.EntryQuantity)
-	assert.Equal(t, "order-1", data.EntryOrderId)
 }
 
 func TestRecordEntryFilled_InvalidState(t *testing.T) {
@@ -117,7 +115,6 @@ func TestRecordSagaFailed_FromPendingExit(t *testing.T) {
 		EntryQty:        100,
 		TakeProfitPrice: 1550000,
 		StopLossPrice:   1450000,
-		EntryOrderID:    "order-1",
 	}
 	err := handler.Handle(ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
 		return bracket.ExecuteStartSaga(s, startCmd)
@@ -164,7 +161,6 @@ func TestRecordActionFailed_EmitsSagaActionFailed(t *testing.T) {
 		EntryQty:        100,
 		TakeProfitPrice: 1550000,
 		StopLossPrice:   1450000,
-		EntryOrderID:    "order-1",
 	}
 	err := handler.Handle(ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
 		return bracket.ExecuteStartSaga(s, startCmd)
@@ -210,7 +206,6 @@ func TestRecordActionFailed_MaxRetries_EmitsSagaFailed(t *testing.T) {
 		EntryQty:        100,
 		TakeProfitPrice: 1550000,
 		StopLossPrice:   1450000,
-		EntryOrderID:    "order-1",
 	}
 	err := handler.Handle(ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
 		return bracket.ExecuteStartSaga(s, startCmd)
@@ -266,7 +261,6 @@ func TestFullSagaLifecycle(t *testing.T) {
 		EntryQty:        100,
 		TakeProfitPrice: 1550000,
 		StopLossPrice:   1450000,
-		EntryOrderID:    "entry-1",
 	}
 	err := handler.Handle(ctx, startCmd, func(s *bracket.BracketSaga) ([]es.Event, error) {
 		return bracket.ExecuteStartSaga(s, startCmd)
