@@ -2,6 +2,7 @@ package ordersaga
 
 import (
 	"fmt"
+	"strings"
 
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
 	"github.com/ianunruh/xray/internal/orderbook"
@@ -14,11 +15,22 @@ func AggregateID(sagaID string) string {
 	return AggregateType + ":" + sagaID
 }
 
+const orderIDPrefix = "order-saga:"
+
 // OrderID returns the deterministic orderbook orderID for a given saga.
 // Since each saga places exactly one order, deriving the orderID from
 // the sagaID lets the reactor safely retry placement after a crash.
 func OrderID(sagaID string) string {
-	return "order-saga:" + sagaID
+	return orderIDPrefix + sagaID
+}
+
+// sagaIDFromOrderID reverses OrderID, returning ok=false if the order
+// wasn't placed by a saga (e.g. resting liquidity from another source).
+func sagaIDFromOrderID(orderID string) (string, bool) {
+	if !strings.HasPrefix(orderID, orderIDPrefix) {
+		return "", false
+	}
+	return strings.TrimPrefix(orderID, orderIDPrefix), true
 }
 
 type Status int
