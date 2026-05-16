@@ -44,6 +44,7 @@ message OrderPlaced {
 message OrderCancelled {
   string order_id = 1;
   string symbol = 2;
+  string reason = 3;
 }
 
 message TradeExecuted {

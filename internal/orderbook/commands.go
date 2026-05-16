@@ -156,7 +156,11 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 
 	// Cancel unfilled remainder for IOC/Market, or when self-trade prevention fires.
 	if tif == IOC || cmd.OrderType == Market || selfTradePrevented {
-		events = cancelUnfilled(book, incoming, events, now)
+		reason := "no liquidity"
+		if selfTradePrevented {
+			reason = "self-trade prevention"
+		}
+		events = cancelUnfilled(book, incoming, events, now, reason)
 	}
 
 	events = triggerStops(book, events, now)
@@ -177,12 +181,12 @@ func matchAndAppend(book *OrderBook, incoming *Order, events []es.Event, now tim
 		events = append(events, tradeEvt)
 	}
 	if result.SelfTradePrevented {
-		events = cancelUnfilled(book, incoming, events, now)
+		events = cancelUnfilled(book, incoming, events, now, "self-trade prevention")
 	}
 	return events, result.SelfTradePrevented
 }
 
-func cancelUnfilled(book *OrderBook, order *Order, events []es.Event, now time.Time) []es.Event {
+func cancelUnfilled(book *OrderBook, order *Order, events []es.Event, now time.Time, reason string) []es.Event {
 	if order.RemainingQty <= 0 {
 		return events
 	}
@@ -196,6 +200,7 @@ func cancelUnfilled(book *OrderBook, order *Order, events []es.Event, now time.T
 		Data: &orderbookv1.OrderCancelled{
 			OrderId: order.ID,
 			Symbol:  book.Symbol,
+			Reason:  reason,
 		},
 	}
 	book.Apply(cancelEvt)
@@ -236,7 +241,11 @@ func triggerStops(book *OrderBook, events []es.Event, now time.Time) []es.Event 
 			events, stp = matchAndAppend(book, activated, events, now)
 
 			if stopOrder.OrderType == StopMarket || stp {
-				events = cancelUnfilled(book, activated, events, now)
+				reason := "no liquidity"
+				if stp {
+					reason = "self-trade prevention"
+				}
+				events = cancelUnfilled(book, activated, events, now, reason)
 			}
 		}
 	}
@@ -314,6 +323,7 @@ func ExecuteCloseMarket(book *OrderBook, cmd CloseMarket) ([]es.Event, error) {
 			Data: &orderbookv1.OrderCancelled{
 				OrderId: order.ID,
 				Symbol:  cmd.Symbol,
+				Reason:  "market closed",
 			},
 		}
 		book.Apply(cancelEvt)
@@ -340,6 +350,7 @@ func ExecuteCancelOrder(book *OrderBook, cmd CancelOrder) ([]es.Event, error) {
 		Data: &orderbookv1.OrderCancelled{
 			OrderId: cmd.OrderID,
 			Symbol:  cmd.Symbol,
+			Reason:  "user requested",
 		},
 	}
 
@@ -374,6 +385,7 @@ func ExecuteReplaceOrder(book *OrderBook, cmd ReplaceOrder) ([]es.Event, error) 
 		Data: &orderbookv1.OrderCancelled{
 			OrderId: cmd.OldOrderID,
 			Symbol:  cmd.Symbol,
+			Reason:  "replaced",
 		},
 	}
 	if err := book.Apply(cancelEvt); err != nil {
@@ -443,7 +455,11 @@ func ExecuteReplaceOrder(book *OrderBook, cmd ReplaceOrder) ([]es.Event, error) 
 	events, selfTradePrevented := matchAndAppend(book, incoming, events, now)
 
 	if tif == IOC || cmd.OrderType == Market || selfTradePrevented {
-		events = cancelUnfilled(book, incoming, events, now)
+		reason := "no liquidity"
+		if selfTradePrevented {
+			reason = "self-trade prevention"
+		}
+		events = cancelUnfilled(book, incoming, events, now, reason)
 	}
 
 	events = triggerStops(book, events, now)

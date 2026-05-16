@@ -85,6 +85,11 @@ export declare type OrderCancelled = Message<"orderbook.v1.OrderCancelled"> & {
    * @generated from field: string symbol = 2;
    */
   symbol: string;
+
+  /**
+   * @generated from field: string reason = 3;
+   */
+  reason: string;
 };
 
 /**

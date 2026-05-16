@@ -301,6 +301,7 @@ type OrderCancelled struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OrderId       string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	Symbol        string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -345,6 +346,13 @@ func (x *OrderCancelled) GetOrderId() string {
 func (x *OrderCancelled) GetSymbol() string {
 	if x != nil {
 		return x.Symbol
+	}
+	return ""
+}
+
+func (x *OrderCancelled) GetReason() string {
+	if x != nil {
+		return x.Reason
 	}
 	return ""
 }
@@ -1012,10 +1020,11 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"stop_price\x18\t \x01(\x03R\tstopPrice\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\n" +
-	" \x01(\tR\taccountId\"C\n" +
+	" \x01(\tR\taccountId\"[\n" +
 	"\x0eOrderCancelled\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
-	"\x06symbol\x18\x02 \x01(\tR\x06symbol\"\xf7\x01\n" +
+	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"\xf7\x01\n" +
 	"\rTradeExecuted\x12\x19\n" +
 	"\btrade_id\x18\x01 \x01(\tR\atradeId\x12 \n" +
 	"\fbuy_order_id\x18\x02 \x01(\tR\n" +

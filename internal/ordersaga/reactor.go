@@ -56,6 +56,7 @@ type reactorState struct {
 	pendingFills   []fill
 	settledTrades  map[string]struct{}
 	orderCancelled bool
+	cancelReason   string
 	actionPending  bool
 }
 
@@ -325,6 +326,9 @@ func (r *Reactor) applyCancel(evt es.Event, data *orderbookv1.OrderCancelled) {
 	}
 
 	state.orderCancelled = true
+	if data.Reason != "" {
+		state.cancelReason = data.Reason
+	}
 }
 
 func (r *Reactor) cleanupSaga(state *reactorState) {
@@ -796,7 +800,14 @@ func (r *Reactor) executeReleaseCashAndFail(ctx context.Context, sagaID string) 
 		r.mu.Unlock()
 	}
 
-	cmd := RecordFailed{SagaID: sagaID, Reason: "order cancelled"}
+	reason := "order cancelled"
+	r.mu.Lock()
+	if s, ok := r.sagas[sagaID]; ok && s.cancelReason != "" {
+		reason = s.cancelReason
+	}
+	r.mu.Unlock()
+
+	cmd := RecordFailed{SagaID: sagaID, Reason: reason}
 	err := r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
 		return ExecuteRecordFailed(saga, cmd)
 	})
