@@ -134,7 +134,8 @@ func (r *Reactor) reconcileFillsFromBook(sagaID string, book *orderbook.OrderBoo
 
 	totalFilled := state.quantity - order.RemainingQty
 	if totalFilled > state.filledQty {
-		r.log.Info("recovery: adjusted filled qty from orderbook", "saga_id", sagaID, "filled", totalFilled)
+		// Expected after clean shutdown — orderbook fills may arrive after the last saga checkpoint.
+		r.log.Debug("recovery: adjusted filled qty from orderbook", "saga_id", sagaID, "filled", totalFilled)
 		state.filledQty = totalFilled
 	}
 }
