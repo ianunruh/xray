@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package diagnostics.v1;
+
+option go_package = "github.com/ianunruh/xray/gen/diagnostics/v1;diagnosticsv1";
+
+import "google/protobuf/timestamp.proto";
+
+service DiagnosticsService {
+  rpc ListAggregates(ListAggregatesRequest) returns (ListAggregatesResponse);
+  rpc GetAggregateEvents(GetAggregateEventsRequest) returns (GetAggregateEventsResponse);
+}
+
+message ListAggregatesRequest {
+  // Optional filter on aggregate ID (substring match, case-insensitive).
+  string filter = 1;
+}
+
+message AggregateSummary {
+  string aggregate_id = 1;
+  string type = 2;
+  int32 event_count = 3;
+  google.protobuf.Timestamp first_event_at = 4;
+  google.protobuf.Timestamp last_event_at = 5;
+}
+
+message ListAggregatesResponse {
+  repeated AggregateSummary aggregates = 1;
+}
+
+message GetAggregateEventsRequest {
+  string aggregate_id = 1;
+}
+
+message DiagnosticEvent {
+  string id = 1;
+  string aggregate_id = 2;
+  string type = 3;
+  int32 version = 4;
+  int64 position = 5;
+  google.protobuf.Timestamp timestamp = 6;
+  // JSON-encoded event payload (protojson).
+  string data_json = 7;
+}
+
+message GetAggregateEventsResponse {
+  repeated DiagnosticEvent events = 1;
+}

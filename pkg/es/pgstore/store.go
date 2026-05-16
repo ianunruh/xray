@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -80,7 +81,21 @@ const (
 	querySaveCheckpoint = `INSERT INTO projection_checkpoints (name, sequence)
 		VALUES ($1, $2)
 		ON CONFLICT (name) DO UPDATE SET sequence = $2`
+
+	queryListAggregates = `SELECT aggregate_id, count(*), min(timestamp), max(timestamp)
+		FROM events
+		WHERE ($1 = '' OR aggregate_id ILIKE '%' || $1 || '%')
+		GROUP BY aggregate_id
+		ORDER BY max(timestamp) DESC`
 )
+
+// AggregateSummary describes one aggregate's event stream stats.
+type AggregateSummary struct {
+	AggregateID  string
+	EventCount   int
+	FirstEventAt time.Time
+	LastEventAt  time.Time
+}
 
 // compile-time checks
 var (
@@ -194,6 +209,26 @@ func (s *Store) SaveSnapshot(ctx context.Context, snap es.Snapshot) error {
 func (s *Store) TruncateProjections(ctx context.Context) error {
 	_, err := s.pool.Exec(ctx, `TRUNCATE projection_orders, projection_trades`)
 	return err
+}
+
+// ListAggregates returns a summary of every aggregate stream, optionally
+// filtered by a substring match on aggregate_id (case-insensitive).
+func (s *Store) ListAggregates(ctx context.Context, filter string) ([]AggregateSummary, error) {
+	rows, err := s.pool.Query(ctx, queryListAggregates, filter)
+	if err != nil {
+		return nil, fmt.Errorf("query aggregates: %w", err)
+	}
+	defer rows.Close()
+
+	var summaries []AggregateSummary
+	for rows.Next() {
+		var sum AggregateSummary
+		if err := rows.Scan(&sum.AggregateID, &sum.EventCount, &sum.FirstEventAt, &sum.LastEventAt); err != nil {
+			return nil, fmt.Errorf("scan aggregate: %w", err)
+		}
+		summaries = append(summaries, sum)
+	}
+	return summaries, rows.Err()
 }
 
 // LoadCheckpoint returns the last processed sequence for the named checkpoint.

@@ -5,6 +5,7 @@ import {
   Group,
   Modal,
   NumberInput,
+  SegmentedControl,
   Select,
   SimpleGrid,
   Stack,
@@ -16,6 +17,7 @@ import { notifications } from "@mantine/notifications";
 import { PortfolioPanel } from "./components/PortfolioPanel";
 import { MarketPanel } from "./components/MarketPanel";
 import { OrderForm } from "./components/OrderForm";
+import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { orderBookClient, portfolioClient } from "./client";
 import { moneyToPrice } from "./format";
 
@@ -34,9 +36,17 @@ function setParam(key: string, value: string) {
   history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
 }
 
+type View = "trading" | "diagnostics";
+
+function getViewParam(): View {
+  return getParam("view") === "diagnostics" ? "diagnostics" : "trading";
+}
+
 export function App() {
+  const [view, setView] = useState<View>(getViewParam());
   const [account, setAccount] = useState(getParam("account"));
   const [symbol, setSymbol] = useState(getParam("symbol"));
+  const [aggregate, setAggregate] = useState(getParam("aggregate"));
   const [accounts, setAccounts] = useState<string[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [newAccOpened, newAccHandlers] = useDisclosure(false);
@@ -91,40 +101,65 @@ export function App() {
       <AppShell.Header p="xs">
         <Group gap="md" h="100%">
           <Title order={4}>xray</Title>
-          <Select
+          <SegmentedControl
             size="xs"
-            placeholder="Account"
-            data={accounts}
-            value={account || null}
+            value={view}
             onChange={(v) => {
-              const val = v ?? "";
-              setAccount(val);
-              setParam("account", val);
+              const next = v as View;
+              setView(next);
+              setParam("view", next === "trading" ? "" : next);
             }}
-            searchable
-            clearable
+            data={[
+              { label: "Trading", value: "trading" },
+              { label: "Diagnostics", value: "diagnostics" },
+            ]}
           />
-          <Button size="xs" variant="subtle" onClick={newAccHandlers.open}>
-            + New
-          </Button>
-          <Select
-            size="xs"
-            placeholder="Symbol"
-            data={symbols}
-            value={symbol || null}
-            onChange={(v) => {
-              const val = v ?? "";
-              setSymbol(val);
-              setParam("symbol", val);
-            }}
-            searchable
-            clearable
-          />
+          {view === "trading" && (
+            <>
+              <Select
+                size="xs"
+                placeholder="Account"
+                data={accounts}
+                value={account || null}
+                onChange={(v) => {
+                  const val = v ?? "";
+                  setAccount(val);
+                  setParam("account", val);
+                }}
+                searchable
+                clearable
+              />
+              <Button size="xs" variant="subtle" onClick={newAccHandlers.open}>
+                + New
+              </Button>
+              <Select
+                size="xs"
+                placeholder="Symbol"
+                data={symbols}
+                value={symbol || null}
+                onChange={(v) => {
+                  const val = v ?? "";
+                  setSymbol(val);
+                  setParam("symbol", val);
+                }}
+                searchable
+                clearable
+              />
+            </>
+          )}
         </Group>
       </AppShell.Header>
 
       <AppShell.Main>
-        {account && symbol ? (
+        {view === "diagnostics" ? (
+          <DiagnosticsPanel
+            initialAggregateId={aggregate}
+            onAggregateChange={(id) => {
+              setAggregate(id);
+              setParam("aggregate", id);
+            }}
+          />
+        ) : account && symbol ? (
           <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
             <Stack gap="md">
               <PortfolioPanel accountId={account} symbols={symbols} />

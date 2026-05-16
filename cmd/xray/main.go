@@ -14,9 +14,11 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
+	"github.com/ianunruh/xray/gen/diagnostics/v1/diagnosticsv1connect"
 	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
 	"github.com/ianunruh/xray/internal/bracket"
+	"github.com/ianunruh/xray/internal/diagnostics"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
 	"github.com/ianunruh/xray/internal/portfolio"
@@ -152,6 +154,7 @@ func main() {
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, broker)
 	bracketSrv := bracket.NewServer(bracketHandler, obHandler, log)
 	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, pnlProjection, ordersaga.NewPlaceOrderFunc(orderSagaHandler), ordersaga.NewReplaceOrderFunc(orderSagaHandler), ordersaga.NewGetOrderStatusFunc(orderSagaHandler), portfolioBroker, log)
+	diagnosticsSrv := diagnostics.NewServer(store, registry, log)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
@@ -160,6 +163,8 @@ func main() {
 	mux.Handle(bracketPath, bracketH)
 	portfolioPath, portfolioH := portfoliov1connect.NewPortfolioServiceHandler(portfolioSrv)
 	mux.Handle(portfolioPath, portfolioH)
+	diagnosticsPath, diagnosticsH := diagnosticsv1connect.NewDiagnosticsServiceHandler(diagnosticsSrv)
+	mux.Handle(diagnosticsPath, diagnosticsH)
 	mux.Handle("/", web.Handler())
 
 	httpServer := &http.Server{
