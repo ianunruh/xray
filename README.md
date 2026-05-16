@@ -2,6 +2,8 @@
 
 Event-sourced order book — a learning project implementing a simple but realistic stock exchange order book with buy/sell limit orders, partial and complete fills. Uses event sourcing with protobuf serialization.
 
+![Web UI](docs/webui.png)
+
 ## Architecture
 
 - `proto/` — Protobuf definitions (source of truth for event and service schemas)
