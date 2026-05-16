@@ -12,6 +12,7 @@
     "@connectrpc/connect-web": "^2",
     "@mantine/core": "^7",
     "@mantine/hooks": "^7",
+    "@mantine/notifications": "^7.17.8",
     "lightweight-charts": "^4",
     "react": "^19",
     "react-dom": "^19"

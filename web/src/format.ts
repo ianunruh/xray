@@ -24,3 +24,7 @@ export function formatQuantity(qty: bigint): string {
 export function priceToNumber(price: bigint): number {
   return Number(price) / 10000;
 }
+
+export function moneyToPrice(value: number): bigint {
+  return BigInt(Math.round(value * 10000));
+}

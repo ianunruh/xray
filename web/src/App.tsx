@@ -1,15 +1,23 @@
 import { useEffect, useState } from "react";
 import {
   AppShell,
+  Button,
   Group,
+  Modal,
+  NumberInput,
   Select,
   SimpleGrid,
   Stack,
+  TextInput,
   Title,
 } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
 import { PortfolioPanel } from "./components/PortfolioPanel";
 import { MarketPanel } from "./components/MarketPanel";
+import { OrderForm } from "./components/OrderForm";
 import { orderBookClient, portfolioClient } from "./client";
+import { moneyToPrice } from "./format";
 
 function getParam(key: string): string {
   return new URLSearchParams(window.location.search).get(key) ?? "";
@@ -31,11 +39,52 @@ export function App() {
   const [symbol, setSymbol] = useState(getParam("symbol"));
   const [accounts, setAccounts] = useState<string[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
+  const [newAccOpened, newAccHandlers] = useDisclosure(false);
+  const [newAccId, setNewAccId] = useState("");
+  const [newAccDeposit, setNewAccDeposit] = useState<number | string>("");
+  const [newAccLoading, setNewAccLoading] = useState(false);
+
+  function refreshAccounts() {
+    portfolioClient.listPortfolios({}).then((r) => setAccounts(r.accountIds));
+  }
 
   useEffect(() => {
-    portfolioClient.listPortfolios({}).then((r) => setAccounts(r.accountIds));
+    refreshAccounts();
     orderBookClient.listSymbols({}).then((r) => setSymbols(r.symbols));
   }, []);
+
+  async function handleNewAccount() {
+    if (!newAccId.trim()) return;
+    const deposit = Number(newAccDeposit);
+    if (!deposit || deposit <= 0) return;
+    setNewAccLoading(true);
+    try {
+      await portfolioClient.deposit({
+        accountId: newAccId.trim(),
+        amount: moneyToPrice(deposit),
+      });
+      notifications.show({
+        title: "Portfolio created",
+        message: `Created ${newAccId} with $${deposit} deposit`,
+        color: "green",
+      });
+      const val = newAccId.trim();
+      setAccount(val);
+      setParam("account", val);
+      refreshAccounts();
+      setNewAccId("");
+      setNewAccDeposit("");
+      newAccHandlers.close();
+    } catch (e: unknown) {
+      notifications.show({
+        title: "Failed to create portfolio",
+        message: e instanceof Error ? e.message : String(e),
+        color: "red",
+      });
+    } finally {
+      setNewAccLoading(false);
+    }
+  }
 
   return (
     <AppShell header={{ height: 50 }} padding="md">
@@ -55,6 +104,9 @@ export function App() {
             searchable
             clearable
           />
+          <Button size="xs" variant="subtle" onClick={newAccHandlers.open}>
+            + New
+          </Button>
           <Select
             size="xs"
             placeholder="Symbol"
@@ -74,16 +126,46 @@ export function App() {
       <AppShell.Main>
         {account && symbol ? (
           <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-            <PortfolioPanel accountId={account} />
+            <Stack gap="md">
+              <PortfolioPanel accountId={account} symbols={symbols} />
+              <OrderForm accountId={account} symbol={symbol} />
+            </Stack>
             <MarketPanel symbol={symbol} />
           </SimpleGrid>
         ) : (
           <Stack gap="md">
-            {account && <PortfolioPanel accountId={account} />}
+            {account && <PortfolioPanel accountId={account} symbols={symbols} />}
             {symbol && <MarketPanel symbol={symbol} />}
           </Stack>
         )}
       </AppShell.Main>
+
+      <Modal
+        opened={newAccOpened}
+        onClose={newAccHandlers.close}
+        title="New Portfolio"
+      >
+        <Stack gap="sm">
+          <TextInput
+            label="Account ID"
+            placeholder="my-account"
+            value={newAccId}
+            onChange={(e) => setNewAccId(e.currentTarget.value)}
+            autoFocus
+          />
+          <NumberInput
+            label="Initial Deposit"
+            placeholder="0.00"
+            min={0}
+            decimalScale={4}
+            value={newAccDeposit}
+            onChange={setNewAccDeposit}
+          />
+          <Button onClick={handleNewAccount} loading={newAccLoading}>
+            Create Portfolio
+          </Button>
+        </Stack>
+      </Modal>
     </AppShell>
   );
 }

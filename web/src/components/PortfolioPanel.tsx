@@ -1,8 +1,24 @@
-import { Card, Group, Stack, Table, Text, Title } from "@mantine/core";
-import { formatMoney, formatPrice, formatQuantity } from "../format";
+import { useState } from "react";
+import {
+  ActionIcon,
+  Button,
+  Card,
+  Group,
+  Modal,
+  NumberInput,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
+import { formatMoney, formatPrice, formatQuantity, moneyToPrice } from "../format";
 import { Side } from "../gen/orderbook/v1/events_pb";
 import { PendingOrderStatus } from "../gen/portfolio/v1/service_pb";
 import { usePortfolio } from "../hooks/usePortfolio";
+import { orderBookClient, portfolioClient } from "../client";
 
 function sideName(side: Side): string {
   switch (side) {
@@ -28,8 +44,266 @@ function pendingStatusName(status: PendingOrderStatus): string {
   }
 }
 
-export function PortfolioPanel({ accountId }: { accountId: string }) {
+function DepositModal({
+  accountId,
+  opened,
+  onClose,
+}: {
+  accountId: string;
+  opened: boolean;
+  onClose: () => void;
+}) {
+  const [amount, setAmount] = useState<number | string>("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit() {
+    const val = Number(amount);
+    if (!val || val <= 0) return;
+    setLoading(true);
+    try {
+      await portfolioClient.deposit({
+        accountId,
+        amount: moneyToPrice(val),
+      });
+      notifications.show({
+        title: "Deposit successful",
+        message: `Deposited $${val} into ${accountId}`,
+        color: "green",
+      });
+      setAmount("");
+      onClose();
+    } catch (e: unknown) {
+      notifications.show({
+        title: "Deposit failed",
+        message: e instanceof Error ? e.message : String(e),
+        color: "red",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Deposit">
+      <Stack gap="sm">
+        <Text size="sm" c="dimmed">
+          Account: {accountId}
+        </Text>
+        <NumberInput
+          label="Amount"
+          placeholder="0.00"
+          min={0}
+          decimalScale={4}
+          value={amount}
+          onChange={setAmount}
+          autoFocus
+        />
+        <Button onClick={handleSubmit} loading={loading}>
+          Deposit
+        </Button>
+      </Stack>
+    </Modal>
+  );
+}
+
+function WithdrawModal({
+  accountId,
+  opened,
+  onClose,
+}: {
+  accountId: string;
+  opened: boolean;
+  onClose: () => void;
+}) {
+  const [amount, setAmount] = useState<number | string>("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit() {
+    const val = Number(amount);
+    if (!val || val <= 0) return;
+    setLoading(true);
+    try {
+      await portfolioClient.withdraw({
+        accountId,
+        amount: moneyToPrice(val),
+      });
+      notifications.show({
+        title: "Withdrawal successful",
+        message: `Withdrew $${val} from ${accountId}`,
+        color: "green",
+      });
+      setAmount("");
+      onClose();
+    } catch (e: unknown) {
+      notifications.show({
+        title: "Withdrawal failed",
+        message: e instanceof Error ? e.message : String(e),
+        color: "red",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Withdraw">
+      <Stack gap="sm">
+        <Text size="sm" c="dimmed">
+          Account: {accountId}
+        </Text>
+        <NumberInput
+          label="Amount"
+          placeholder="0.00"
+          min={0}
+          decimalScale={4}
+          value={amount}
+          onChange={setAmount}
+          autoFocus
+        />
+        <Button onClick={handleSubmit} loading={loading} color="red">
+          Withdraw
+        </Button>
+      </Stack>
+    </Modal>
+  );
+}
+
+function CreditSharesModal({
+  accountId,
+  opened,
+  onClose,
+  symbols,
+}: {
+  accountId: string;
+  opened: boolean;
+  onClose: () => void;
+  symbols: string[];
+}) {
+  const [symbol, setSymbol] = useState("");
+  const [quantity, setQuantity] = useState<number | string>("");
+  const [costPerShare, setCostPerShare] = useState<number | string>("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit() {
+    if (!symbol) return;
+    const qty = Number(quantity);
+    const cost = Number(costPerShare);
+    if (!qty || qty <= 0 || !cost || cost <= 0) return;
+    setLoading(true);
+    try {
+      await portfolioClient.creditShares({
+        accountId,
+        symbol,
+        quantity: BigInt(qty),
+        costPerShare: moneyToPrice(cost),
+      });
+      notifications.show({
+        title: "Shares credited",
+        message: `Credited ${qty} ${symbol} to ${accountId}`,
+        color: "green",
+      });
+      setSymbol("");
+      setQuantity("");
+      setCostPerShare("");
+      onClose();
+    } catch (e: unknown) {
+      notifications.show({
+        title: "Credit shares failed",
+        message: e instanceof Error ? e.message : String(e),
+        color: "red",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Credit Shares">
+      <Stack gap="sm">
+        <Text size="sm" c="dimmed">
+          Account: {accountId}
+        </Text>
+        <TextInput
+          label="Symbol"
+          placeholder="AAPL"
+          value={symbol}
+          onChange={(e) => setSymbol(e.currentTarget.value.toUpperCase())}
+          list="credit-symbols"
+          autoFocus
+        />
+        <datalist id="credit-symbols">
+          {symbols.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+        <NumberInput
+          label="Quantity"
+          placeholder="0"
+          min={1}
+          allowDecimal={false}
+          value={quantity}
+          onChange={setQuantity}
+        />
+        <NumberInput
+          label="Cost per Share"
+          placeholder="0.00"
+          min={0}
+          decimalScale={4}
+          value={costPerShare}
+          onChange={setCostPerShare}
+        />
+        <Button onClick={handleSubmit} loading={loading}>
+          Credit Shares
+        </Button>
+      </Stack>
+    </Modal>
+  );
+}
+
+export function PortfolioPanel({
+  accountId,
+  symbols,
+}: {
+  accountId: string;
+  symbols?: string[];
+}) {
   const portfolio = usePortfolio(accountId);
+  const [depositOpened, depositHandlers] = useDisclosure(false);
+  const [withdrawOpened, withdrawHandlers] = useDisclosure(false);
+  const [creditOpened, creditHandlers] = useDisclosure(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  async function handleCancel(sagaId: string, symbol: string) {
+    setCancellingId(sagaId);
+    try {
+      const status = await portfolioClient.getOrderStatus({ sagaId });
+      if (!status.orderId) {
+        notifications.show({
+          title: "Cannot cancel",
+          message: "Order has not been placed on the book yet",
+          color: "yellow",
+        });
+        return;
+      }
+      await orderBookClient.cancelOrder({
+        symbol,
+        orderId: status.orderId,
+      });
+      notifications.show({
+        title: "Order cancelled",
+        message: `Cancelled order for ${symbol}`,
+        color: "green",
+      });
+    } catch (e: unknown) {
+      notifications.show({
+        title: "Cancel failed",
+        message: e instanceof Error ? e.message : String(e),
+        color: "red",
+      });
+    } finally {
+      setCancellingId(null);
+    }
+  }
 
   if (!portfolio) {
     return (
@@ -47,7 +321,30 @@ export function PortfolioPanel({ accountId }: { accountId: string }) {
   return (
     <Card withBorder>
       <Stack gap="sm">
-        <Title order={5}>Portfolio: {portfolio.accountId}</Title>
+        <Group justify="space-between">
+          <Title order={5}>Portfolio: {portfolio.accountId}</Title>
+          <Group gap="xs">
+            <Button size="xs" variant="light" onClick={depositHandlers.open}>
+              Deposit
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              color="red"
+              onClick={withdrawHandlers.open}
+            >
+              Withdraw
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              color="violet"
+              onClick={creditHandlers.open}
+            >
+              Credit Shares
+            </Button>
+          </Group>
+        </Group>
 
         <Group gap="xl">
           <div>
@@ -121,30 +418,62 @@ export function PortfolioPanel({ accountId }: { accountId: string }) {
                   <Table.Th ta="right">Qty</Table.Th>
                   <Table.Th ta="right">Filled</Table.Th>
                   <Table.Th>Status</Table.Th>
+                  <Table.Th />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {[...portfolio.pendingOrders].sort((a, b) => Number(a.price - b.price)).map((o) => (
-                  <Table.Tr key={o.sagaId}>
-                    <Table.Td>{o.symbol}</Table.Td>
-                    <Table.Td c={o.side === Side.BUY ? "green" : "red"}>
-                      {sideName(o.side)}
-                    </Table.Td>
-                    <Table.Td ta="right">{formatPrice(o.price)}</Table.Td>
-                    <Table.Td ta="right">
-                      {formatQuantity(o.quantity)}
-                    </Table.Td>
-                    <Table.Td ta="right">
-                      {formatQuantity(o.filledQuantity)}
-                    </Table.Td>
-                    <Table.Td>{pendingStatusName(o.status)}</Table.Td>
-                  </Table.Tr>
-                ))}
+                {[...portfolio.pendingOrders]
+                  .sort((a, b) => Number(a.price - b.price))
+                  .map((o) => (
+                    <Table.Tr key={o.sagaId}>
+                      <Table.Td>{o.symbol}</Table.Td>
+                      <Table.Td c={o.side === Side.BUY ? "green" : "red"}>
+                        {sideName(o.side)}
+                      </Table.Td>
+                      <Table.Td ta="right">{formatPrice(o.price)}</Table.Td>
+                      <Table.Td ta="right">
+                        {formatQuantity(o.quantity)}
+                      </Table.Td>
+                      <Table.Td ta="right">
+                        {formatQuantity(o.filledQuantity)}
+                      </Table.Td>
+                      <Table.Td>{pendingStatusName(o.status)}</Table.Td>
+                      <Table.Td>
+                        <ActionIcon
+                          size="xs"
+                          variant="subtle"
+                          color="red"
+                          loading={cancellingId === o.sagaId}
+                          onClick={() => handleCancel(o.sagaId, o.symbol)}
+                          title="Cancel order"
+                        >
+                          X
+                        </ActionIcon>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
               </Table.Tbody>
             </Table>
           </>
         )}
       </Stack>
+
+      <DepositModal
+        accountId={accountId}
+        opened={depositOpened}
+        onClose={depositHandlers.close}
+      />
+      <WithdrawModal
+        accountId={accountId}
+        opened={withdrawOpened}
+        onClose={withdrawHandlers.close}
+      />
+      <CreditSharesModal
+        accountId={accountId}
+        opened={creditOpened}
+        onClose={creditHandlers.close}
+        symbols={symbols ?? []}
+      />
     </Card>
   );
 }
