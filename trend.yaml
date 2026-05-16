@@ -6,6 +6,7 @@ symbols:
     account_id: trend-AAPL
     initial_deposit: 5000000000 # $500K
     initial_shares: 500
+    random_initial_shares: true # credit a uniform random count in [0, initial_shares]
     fast_period: 10 # trades for fast EMA
     slow_period: 30 # trades for slow EMA
     quantity: 50 # shares per order

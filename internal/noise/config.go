@@ -22,18 +22,19 @@ type Config struct {
 }
 
 type SymbolConfig struct {
-	Symbol         string        `yaml:"symbol"`
-	AccountID      string        `yaml:"account_id"`
-	Instances      int           `yaml:"instances"`
-	InitialDeposit int64         `yaml:"initial_deposit"`
-	InitialShares  int64         `yaml:"initial_shares"`
-	OrderInterval  time.Duration `yaml:"order_interval"`
-	MinQuantity    int64         `yaml:"min_quantity"`
-	MaxQuantity    int64         `yaml:"max_quantity"`
-	PriceJitter    int64         `yaml:"price_jitter"`
-	MarketOrderPct float64       `yaml:"market_order_pct"`
-	MaxPosition    int64         `yaml:"max_position"`
-	BuyBias        float64       `yaml:"buy_bias"`
+	Symbol              string        `yaml:"symbol"`
+	AccountID           string        `yaml:"account_id"`
+	Instances           int           `yaml:"instances"`
+	InitialDeposit      int64         `yaml:"initial_deposit"`
+	InitialShares       int64         `yaml:"initial_shares"`
+	RandomInitialShares bool          `yaml:"random_initial_shares"`
+	OrderInterval       time.Duration `yaml:"order_interval"`
+	MinQuantity         int64         `yaml:"min_quantity"`
+	MaxQuantity         int64         `yaml:"max_quantity"`
+	PriceJitter         int64         `yaml:"price_jitter"`
+	MarketOrderPct      float64       `yaml:"market_order_pct"`
+	MaxPosition         int64         `yaml:"max_position"`
+	BuyBias             float64       `yaml:"buy_bias"`
 }
 
 func LoadConfig(path string) (*Config, error) {

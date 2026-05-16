@@ -43,10 +43,11 @@ func NewEngine(
 
 func (e *Engine) Run(ctx context.Context) error {
 	trader.Bootstrap(ctx, trader.BootstrapConfig{
-		AccountID:      e.cfg.AccountID,
-		Symbol:         e.cfg.Symbol,
-		InitialDeposit: e.cfg.InitialDeposit,
-		InitialShares:  e.cfg.InitialShares,
+		AccountID:           e.cfg.AccountID,
+		Symbol:              e.cfg.Symbol,
+		InitialDeposit:      e.cfg.InitialDeposit,
+		InitialShares:       e.cfg.InitialShares,
+		RandomInitialShares: e.cfg.RandomInitialShares,
 	}, e.prices, e.pfClient, e.log)
 
 	ticker := time.NewTicker(e.cfg.OrderInterval)

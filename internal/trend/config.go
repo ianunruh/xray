@@ -22,16 +22,17 @@ type Config struct {
 }
 
 type SymbolConfig struct {
-	Symbol         string        `yaml:"symbol"`
-	AccountID      string        `yaml:"account_id"`
-	InitialDeposit int64         `yaml:"initial_deposit"`
-	InitialShares  int64         `yaml:"initial_shares"`
-	FastPeriod     int           `yaml:"fast_period"`
-	SlowPeriod     int           `yaml:"slow_period"`
-	Quantity       int64         `yaml:"quantity"`
-	MaxPosition    int64         `yaml:"max_position"`
-	OrderTimeout   time.Duration `yaml:"order_timeout"`
-	PriceOffset    int64         `yaml:"price_offset"`
+	Symbol              string        `yaml:"symbol"`
+	AccountID           string        `yaml:"account_id"`
+	InitialDeposit      int64         `yaml:"initial_deposit"`
+	InitialShares       int64         `yaml:"initial_shares"`
+	RandomInitialShares bool          `yaml:"random_initial_shares"`
+	FastPeriod          int           `yaml:"fast_period"`
+	SlowPeriod          int           `yaml:"slow_period"`
+	Quantity            int64         `yaml:"quantity"`
+	MaxPosition         int64         `yaml:"max_position"`
+	OrderTimeout        time.Duration `yaml:"order_timeout"`
+	PriceOffset         int64         `yaml:"price_offset"`
 }
 
 func LoadConfig(path string) (*Config, error) {

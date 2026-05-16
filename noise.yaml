@@ -7,6 +7,7 @@ symbols:
     instances: 20
     initial_deposit: 5000000000 # $500K
     initial_shares: 500
+    random_initial_shares: true # credit a uniform random count in [0, initial_shares] per instance
     order_interval: 3s
     min_quantity: 1
     max_quantity: 10
