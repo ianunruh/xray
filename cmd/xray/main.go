@@ -144,7 +144,7 @@ func main() {
 	candleProjection := orderbook.NewCandleProjection()
 	broker := orderbook.NewBroker()
 	portfolioBroker := portfolio.NewPortfolioBroker()
-	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, portfolioHandler, obHandler, log)
+	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, ocoSagaHandler, obHandler, log)
 	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
 	ocoSagaReactor := ocosaga.NewReactor(ocoSagaHandler, portfolioHandler, obHandler, log)
 

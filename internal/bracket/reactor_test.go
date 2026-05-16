@@ -10,6 +10,7 @@ import (
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/internal/bracket"
+	"github.com/ianunruh/xray/internal/ocosaga"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
 	"github.com/ianunruh/xray/internal/portfolio"
@@ -35,18 +36,22 @@ type env struct {
 	portfolioHandler *es.Handler[*portfolio.Portfolio]
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga]
 	bracketHandler   *es.Handler[*bracket.BracketSaga]
+	ocoSagaHandler   *es.Handler[*ocosaga.OCOSaga]
 	orderSagaReactor *ordersaga.Reactor
 	bracketReactor   *bracket.Reactor
+	ocoSagaReactor   *ocosaga.Reactor
 }
 
-// flush dispatches accumulated published events to both reactors until
-// the publisher drains. Each event is delivered to BOTH reactors because
-// in production every persistent consumer sees every event in the stream.
+// flush dispatches accumulated published events to all three reactors
+// until the publisher drains. Each event is delivered to every reactor
+// because in production every persistent consumer sees every event in
+// the stream.
 func (e *env) flush() {
 	for len(e.pub.events) > 0 {
 		batch := e.pub.events
 		e.pub.events = nil
 		_ = e.orderSagaReactor.HandleEvents(e.ctx, batch)
+		_ = e.ocoSagaReactor.HandleEvents(e.ctx, batch)
 		_ = e.bracketReactor.HandleEvents(e.ctx, batch)
 	}
 }
@@ -57,6 +62,7 @@ func newRegistry() *es.Registry {
 	portfolio.RegisterEvents(r)
 	ordersaga.RegisterEvents(r)
 	bracket.RegisterEvents(r)
+	ocosaga.RegisterEvents(r)
 	return r
 }
 
@@ -81,9 +87,13 @@ func setupEnv(t *testing.T) *env {
 	bracketHandler := es.NewHandler(store, registry, func(id string) *bracket.BracketSaga {
 		return bracket.NewBracketSaga(id)
 	}, log).WithPublisher(pub)
+	ocoSagaHandler := es.NewHandler(store, registry, func(id string) *ocosaga.OCOSaga {
+		return ocosaga.NewOCOSaga(id)
+	}, log).WithPublisher(pub)
 
 	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
-	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, portfolioHandler, obHandler, log)
+	ocoSagaReactor := ocosaga.NewReactor(ocoSagaHandler, portfolioHandler, obHandler, log)
+	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, ocoSagaHandler, obHandler, log)
 
 	return &env{
 		ctx:              ctx,
@@ -94,8 +104,10 @@ func setupEnv(t *testing.T) *env {
 		portfolioHandler: portfolioHandler,
 		orderSagaHandler: orderSagaHandler,
 		bracketHandler:   bracketHandler,
+		ocoSagaHandler:   ocoSagaHandler,
 		orderSagaReactor: orderSagaReactor,
 		bracketReactor:   bracketReactor,
+		ocoSagaReactor:   ocoSagaReactor,
 	}
 }
 
@@ -241,12 +253,15 @@ func TestBracket_FailDuringPendingExit_ReleasesShares(t *testing.T) {
 	require.Equal(t, bracket.PendingExit, b.Status)
 
 	p := loadPortfolio(t, e, "acct-1")
-	require.Equal(t, int64(100), p.SharesHeld["AAPL"])
+	require.Equal(t, int64(100), p.SharesHeld["AAPL"], "exit OCO holds the shares")
 
-	// User cancels: record the bracket as failed; reactor releases shares.
-	failCmd := bracket.RecordSagaFailed{SagaID: "br-1", Reason: "user cancelled"}
-	require.NoError(t, e.bracketHandler.Handle(e.ctx, failCmd, func(saga *bracket.BracketSaga) ([]es.Event, error) {
-		return bracket.ExecuteRecordSagaFailed(saga, failCmd)
+	// User cancels the bracket — implemented as failing the child OCO
+	// saga (which releases shares and cascades into bracket failure
+	// via the bracket reactor's onExitOCOFailed handler).
+	ocoID := bracket.ExitOCOSagaID("br-1")
+	failCmd := ocosaga.RecordFailed{SagaID: ocoID, Reason: "user cancelled"}
+	require.NoError(t, e.ocoSagaHandler.Handle(e.ctx, failCmd, func(s *ocosaga.OCOSaga) ([]es.Event, error) {
+		return ocosaga.ExecuteRecordFailed(s, failCmd)
 	}))
 	e.flush()
 
@@ -297,7 +312,7 @@ func TestBracket_StatelessReactor_FreshInstanceHandlesMidLifecycleEvents(t *test
 
 	// "Restart" the bracket reactor with a fresh instance — no state
 	// inherited from the previous run.
-	e.bracketReactor = bracket.NewReactor(e.bracketHandler, e.orderSagaHandler, e.portfolioHandler, e.obHandler, slog.Default())
+	e.bracketReactor = bracket.NewReactor(e.bracketHandler, e.orderSagaHandler, e.ocoSagaHandler, e.obHandler, slog.Default())
 
 	// Drop a buy at TP price; TP sell exits. The fresh reactor sees
 	// TradeExecuted and must settle it correctly with no prior state.

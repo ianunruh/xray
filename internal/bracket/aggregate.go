@@ -52,6 +52,22 @@ func bracketIDFromEntryOrderSagaID(orderSagaID string) (string, bool) {
 	return strings.CutPrefix(orderSagaID, entryOrderSagaIDPrefix)
 }
 
+const exitOCOSagaIDPrefix = "bracket-oco:"
+
+// ExitOCOSagaID returns the OCOSaga ID used for a bracket's exit OCO
+// group. Brackets compose: the exit phase delegates entirely to an
+// OCOSaga which owns the share hold, TP/SL placement, fill settlement,
+// and on-failure release.
+func ExitOCOSagaID(bracketID string) string {
+	return exitOCOSagaIDPrefix + bracketID
+}
+
+// bracketIDFromExitOCOSagaID reverses ExitOCOSagaID; returns ok=false
+// for OCO sagas that weren't spawned by a bracket.
+func bracketIDFromExitOCOSagaID(ocoSagaID string) (string, bool) {
+	return strings.CutPrefix(ocoSagaID, exitOCOSagaIDPrefix)
+}
+
 // sagaIDFromExitOrderID reverses the TP/SL helpers, returning ok=false if
 // the orderID wasn't placed as an exit leg.
 func sagaIDFromExitOrderID(orderID string) (string, bool) {

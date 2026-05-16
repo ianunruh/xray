@@ -246,9 +246,11 @@ func (s *Server) cancelBracket(ctx context.Context, row *SagaRow) error {
 
 	// PendingEntry: cancel the entry order. The entry is an ordersaga;
 	// cancelling its orderbook order cascades into the entry ordersaga's
-	// failure path, which cascades into the bracket.
-	// PendingExit: cancel both exit legs AND record the bracket as
-	// failed so the reactor can release the share hold.
+	// failure path, which cascades into the bracket via
+	// onEntryOrderSagaFailed.
+	// PendingExit: cancel the child OCO saga, which cancels TP+SL,
+	// releases the share hold, and emits OCOSagaFailed — the bracket
+	// reactor observes that and marks the bracket as Failed.
 	switch b.Status {
 	case bracket.PendingEntry:
 		entryOrderID := ordersaga.OrderID(bracket.EntryOrderSagaID(row.SagaID))
@@ -257,19 +259,7 @@ func (s *Server) cancelBracket(ctx context.Context, row *SagaRow) error {
 		}
 		return s.cancelOrderbookOrder(ctx, row.Symbol, entryOrderID)
 	case bracket.PendingExit:
-		if err := s.cancelOrderbookOrder(ctx, row.Symbol, b.TakeProfitOrderID); err != nil {
-			return err
-		}
-		if err := s.cancelOrderbookOrder(ctx, row.Symbol, b.StopLossOrderID); err != nil {
-			return err
-		}
-		failCmd := bracket.RecordSagaFailed{SagaID: row.SagaID, Reason: "cancelled by user"}
-		if err := s.bracketHandler.Handle(ctx, failCmd, func(b *bracket.BracketSaga) ([]es.Event, error) {
-			return bracket.ExecuteRecordSagaFailed(b, failCmd)
-		}); err != nil {
-			return connect.NewError(connect.CodeInternal, fmt.Errorf("record saga failed: %w", err))
-		}
-		return nil
+		return s.cancelOCOByID(ctx, bracket.ExitOCOSagaID(row.SagaID), row.Symbol)
 	default:
 		return connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("bracket %s is in unexpected state for cancel", row.SagaID))
@@ -277,7 +267,14 @@ func (s *Server) cancelBracket(ctx context.Context, row *SagaRow) error {
 }
 
 func (s *Server) cancelOCO(ctx context.Context, row *SagaRow) error {
-	o, err := s.ocoSagaHandler.Load(ctx, ocosaga.AggregateID(row.SagaID))
+	return s.cancelOCOByID(ctx, row.SagaID, row.Symbol)
+}
+
+// cancelOCOByID cancels any OCO saga by ID — used directly by top-level
+// OCO cancellation and indirectly by bracket cancellation (which
+// targets the child OCO).
+func (s *Server) cancelOCOByID(ctx context.Context, sagaID, symbol string) error {
+	o, err := s.ocoSagaHandler.Load(ctx, ocosaga.AggregateID(sagaID))
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("load oco saga: %w", err))
 	}
@@ -285,18 +282,18 @@ func (s *Server) cancelOCO(ctx context.Context, row *SagaRow) error {
 	// still in Started/SharesHeld). Idempotency in the orderbook makes
 	// already-gone errors benign.
 	if o.TakeProfitOrderID != "" {
-		if err := s.cancelOrderbookOrder(ctx, row.Symbol, o.TakeProfitOrderID); err != nil {
+		if err := s.cancelOrderbookOrder(ctx, symbol, o.TakeProfitOrderID); err != nil {
 			return err
 		}
 	}
 	if o.StopLossOrderID != "" {
-		if err := s.cancelOrderbookOrder(ctx, row.Symbol, o.StopLossOrderID); err != nil {
+		if err := s.cancelOrderbookOrder(ctx, symbol, o.StopLossOrderID); err != nil {
 			return err
 		}
 	}
-	failCmd := ocosaga.RecordFailed{SagaID: row.SagaID, Reason: "cancelled by user"}
-	if err := s.ocoSagaHandler.Handle(ctx, failCmd, func(s *ocosaga.OCOSaga) ([]es.Event, error) {
-		return ocosaga.ExecuteRecordFailed(s, failCmd)
+	failCmd := ocosaga.RecordFailed{SagaID: sagaID, Reason: "cancelled by user"}
+	if err := s.ocoSagaHandler.Handle(ctx, failCmd, func(saga *ocosaga.OCOSaga) ([]es.Event, error) {
+		return ocosaga.ExecuteRecordFailed(saga, failCmd)
 	}); err != nil {
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("record oco saga failed: %w", err))
 	}

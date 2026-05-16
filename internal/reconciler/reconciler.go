@@ -148,16 +148,10 @@ func (r *Reconciler) reconcileOrderSaga(ctx context.Context, s *sagasvc.SagaRow)
 }
 
 func (r *Reconciler) reconcileBracket(ctx context.Context, s *sagasvc.SagaRow) error {
-	// L2 on both exit legs.
-	for _, orderID := range []string{
-		bracket.TakeProfitOrderID(s.SagaID),
-		bracket.StopLossOrderID(s.SagaID),
-	} {
-		if err := r.replayMissingTrades(ctx, s, orderID, r.bracketReactor.ReplayExitTrade); err != nil {
-			return err
-		}
-	}
-	// L1.
+	// Brackets don't settle trades themselves anymore — the exit OCO
+	// saga does. So no L2 (trade replay) at the bracket level; the
+	// child OCO saga gets reconciled separately via SAGA_KIND_OCO.
+	// L1: drive the bracket state machine forward.
 	return r.bracketReactor.Reconcile(ctx, s.SagaID)
 }
 

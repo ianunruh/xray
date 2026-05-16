@@ -157,10 +157,20 @@ func (p *PgProjection) Get(ctx context.Context, sagaID string) (*SagaRow, error)
 
 // List returns sagas matching the given filters. Zero-valued filters are
 // treated as "match any."
+// childSagaPrefixes hides sagas whose IDs were synthesized by a parent
+// saga (entry ordersagas owned by a bracket, exit OCO sagas owned by a
+// bracket). These are implementation details — the parent is what
+// callers see in List responses.
+var childSagaPrefixes = []string{"bracket-entry:", "bracket-oco:"}
+
 func (p *PgProjection) List(ctx context.Context, accountID, symbol string, kind sagav1.SagaKind, status sagav1.SagaStatus) ([]*SagaRow, error) {
 	q := `SELECT saga_id, kind, status, account_id, symbol, started_at, ended_at, fail_reason
 		FROM projection_sagas WHERE TRUE`
 	args := []any{}
+	for _, prefix := range childSagaPrefixes {
+		args = append(args, prefix+"%")
+		q += fmt.Sprintf(" AND saga_id NOT LIKE $%d", len(args))
+	}
 	if accountID != "" {
 		args = append(args, accountID)
 		q += fmt.Sprintf(" AND account_id = $%d", len(args))
