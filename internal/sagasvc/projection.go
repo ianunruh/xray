@@ -79,6 +79,31 @@ func (p *PgProjection) HandleEvents(ctx context.Context, events []es.Event) erro
 				int32(sagav1.SagaStatus_SAGA_STATUS_FAILED),
 				data.Reason, data.FailedAt.AsTime(), data.SagaId,
 			)
+
+		// OCO saga lifecycle.
+		case *orderbookv1.OCOSagaStarted:
+			batch.Queue(
+				`INSERT INTO projection_sagas (saga_id, kind, status, account_id, symbol, started_at)
+				VALUES ($1, $2, $3, $4, $5, $6)
+				ON CONFLICT (saga_id) DO NOTHING`,
+				data.SagaId,
+				int32(sagav1.SagaKind_SAGA_KIND_OCO),
+				int32(sagav1.SagaStatus_SAGA_STATUS_ACTIVE),
+				data.AccountId, data.Symbol,
+				data.StartedAt.AsTime(),
+			)
+		case *orderbookv1.OCOSagaCompleted:
+			batch.Queue(
+				`UPDATE projection_sagas SET status = $1, ended_at = $2 WHERE saga_id = $3`,
+				int32(sagav1.SagaStatus_SAGA_STATUS_COMPLETED),
+				data.CompletedAt.AsTime(), data.SagaId,
+			)
+		case *orderbookv1.OCOSagaFailed:
+			batch.Queue(
+				`UPDATE projection_sagas SET status = $1, fail_reason = $2, ended_at = $3 WHERE saga_id = $4`,
+				int32(sagav1.SagaStatus_SAGA_STATUS_FAILED),
+				data.Reason, data.FailedAt.AsTime(), data.SagaId,
+			)
 		}
 	}
 

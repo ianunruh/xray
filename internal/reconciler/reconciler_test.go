@@ -13,6 +13,7 @@ import (
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
 	"github.com/ianunruh/xray/internal/bracket"
+	"github.com/ianunruh/xray/internal/ocosaga"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
 	"github.com/ianunruh/xray/internal/portfolio"
@@ -58,8 +59,10 @@ type env struct {
 	portfolioHandler *es.Handler[*portfolio.Portfolio]
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga]
 	bracketHandler   *es.Handler[*bracket.BracketSaga]
+	ocoSagaHandler   *es.Handler[*ocosaga.OCOSaga]
 	orderSagaReactor *ordersaga.Reactor
 	bracketReactor   *bracket.Reactor
+	ocoSagaReactor   *ocosaga.Reactor
 }
 
 func (e *env) flush() {
@@ -68,6 +71,7 @@ func (e *env) flush() {
 		e.pub.events = nil
 		_ = e.orderSagaReactor.HandleEvents(e.ctx, batch)
 		_ = e.bracketReactor.HandleEvents(e.ctx, batch)
+		_ = e.ocoSagaReactor.HandleEvents(e.ctx, batch)
 	}
 }
 
@@ -78,6 +82,7 @@ func setupEnv(t *testing.T) *env {
 	portfolio.RegisterEvents(registry)
 	ordersaga.RegisterEvents(registry)
 	bracket.RegisterEvents(registry)
+	ocosaga.RegisterEvents(registry)
 
 	store := memstore.New()
 	ctx := context.Background()
@@ -96,15 +101,21 @@ func setupEnv(t *testing.T) *env {
 	bracketHandler := es.NewHandler(store, registry, func(id string) *bracket.BracketSaga {
 		return bracket.NewBracketSaga(id)
 	}, log).WithPublisher(pub)
+	ocoSagaHandler := es.NewHandler(store, registry, func(id string) *ocosaga.OCOSaga {
+		return ocosaga.NewOCOSaga(id)
+	}, log).WithPublisher(pub)
 
 	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
 	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, portfolioHandler, obHandler, log)
+	ocoSagaReactor := ocosaga.NewReactor(ocoSagaHandler, portfolioHandler, obHandler, log)
 
 	return &env{
 		ctx: ctx, store: store, registry: registry, pub: pub,
 		obHandler: obHandler, portfolioHandler: portfolioHandler,
 		orderSagaHandler: orderSagaHandler, bracketHandler: bracketHandler,
+		ocoSagaHandler:   ocoSagaHandler,
 		orderSagaReactor: orderSagaReactor, bracketReactor: bracketReactor,
+		ocoSagaReactor: ocoSagaReactor,
 	}
 }
 
@@ -160,7 +171,7 @@ func TestReconciler_L2_ReplaysMissedTrade(t *testing.T) {
 	}}}
 
 	rec := reconciler.New(time.Hour, sagaLookup, tradeLookup,
-		e.portfolioHandler, e.orderSagaReactor, e.bracketReactor, slog.Default())
+		e.portfolioHandler, e.orderSagaReactor, e.bracketReactor, e.ocoSagaReactor, slog.Default())
 	require.NoError(t, rec.ReconcileOnce(e.ctx))
 	e.flush()
 
@@ -219,7 +230,7 @@ func TestReconciler_L2_SkipsAlreadySettledTrades(t *testing.T) {
 	tradeLookup := &stubTradeLookup{} // empty; nothing to replay
 	sagaLookup := &stubSagaLookup{rows: []*sagasvc.SagaRow{}}
 	rec := reconciler.New(time.Hour, sagaLookup, tradeLookup,
-		e.portfolioHandler, e.orderSagaReactor, e.bracketReactor, slog.Default())
+		e.portfolioHandler, e.orderSagaReactor, e.bracketReactor, e.ocoSagaReactor, slog.Default())
 	require.NoError(t, rec.ReconcileOnce(e.ctx))
 
 	// Nothing changed — saga still Completed, portfolio unchanged.
@@ -270,7 +281,7 @@ func TestReconciler_L1_DrivesStuckSagaForward(t *testing.T) {
 	}}}
 	tradeLookup := &stubTradeLookup{}
 	rec := reconciler.New(time.Hour, sagaLookup, tradeLookup,
-		e.portfolioHandler, e.orderSagaReactor, e.bracketReactor, slog.Default())
+		e.portfolioHandler, e.orderSagaReactor, e.bracketReactor, e.ocoSagaReactor, slog.Default())
 	require.NoError(t, rec.ReconcileOnce(e.ctx))
 
 	s, err = e.orderSagaHandler.Load(e.ctx, ordersaga.AggregateID("saga-1"))

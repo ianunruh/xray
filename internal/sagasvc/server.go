@@ -12,6 +12,7 @@ import (
 	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
 	"github.com/ianunruh/xray/gen/saga/v1/sagav1connect"
 	"github.com/ianunruh/xray/internal/bracket"
+	"github.com/ianunruh/xray/internal/ocosaga"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
 	"github.com/ianunruh/xray/pkg/es"
@@ -25,6 +26,7 @@ type Server struct {
 
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga]
 	bracketHandler   *es.Handler[*bracket.BracketSaga]
+	ocoSagaHandler   *es.Handler[*ocosaga.OCOSaga]
 	orderbookHandler *es.Handler[*orderbook.OrderBook]
 	projection       *PgProjection
 	log              *slog.Logger
@@ -33,6 +35,7 @@ type Server struct {
 func NewServer(
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga],
 	bracketHandler *es.Handler[*bracket.BracketSaga],
+	ocoSagaHandler *es.Handler[*ocosaga.OCOSaga],
 	orderbookHandler *es.Handler[*orderbook.OrderBook],
 	projection *PgProjection,
 	log *slog.Logger,
@@ -40,6 +43,7 @@ func NewServer(
 	return &Server{
 		orderSagaHandler: orderSagaHandler,
 		bracketHandler:   bracketHandler,
+		ocoSagaHandler:   ocoSagaHandler,
 		orderbookHandler: orderbookHandler,
 		projection:       projection,
 		log:              log,
@@ -65,9 +69,41 @@ func (s *Server) Place(ctx context.Context, req *connect.Request[sagav1.PlaceSag
 			return nil, err
 		}
 		return connect.NewResponse(&sagav1.PlaceSagaResponse{SagaId: sagaID}), nil
+	case *sagav1.PlaceSagaRequest_Oco:
+		sagaID, err := s.placeOCO(ctx, msg.AccountId, plan.Oco)
+		if err != nil {
+			return nil, err
+		}
+		return connect.NewResponse(&sagav1.PlaceSagaResponse{SagaId: sagaID}), nil
 	default:
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("plan required"))
 	}
+}
+
+func (s *Server) placeOCO(ctx context.Context, accountID string, plan *sagav1.OCOPlan) (string, error) {
+	if plan.Quantity <= 0 {
+		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("quantity must be positive"))
+	}
+	if plan.TakeProfitPrice <= 0 || plan.StopLossPrice <= 0 {
+		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("take_profit_price and stop_loss_price must be positive"))
+	}
+	sagaID := ocosaga.NewSagaID()
+	cmd := ocosaga.StartOCOSaga{
+		SagaID:          sagaID,
+		AccountID:       accountID,
+		Symbol:          plan.Symbol,
+		ExitSide:        plan.ExitSide,
+		Quantity:        plan.Quantity,
+		TakeProfitPrice: plan.TakeProfitPrice,
+		StopLossPrice:   plan.StopLossPrice,
+	}
+	if err := s.ocoSagaHandler.Handle(ctx, cmd, func(saga *ocosaga.OCOSaga) ([]es.Event, error) {
+		return ocosaga.ExecuteStartOCOSaga(saga, cmd)
+	}); err != nil {
+		s.log.Error("Place(oco) saga creation failed", "saga_id", sagaID, "error", err)
+		return "", connect.NewError(connect.CodeInternal, err)
+	}
+	return sagaID, nil
 }
 
 func (s *Server) placeSingleOrder(ctx context.Context, accountID string, plan *sagav1.SingleOrderPlan) (string, error) {
@@ -180,6 +216,10 @@ func (s *Server) Cancel(ctx context.Context, req *connect.Request[sagav1.CancelS
 		if err := s.cancelBracket(ctx, row); err != nil {
 			return nil, err
 		}
+	case sagav1.SagaKind_SAGA_KIND_OCO:
+		if err := s.cancelOCO(ctx, row); err != nil {
+			return nil, err
+		}
 	default:
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("unknown saga kind: %d", row.Kind))
 	}
@@ -236,6 +276,33 @@ func (s *Server) cancelBracket(ctx context.Context, row *SagaRow) error {
 	}
 }
 
+func (s *Server) cancelOCO(ctx context.Context, row *SagaRow) error {
+	o, err := s.ocoSagaHandler.Load(ctx, ocosaga.AggregateID(row.SagaID))
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("load oco saga: %w", err))
+	}
+	// Best-effort cancel both legs (they may not be placed yet if we're
+	// still in Started/SharesHeld). Idempotency in the orderbook makes
+	// already-gone errors benign.
+	if o.TakeProfitOrderID != "" {
+		if err := s.cancelOrderbookOrder(ctx, row.Symbol, o.TakeProfitOrderID); err != nil {
+			return err
+		}
+	}
+	if o.StopLossOrderID != "" {
+		if err := s.cancelOrderbookOrder(ctx, row.Symbol, o.StopLossOrderID); err != nil {
+			return err
+		}
+	}
+	failCmd := ocosaga.RecordFailed{SagaID: row.SagaID, Reason: "cancelled by user"}
+	if err := s.ocoSagaHandler.Handle(ctx, failCmd, func(s *ocosaga.OCOSaga) ([]es.Event, error) {
+		return ocosaga.ExecuteRecordFailed(s, failCmd)
+	}); err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("record oco saga failed: %w", err))
+	}
+	return nil
+}
+
 func (s *Server) cancelOrderbookOrder(ctx context.Context, symbol, orderID string) error {
 	cmd := orderbook.CancelOrder{Symbol: symbol, OrderID: orderID}
 	err := s.orderbookHandler.Handle(ctx, cmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
@@ -278,8 +345,44 @@ func (s *Server) buildGetResponse(ctx context.Context, row *SagaRow) (*sagav1.Ge
 			return nil, err
 		}
 		resp.Details = &sagav1.GetSagaResponse_Bracket{Bracket: details}
+	case sagav1.SagaKind_SAGA_KIND_OCO:
+		details, err := s.ocoDetails(ctx, row.SagaID)
+		if err != nil {
+			return nil, err
+		}
+		resp.Details = &sagav1.GetSagaResponse_Oco{Oco: details}
 	}
 	return resp, nil
+}
+
+func (s *Server) ocoDetails(ctx context.Context, sagaID string) (*sagav1.OCODetails, error) {
+	o, err := s.ocoSagaHandler.Load(ctx, ocosaga.AggregateID(sagaID))
+	if err != nil {
+		return nil, fmt.Errorf("load oco saga: %w", err)
+	}
+	return &sagav1.OCODetails{
+		Phase:             ocoPhase(o.Status),
+		ExitSide:          orderbook.SideToProto(o.ExitSide),
+		Quantity:          o.Quantity,
+		TakeProfitPrice:   o.TakeProfitPrice,
+		StopLossPrice:     o.StopLossPrice,
+		TakeProfitOrderId: o.TakeProfitOrderID,
+		StopLossOrderId:   o.StopLossOrderID,
+		SettledQuantity:   o.SettledQty,
+	}, nil
+}
+
+func ocoPhase(s ocosaga.Status) sagav1.OCOPhase {
+	switch s {
+	case ocosaga.Started:
+		return sagav1.OCOPhase_OCO_PHASE_STARTED
+	case ocosaga.SharesHeld:
+		return sagav1.OCOPhase_OCO_PHASE_SHARES_HELD
+	case ocosaga.ExitPlaced:
+		return sagav1.OCOPhase_OCO_PHASE_EXIT_PLACED
+	default:
+		return sagav1.OCOPhase_OCO_PHASE_UNSPECIFIED
+	}
 }
 
 func (s *Server) singleOrderDetails(ctx context.Context, sagaID string) (*sagav1.SingleOrderDetails, error) {

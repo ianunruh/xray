@@ -19,6 +19,7 @@ enum SagaKind {
   SAGA_KIND_UNSPECIFIED = 0;
   SAGA_KIND_SINGLE_ORDER = 1;
   SAGA_KIND_BRACKET = 2;
+  SAGA_KIND_OCO = 3;
 }
 
 // SagaStatus is the top-level lifecycle marker shared by all kinds.
@@ -35,6 +36,7 @@ message PlaceSagaRequest {
   oneof plan {
     SingleOrderPlan single_order = 2;
     BracketPlan bracket = 3;
+    OCOPlan oco = 4;
   }
 }
 
@@ -59,6 +61,18 @@ message BracketPlan {
   int64 stop_loss_price = 6;
 }
 
+// OCOPlan: sell (or cover) `quantity` shares with two exit orders that
+// are mutually exclusive — whichever fills first cancels the other at
+// the orderbook layer. exit_side identifies which side the OCO orders
+// land on (typically SELL to exit a long position; BUY to exit a short).
+message OCOPlan {
+  string symbol = 1;
+  orderbook.v1.Side exit_side = 2;
+  int64 quantity = 3;
+  int64 take_profit_price = 4;
+  int64 stop_loss_price = 5;
+}
+
 message PlaceSagaResponse {
   string saga_id = 1;
 }
@@ -79,6 +93,7 @@ message GetSagaResponse {
   oneof details {
     SingleOrderDetails single_order = 9;
     BracketDetails bracket = 10;
+    OCODetails oco = 11;
   }
 }
 
@@ -120,6 +135,25 @@ message BracketDetails {
   string entry_order_id = 7;
   string take_profit_order_id = 8;
   string stop_loss_order_id = 9;
+}
+
+// OCOPhase is the granular state for SAGA_KIND_OCO.
+enum OCOPhase {
+  OCO_PHASE_UNSPECIFIED = 0;
+  OCO_PHASE_STARTED = 1;
+  OCO_PHASE_SHARES_HELD = 2;
+  OCO_PHASE_EXIT_PLACED = 3;
+}
+
+message OCODetails {
+  OCOPhase phase = 1;
+  orderbook.v1.Side exit_side = 2;
+  int64 quantity = 3;
+  int64 take_profit_price = 4;
+  int64 stop_loss_price = 5;
+  string take_profit_order_id = 6;
+  string stop_loss_order_id = 7;
+  int64 settled_quantity = 8;
 }
 
 message CancelSagaRequest {

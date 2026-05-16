@@ -24,6 +24,7 @@ import (
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
 	"github.com/ianunruh/xray/internal/bracket"
+	"github.com/ianunruh/xray/internal/ocosaga"
 	"github.com/ianunruh/xray/internal/ordersaga"
 	"github.com/ianunruh/xray/internal/portfolio"
 	"github.com/ianunruh/xray/internal/sagasvc"
@@ -49,6 +50,7 @@ type Reconciler struct {
 	portfolioHandler *es.Handler[*portfolio.Portfolio]
 	orderSagaReactor *ordersaga.Reactor
 	bracketReactor   *bracket.Reactor
+	ocoSagaReactor   *ocosaga.Reactor
 	log              *slog.Logger
 }
 
@@ -59,6 +61,7 @@ func New(
 	portfolioHandler *es.Handler[*portfolio.Portfolio],
 	orderSagaReactor *ordersaga.Reactor,
 	bracketReactor *bracket.Reactor,
+	ocoSagaReactor *ocosaga.Reactor,
 	log *slog.Logger,
 ) *Reconciler {
 	return &Reconciler{
@@ -68,6 +71,7 @@ func New(
 		portfolioHandler: portfolioHandler,
 		orderSagaReactor: orderSagaReactor,
 		bracketReactor:   bracketReactor,
+		ocoSagaReactor:   ocoSagaReactor,
 		log:              log,
 	}
 }
@@ -112,8 +116,22 @@ func (r *Reconciler) reconcileSaga(ctx context.Context, s *sagasvc.SagaRow) erro
 		return r.reconcileOrderSaga(ctx, s)
 	case sagav1.SagaKind_SAGA_KIND_BRACKET:
 		return r.reconcileBracket(ctx, s)
+	case sagav1.SagaKind_SAGA_KIND_OCO:
+		return r.reconcileOCO(ctx, s)
 	}
 	return nil
+}
+
+func (r *Reconciler) reconcileOCO(ctx context.Context, s *sagasvc.SagaRow) error {
+	for _, orderID := range []string{
+		ocosaga.TakeProfitOrderID(s.SagaID),
+		ocosaga.StopLossOrderID(s.SagaID),
+	} {
+		if err := r.replayMissingTrades(ctx, s, orderID, r.ocoSagaReactor.ReplayTrade); err != nil {
+			return err
+		}
+	}
+	return r.ocoSagaReactor.Reconcile(ctx, s.SagaID)
 }
 
 func (r *Reconciler) reconcileOrderSaga(ctx context.Context, s *sagasvc.SagaRow) error {

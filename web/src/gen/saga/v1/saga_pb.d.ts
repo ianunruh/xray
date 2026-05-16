@@ -36,6 +36,12 @@ export declare type PlaceSagaRequest = Message<"saga.v1.PlaceSagaRequest"> & {
      */
     value: BracketPlan;
     case: "bracket";
+  } | {
+    /**
+     * @generated from field: saga.v1.OCOPlan oco = 4;
+     */
+    value: OCOPlan;
+    case: "oco";
   } | { case: undefined; value?: undefined };
 };
 
@@ -136,6 +142,47 @@ export declare type BracketPlan = Message<"saga.v1.BracketPlan"> & {
 export declare const BracketPlanSchema: GenMessage<BracketPlan>;
 
 /**
+ * OCOPlan: sell (or cover) `quantity` shares with two exit orders that
+ * are mutually exclusive — whichever fills first cancels the other at
+ * the orderbook layer. exit_side identifies which side the OCO orders
+ * land on (typically SELL to exit a long position; BUY to exit a short).
+ *
+ * @generated from message saga.v1.OCOPlan
+ */
+export declare type OCOPlan = Message<"saga.v1.OCOPlan"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: orderbook.v1.Side exit_side = 2;
+   */
+  exitSide: Side;
+
+  /**
+   * @generated from field: int64 quantity = 3;
+   */
+  quantity: bigint;
+
+  /**
+   * @generated from field: int64 take_profit_price = 4;
+   */
+  takeProfitPrice: bigint;
+
+  /**
+   * @generated from field: int64 stop_loss_price = 5;
+   */
+  stopLossPrice: bigint;
+};
+
+/**
+ * Describes the message saga.v1.OCOPlan.
+ * Use `create(OCOPlanSchema)` to create a new message.
+ */
+export declare const OCOPlanSchema: GenMessage<OCOPlan>;
+
+/**
  * @generated from message saga.v1.PlaceSagaResponse
  */
 export declare type PlaceSagaResponse = Message<"saga.v1.PlaceSagaResponse"> & {
@@ -226,6 +273,12 @@ export declare type GetSagaResponse = Message<"saga.v1.GetSagaResponse"> & {
      */
     value: BracketDetails;
     case: "bracket";
+  } | {
+    /**
+     * @generated from field: saga.v1.OCODetails oco = 11;
+     */
+    value: OCODetails;
+    case: "oco";
   } | { case: undefined; value?: undefined };
 };
 
@@ -353,6 +406,57 @@ export declare type BracketDetails = Message<"saga.v1.BracketDetails"> & {
 export declare const BracketDetailsSchema: GenMessage<BracketDetails>;
 
 /**
+ * @generated from message saga.v1.OCODetails
+ */
+export declare type OCODetails = Message<"saga.v1.OCODetails"> & {
+  /**
+   * @generated from field: saga.v1.OCOPhase phase = 1;
+   */
+  phase: OCOPhase;
+
+  /**
+   * @generated from field: orderbook.v1.Side exit_side = 2;
+   */
+  exitSide: Side;
+
+  /**
+   * @generated from field: int64 quantity = 3;
+   */
+  quantity: bigint;
+
+  /**
+   * @generated from field: int64 take_profit_price = 4;
+   */
+  takeProfitPrice: bigint;
+
+  /**
+   * @generated from field: int64 stop_loss_price = 5;
+   */
+  stopLossPrice: bigint;
+
+  /**
+   * @generated from field: string take_profit_order_id = 6;
+   */
+  takeProfitOrderId: string;
+
+  /**
+   * @generated from field: string stop_loss_order_id = 7;
+   */
+  stopLossOrderId: string;
+
+  /**
+   * @generated from field: int64 settled_quantity = 8;
+   */
+  settledQuantity: bigint;
+};
+
+/**
+ * Describes the message saga.v1.OCODetails.
+ * Use `create(OCODetailsSchema)` to create a new message.
+ */
+export declare const OCODetailsSchema: GenMessage<OCODetails>;
+
+/**
  * @generated from message saga.v1.CancelSagaRequest
  */
 export declare type CancelSagaRequest = Message<"saga.v1.CancelSagaRequest"> & {
@@ -449,6 +553,11 @@ export enum SagaKind {
    * @generated from enum value: SAGA_KIND_BRACKET = 2;
    */
   BRACKET = 2,
+
+  /**
+   * @generated from enum value: SAGA_KIND_OCO = 3;
+   */
+  OCO = 3,
 }
 
 /**
@@ -547,6 +656,38 @@ export enum BracketPhase {
  * Describes the enum saga.v1.BracketPhase.
  */
 export declare const BracketPhaseSchema: GenEnum<BracketPhase>;
+
+/**
+ * OCOPhase is the granular state for SAGA_KIND_OCO.
+ *
+ * @generated from enum saga.v1.OCOPhase
+ */
+export enum OCOPhase {
+  /**
+   * @generated from enum value: OCO_PHASE_UNSPECIFIED = 0;
+   */
+  OCO_PHASE_UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: OCO_PHASE_STARTED = 1;
+   */
+  OCO_PHASE_STARTED = 1,
+
+  /**
+   * @generated from enum value: OCO_PHASE_SHARES_HELD = 2;
+   */
+  OCO_PHASE_SHARES_HELD = 2,
+
+  /**
+   * @generated from enum value: OCO_PHASE_EXIT_PLACED = 3;
+   */
+  OCO_PHASE_EXIT_PLACED = 3,
+}
+
+/**
+ * Describes the enum saga.v1.OCOPhase.
+ */
+export declare const OCOPhaseSchema: GenEnum<OCOPhase>;
 
 /**
  * @generated from service saga.v1.SagaService

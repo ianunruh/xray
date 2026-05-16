@@ -21,6 +21,7 @@ import (
 	"github.com/ianunruh/xray/gen/saga/v1/sagav1connect"
 	"github.com/ianunruh/xray/internal/bracket"
 	"github.com/ianunruh/xray/internal/diagnostics"
+	"github.com/ianunruh/xray/internal/ocosaga"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
 	"github.com/ianunruh/xray/internal/portfolio"
@@ -84,6 +85,7 @@ func main() {
 	bracket.RegisterEvents(registry)
 	portfolio.RegisterEvents(registry)
 	ordersaga.RegisterEvents(registry)
+	ocosaga.RegisterEvents(registry)
 
 	// Connect to NATS.
 	nc, err := nats.Connect(natsURL)
@@ -128,6 +130,10 @@ func main() {
 		return ordersaga.NewOrderSaga(id)
 	}, log).WithPublisher(publisher)
 
+	ocoSagaHandler := es.NewHandler(store, registry, func(id string) *ocosaga.OCOSaga {
+		return ocosaga.NewOCOSaga(id)
+	}, log).WithPublisher(publisher)
+
 	// Create projections.
 	tradeProjection := orderbook.NewPgTradeProjection(pool)
 	orderProjection := orderbook.NewPgOrderProjection(pool)
@@ -140,6 +146,7 @@ func main() {
 	portfolioBroker := portfolio.NewPortfolioBroker()
 	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, portfolioHandler, obHandler, log)
 	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
+	ocoSagaReactor := ocosaga.NewReactor(ocoSagaHandler, portfolioHandler, obHandler, log)
 
 	// One consumer per persistent projection so each one's cursor advances
 	// independently. Ephemeral projections (in-memory) share a single
@@ -160,6 +167,8 @@ func main() {
 			WithPersistent(store, orderSagaReactor),
 		natsstore.NewProjectionConsumer(js, registry, log, "bracket-reactor").
 			WithPersistent(store, bracketReactor),
+		natsstore.NewProjectionConsumer(js, registry, log, "oco-reactor").
+			WithPersistent(store, ocoSagaReactor),
 		natsstore.NewProjectionConsumer(js, registry, log, "saga-projection").
 			WithPersistent(store, sagaProjection),
 	}
@@ -172,12 +181,12 @@ func main() {
 	broker.SetReady()
 	portfolioBroker.SetReady()
 
-	rec := reconciler.New(30*time.Second, sagaProjection, tradeProjection, portfolioHandler, orderSagaReactor, bracketReactor, log)
+	rec := reconciler.New(30*time.Second, sagaProjection, tradeProjection, portfolioHandler, orderSagaReactor, bracketReactor, ocoSagaReactor, log)
 	go rec.Run(ctx)
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, broker)
 	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, pnlProjection, portfolioBroker, log)
-	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, obHandler, sagaProjection, log)
+	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, ocoSagaHandler, obHandler, sagaProjection, log)
 	diagnosticsSrv := diagnostics.NewServer(store, registry, log)
 
 	mux := http.NewServeMux()

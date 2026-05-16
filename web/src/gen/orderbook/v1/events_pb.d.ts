@@ -416,6 +416,233 @@ export declare type SagaActionFailed = Message<"orderbook.v1.SagaActionFailed"> 
 export declare const SagaActionFailedSchema: GenMessage<SagaActionFailed>;
 
 /**
+ * OCOSaga aggregate events — stored under "oco-saga:{uuid}". An OCO
+ * saga holds shares once, places TP and SL with a shared orderbook OCO
+ * group, settles whichever fills first, and releases any remainder on
+ * failure.
+ *
+ * @generated from message orderbook.v1.OCOSagaStarted
+ */
+export declare type OCOSagaStarted = Message<"orderbook.v1.OCOSagaStarted"> & {
+  /**
+   * @generated from field: string saga_id = 1;
+   */
+  sagaId: string;
+
+  /**
+   * @generated from field: string account_id = 2;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string symbol = 3;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: orderbook.v1.Side exit_side = 4;
+   */
+  exitSide: Side;
+
+  /**
+   * @generated from field: int64 quantity = 5;
+   */
+  quantity: bigint;
+
+  /**
+   * @generated from field: int64 take_profit_price = 6;
+   */
+  takeProfitPrice: bigint;
+
+  /**
+   * @generated from field: int64 stop_loss_price = 7;
+   */
+  stopLossPrice: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp started_at = 8;
+   */
+  startedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.OCOSagaStarted.
+ * Use `create(OCOSagaStartedSchema)` to create a new message.
+ */
+export declare const OCOSagaStartedSchema: GenMessage<OCOSagaStarted>;
+
+/**
+ * @generated from message orderbook.v1.OCOSagaSharesHeld
+ */
+export declare type OCOSagaSharesHeld = Message<"orderbook.v1.OCOSagaSharesHeld"> & {
+  /**
+   * @generated from field: string saga_id = 1;
+   */
+  sagaId: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp held_at = 2;
+   */
+  heldAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.OCOSagaSharesHeld.
+ * Use `create(OCOSagaSharesHeldSchema)` to create a new message.
+ */
+export declare const OCOSagaSharesHeldSchema: GenMessage<OCOSagaSharesHeld>;
+
+/**
+ * @generated from message orderbook.v1.OCOSagaExitPlaced
+ */
+export declare type OCOSagaExitPlaced = Message<"orderbook.v1.OCOSagaExitPlaced"> & {
+  /**
+   * @generated from field: string saga_id = 1;
+   */
+  sagaId: string;
+
+  /**
+   * @generated from field: string take_profit_order_id = 2;
+   */
+  takeProfitOrderId: string;
+
+  /**
+   * @generated from field: string stop_loss_order_id = 3;
+   */
+  stopLossOrderId: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp placed_at = 4;
+   */
+  placedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.OCOSagaExitPlaced.
+ * Use `create(OCOSagaExitPlacedSchema)` to create a new message.
+ */
+export declare const OCOSagaExitPlacedSchema: GenMessage<OCOSagaExitPlaced>;
+
+/**
+ * @generated from message orderbook.v1.OCOSagaFillRecorded
+ */
+export declare type OCOSagaFillRecorded = Message<"orderbook.v1.OCOSagaFillRecorded"> & {
+  /**
+   * @generated from field: string saga_id = 1;
+   */
+  sagaId: string;
+
+  /**
+   * @generated from field: string trade_id = 2;
+   */
+  tradeId: string;
+
+  /**
+   * @generated from field: string order_id = 3;
+   */
+  orderId: string;
+
+  /**
+   * @generated from field: int64 fill_quantity = 4;
+   */
+  fillQuantity: bigint;
+
+  /**
+   * @generated from field: int64 fill_price = 5;
+   */
+  fillPrice: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp recorded_at = 6;
+   */
+  recordedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.OCOSagaFillRecorded.
+ * Use `create(OCOSagaFillRecordedSchema)` to create a new message.
+ */
+export declare const OCOSagaFillRecordedSchema: GenMessage<OCOSagaFillRecorded>;
+
+/**
+ * @generated from message orderbook.v1.OCOSagaCompleted
+ */
+export declare type OCOSagaCompleted = Message<"orderbook.v1.OCOSagaCompleted"> & {
+  /**
+   * @generated from field: string saga_id = 1;
+   */
+  sagaId: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp completed_at = 2;
+   */
+  completedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.OCOSagaCompleted.
+ * Use `create(OCOSagaCompletedSchema)` to create a new message.
+ */
+export declare const OCOSagaCompletedSchema: GenMessage<OCOSagaCompleted>;
+
+/**
+ * @generated from message orderbook.v1.OCOSagaFailed
+ */
+export declare type OCOSagaFailed = Message<"orderbook.v1.OCOSagaFailed"> & {
+  /**
+   * @generated from field: string saga_id = 1;
+   */
+  sagaId: string;
+
+  /**
+   * @generated from field: string reason = 2;
+   */
+  reason: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp failed_at = 3;
+   */
+  failedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.OCOSagaFailed.
+ * Use `create(OCOSagaFailedSchema)` to create a new message.
+ */
+export declare const OCOSagaFailedSchema: GenMessage<OCOSagaFailed>;
+
+/**
+ * @generated from message orderbook.v1.OCOSagaActionFailed
+ */
+export declare type OCOSagaActionFailed = Message<"orderbook.v1.OCOSagaActionFailed"> & {
+  /**
+   * @generated from field: string saga_id = 1;
+   */
+  sagaId: string;
+
+  /**
+   * @generated from field: string action = 2;
+   */
+  action: string;
+
+  /**
+   * @generated from field: int32 attempts = 3;
+   */
+  attempts: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp failed_at = 4;
+   */
+  failedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.OCOSagaActionFailed.
+ * Use `create(OCOSagaActionFailedSchema)` to create a new message.
+ */
+export declare const OCOSagaActionFailedSchema: GenMessage<OCOSagaActionFailed>;
+
+/**
  * @generated from enum orderbook.v1.Side
  */
 export enum Side {

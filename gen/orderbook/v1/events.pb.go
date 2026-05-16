@@ -1023,6 +1023,494 @@ func (x *SagaActionFailed) GetFailedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// OCOSaga aggregate events — stored under "oco-saga:{uuid}". An OCO
+// saga holds shares once, places TP and SL with a shared orderbook OCO
+// group, settles whichever fills first, and releases any remainder on
+// failure.
+type OCOSagaStarted struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	SagaId          string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	AccountId       string                 `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	Symbol          string                 `protobuf:"bytes,3,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	ExitSide        Side                   `protobuf:"varint,4,opt,name=exit_side,json=exitSide,proto3,enum=orderbook.v1.Side" json:"exit_side,omitempty"`
+	Quantity        int64                  `protobuf:"varint,5,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	TakeProfitPrice int64                  `protobuf:"varint,6,opt,name=take_profit_price,json=takeProfitPrice,proto3" json:"take_profit_price,omitempty"`
+	StopLossPrice   int64                  `protobuf:"varint,7,opt,name=stop_loss_price,json=stopLossPrice,proto3" json:"stop_loss_price,omitempty"`
+	StartedAt       *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *OCOSagaStarted) Reset() {
+	*x = OCOSagaStarted{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OCOSagaStarted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OCOSagaStarted) ProtoMessage() {}
+
+func (x *OCOSagaStarted) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OCOSagaStarted.ProtoReflect.Descriptor instead.
+func (*OCOSagaStarted) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *OCOSagaStarted) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+func (x *OCOSagaStarted) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *OCOSagaStarted) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *OCOSagaStarted) GetExitSide() Side {
+	if x != nil {
+		return x.ExitSide
+	}
+	return Side_SIDE_UNSPECIFIED
+}
+
+func (x *OCOSagaStarted) GetQuantity() int64 {
+	if x != nil {
+		return x.Quantity
+	}
+	return 0
+}
+
+func (x *OCOSagaStarted) GetTakeProfitPrice() int64 {
+	if x != nil {
+		return x.TakeProfitPrice
+	}
+	return 0
+}
+
+func (x *OCOSagaStarted) GetStopLossPrice() int64 {
+	if x != nil {
+		return x.StopLossPrice
+	}
+	return 0
+}
+
+func (x *OCOSagaStarted) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+type OCOSagaSharesHeld struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SagaId        string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	HeldAt        *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=held_at,json=heldAt,proto3" json:"held_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OCOSagaSharesHeld) Reset() {
+	*x = OCOSagaSharesHeld{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OCOSagaSharesHeld) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OCOSagaSharesHeld) ProtoMessage() {}
+
+func (x *OCOSagaSharesHeld) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OCOSagaSharesHeld.ProtoReflect.Descriptor instead.
+func (*OCOSagaSharesHeld) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *OCOSagaSharesHeld) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+func (x *OCOSagaSharesHeld) GetHeldAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.HeldAt
+	}
+	return nil
+}
+
+type OCOSagaExitPlaced struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	SagaId            string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	TakeProfitOrderId string                 `protobuf:"bytes,2,opt,name=take_profit_order_id,json=takeProfitOrderId,proto3" json:"take_profit_order_id,omitempty"`
+	StopLossOrderId   string                 `protobuf:"bytes,3,opt,name=stop_loss_order_id,json=stopLossOrderId,proto3" json:"stop_loss_order_id,omitempty"`
+	PlacedAt          *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=placed_at,json=placedAt,proto3" json:"placed_at,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *OCOSagaExitPlaced) Reset() {
+	*x = OCOSagaExitPlaced{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OCOSagaExitPlaced) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OCOSagaExitPlaced) ProtoMessage() {}
+
+func (x *OCOSagaExitPlaced) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OCOSagaExitPlaced.ProtoReflect.Descriptor instead.
+func (*OCOSagaExitPlaced) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *OCOSagaExitPlaced) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+func (x *OCOSagaExitPlaced) GetTakeProfitOrderId() string {
+	if x != nil {
+		return x.TakeProfitOrderId
+	}
+	return ""
+}
+
+func (x *OCOSagaExitPlaced) GetStopLossOrderId() string {
+	if x != nil {
+		return x.StopLossOrderId
+	}
+	return ""
+}
+
+func (x *OCOSagaExitPlaced) GetPlacedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.PlacedAt
+	}
+	return nil
+}
+
+type OCOSagaFillRecorded struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SagaId        string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	TradeId       string                 `protobuf:"bytes,2,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
+	OrderId       string                 `protobuf:"bytes,3,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	FillQuantity  int64                  `protobuf:"varint,4,opt,name=fill_quantity,json=fillQuantity,proto3" json:"fill_quantity,omitempty"`
+	FillPrice     int64                  `protobuf:"varint,5,opt,name=fill_price,json=fillPrice,proto3" json:"fill_price,omitempty"`
+	RecordedAt    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=recorded_at,json=recordedAt,proto3" json:"recorded_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OCOSagaFillRecorded) Reset() {
+	*x = OCOSagaFillRecorded{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OCOSagaFillRecorded) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OCOSagaFillRecorded) ProtoMessage() {}
+
+func (x *OCOSagaFillRecorded) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OCOSagaFillRecorded.ProtoReflect.Descriptor instead.
+func (*OCOSagaFillRecorded) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *OCOSagaFillRecorded) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+func (x *OCOSagaFillRecorded) GetTradeId() string {
+	if x != nil {
+		return x.TradeId
+	}
+	return ""
+}
+
+func (x *OCOSagaFillRecorded) GetOrderId() string {
+	if x != nil {
+		return x.OrderId
+	}
+	return ""
+}
+
+func (x *OCOSagaFillRecorded) GetFillQuantity() int64 {
+	if x != nil {
+		return x.FillQuantity
+	}
+	return 0
+}
+
+func (x *OCOSagaFillRecorded) GetFillPrice() int64 {
+	if x != nil {
+		return x.FillPrice
+	}
+	return 0
+}
+
+func (x *OCOSagaFillRecorded) GetRecordedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RecordedAt
+	}
+	return nil
+}
+
+type OCOSagaCompleted struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SagaId        string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	CompletedAt   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OCOSagaCompleted) Reset() {
+	*x = OCOSagaCompleted{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OCOSagaCompleted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OCOSagaCompleted) ProtoMessage() {}
+
+func (x *OCOSagaCompleted) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OCOSagaCompleted.ProtoReflect.Descriptor instead.
+func (*OCOSagaCompleted) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *OCOSagaCompleted) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+func (x *OCOSagaCompleted) GetCompletedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CompletedAt
+	}
+	return nil
+}
+
+type OCOSagaFailed struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SagaId        string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	FailedAt      *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=failed_at,json=failedAt,proto3" json:"failed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OCOSagaFailed) Reset() {
+	*x = OCOSagaFailed{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OCOSagaFailed) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OCOSagaFailed) ProtoMessage() {}
+
+func (x *OCOSagaFailed) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OCOSagaFailed.ProtoReflect.Descriptor instead.
+func (*OCOSagaFailed) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *OCOSagaFailed) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+func (x *OCOSagaFailed) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *OCOSagaFailed) GetFailedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FailedAt
+	}
+	return nil
+}
+
+type OCOSagaActionFailed struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SagaId        string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	Action        string                 `protobuf:"bytes,2,opt,name=action,proto3" json:"action,omitempty"`
+	Attempts      int32                  `protobuf:"varint,3,opt,name=attempts,proto3" json:"attempts,omitempty"`
+	FailedAt      *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=failed_at,json=failedAt,proto3" json:"failed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OCOSagaActionFailed) Reset() {
+	*x = OCOSagaActionFailed{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OCOSagaActionFailed) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OCOSagaActionFailed) ProtoMessage() {}
+
+func (x *OCOSagaActionFailed) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OCOSagaActionFailed.ProtoReflect.Descriptor instead.
+func (*OCOSagaActionFailed) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *OCOSagaActionFailed) GetSagaId() string {
+	if x != nil {
+		return x.SagaId
+	}
+	return ""
+}
+
+func (x *OCOSagaActionFailed) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *OCOSagaActionFailed) GetAttempts() int32 {
+	if x != nil {
+		return x.Attempts
+	}
+	return 0
+}
+
+func (x *OCOSagaActionFailed) GetFailedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FailedAt
+	}
+	return nil
+}
+
 var File_orderbook_v1_events_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_events_proto_rawDesc = "" +
@@ -1108,6 +1596,46 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
 	"\x06action\x18\x02 \x01(\tR\x06action\x12\x1a\n" +
 	"\battempts\x18\x03 \x01(\x05R\battempts\x127\n" +
+	"\tfailed_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bfailedAt\"\xbc\x02\n" +
+	"\x0eOCOSagaStarted\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\x12\x16\n" +
+	"\x06symbol\x18\x03 \x01(\tR\x06symbol\x12/\n" +
+	"\texit_side\x18\x04 \x01(\x0e2\x12.orderbook.v1.SideR\bexitSide\x12\x1a\n" +
+	"\bquantity\x18\x05 \x01(\x03R\bquantity\x12*\n" +
+	"\x11take_profit_price\x18\x06 \x01(\x03R\x0ftakeProfitPrice\x12&\n" +
+	"\x0fstop_loss_price\x18\a \x01(\x03R\rstopLossPrice\x129\n" +
+	"\n" +
+	"started_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\"a\n" +
+	"\x11OCOSagaSharesHeld\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x123\n" +
+	"\aheld_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x06heldAt\"\xc3\x01\n" +
+	"\x11OCOSagaExitPlaced\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12/\n" +
+	"\x14take_profit_order_id\x18\x02 \x01(\tR\x11takeProfitOrderId\x12+\n" +
+	"\x12stop_loss_order_id\x18\x03 \x01(\tR\x0fstopLossOrderId\x127\n" +
+	"\tplaced_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bplacedAt\"\xe5\x01\n" +
+	"\x13OCOSagaFillRecorded\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x19\n" +
+	"\btrade_id\x18\x02 \x01(\tR\atradeId\x12\x19\n" +
+	"\border_id\x18\x03 \x01(\tR\aorderId\x12#\n" +
+	"\rfill_quantity\x18\x04 \x01(\x03R\ffillQuantity\x12\x1d\n" +
+	"\n" +
+	"fill_price\x18\x05 \x01(\x03R\tfillPrice\x12;\n" +
+	"\vrecorded_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"recordedAt\"j\n" +
+	"\x10OCOSagaCompleted\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12=\n" +
+	"\fcompleted_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\"y\n" +
+	"\rOCOSagaFailed\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\x127\n" +
+	"\tfailed_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bfailedAt\"\x9b\x01\n" +
+	"\x13OCOSagaActionFailed\x12\x17\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
+	"\x06action\x18\x02 \x01(\tR\x06action\x12\x1a\n" +
+	"\battempts\x18\x03 \x01(\x05R\battempts\x127\n" +
 	"\tfailed_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bfailedAt*9\n" +
 	"\x04Side\x12\x14\n" +
 	"\x10SIDE_UNSPECIFIED\x10\x00\x12\f\n" +
@@ -1139,7 +1667,7 @@ func file_orderbook_v1_events_proto_rawDescGZIP() []byte {
 }
 
 var file_orderbook_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_orderbook_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_orderbook_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_orderbook_v1_events_proto_goTypes = []any{
 	(Side)(0),                     // 0: orderbook.v1.Side
 	(OrderType)(0),                // 1: orderbook.v1.OrderType
@@ -1155,28 +1683,43 @@ var file_orderbook_v1_events_proto_goTypes = []any{
 	(*SagaCompleted)(nil),         // 11: orderbook.v1.SagaCompleted
 	(*SagaFailed)(nil),            // 12: orderbook.v1.SagaFailed
 	(*SagaActionFailed)(nil),      // 13: orderbook.v1.SagaActionFailed
-	(*timestamppb.Timestamp)(nil), // 14: google.protobuf.Timestamp
+	(*OCOSagaStarted)(nil),        // 14: orderbook.v1.OCOSagaStarted
+	(*OCOSagaSharesHeld)(nil),     // 15: orderbook.v1.OCOSagaSharesHeld
+	(*OCOSagaExitPlaced)(nil),     // 16: orderbook.v1.OCOSagaExitPlaced
+	(*OCOSagaFillRecorded)(nil),   // 17: orderbook.v1.OCOSagaFillRecorded
+	(*OCOSagaCompleted)(nil),      // 18: orderbook.v1.OCOSagaCompleted
+	(*OCOSagaFailed)(nil),         // 19: orderbook.v1.OCOSagaFailed
+	(*OCOSagaActionFailed)(nil),   // 20: orderbook.v1.OCOSagaActionFailed
+	(*timestamppb.Timestamp)(nil), // 21: google.protobuf.Timestamp
 }
 var file_orderbook_v1_events_proto_depIdxs = []int32{
 	0,  // 0: orderbook.v1.OrderPlaced.side:type_name -> orderbook.v1.Side
-	14, // 1: orderbook.v1.OrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
+	21, // 1: orderbook.v1.OrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
 	1,  // 2: orderbook.v1.OrderPlaced.order_type:type_name -> orderbook.v1.OrderType
 	2,  // 3: orderbook.v1.OrderPlaced.time_in_force:type_name -> orderbook.v1.TimeInForce
-	14, // 4: orderbook.v1.TradeExecuted.executed_at:type_name -> google.protobuf.Timestamp
+	21, // 4: orderbook.v1.TradeExecuted.executed_at:type_name -> google.protobuf.Timestamp
 	1,  // 5: orderbook.v1.StopTriggered.activated_as:type_name -> orderbook.v1.OrderType
-	14, // 6: orderbook.v1.MarketClosed.closed_at:type_name -> google.protobuf.Timestamp
+	21, // 6: orderbook.v1.MarketClosed.closed_at:type_name -> google.protobuf.Timestamp
 	0,  // 7: orderbook.v1.SagaStarted.entry_side:type_name -> orderbook.v1.Side
-	14, // 8: orderbook.v1.SagaStarted.started_at:type_name -> google.protobuf.Timestamp
-	14, // 9: orderbook.v1.EntryFilled.filled_at:type_name -> google.protobuf.Timestamp
-	14, // 10: orderbook.v1.ExitFilled.filled_at:type_name -> google.protobuf.Timestamp
-	14, // 11: orderbook.v1.SagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
-	14, // 12: orderbook.v1.SagaFailed.failed_at:type_name -> google.protobuf.Timestamp
-	14, // 13: orderbook.v1.SagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
-	14, // [14:14] is the sub-list for method output_type
-	14, // [14:14] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	21, // 8: orderbook.v1.SagaStarted.started_at:type_name -> google.protobuf.Timestamp
+	21, // 9: orderbook.v1.EntryFilled.filled_at:type_name -> google.protobuf.Timestamp
+	21, // 10: orderbook.v1.ExitFilled.filled_at:type_name -> google.protobuf.Timestamp
+	21, // 11: orderbook.v1.SagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
+	21, // 12: orderbook.v1.SagaFailed.failed_at:type_name -> google.protobuf.Timestamp
+	21, // 13: orderbook.v1.SagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
+	0,  // 14: orderbook.v1.OCOSagaStarted.exit_side:type_name -> orderbook.v1.Side
+	21, // 15: orderbook.v1.OCOSagaStarted.started_at:type_name -> google.protobuf.Timestamp
+	21, // 16: orderbook.v1.OCOSagaSharesHeld.held_at:type_name -> google.protobuf.Timestamp
+	21, // 17: orderbook.v1.OCOSagaExitPlaced.placed_at:type_name -> google.protobuf.Timestamp
+	21, // 18: orderbook.v1.OCOSagaFillRecorded.recorded_at:type_name -> google.protobuf.Timestamp
+	21, // 19: orderbook.v1.OCOSagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
+	21, // 20: orderbook.v1.OCOSagaFailed.failed_at:type_name -> google.protobuf.Timestamp
+	21, // 21: orderbook.v1.OCOSagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
+	22, // [22:22] is the sub-list for method output_type
+	22, // [22:22] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_orderbook_v1_events_proto_init() }
@@ -1190,7 +1733,7 @@ func file_orderbook_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_orderbook_v1_events_proto_rawDesc), len(file_orderbook_v1_events_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   11,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
