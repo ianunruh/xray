@@ -556,6 +556,81 @@ func TestReactor_Recovery_NoDoubleFillSettlement(t *testing.T) {
 	assert.Equal(t, int64(100), p.Holdings["AAPL"].Quantity)
 }
 
+func TestReactor_Recovery_TradeBeforeFillRecord_CrossBatch(t *testing.T) {
+	// Replay can split events across HandleEvents batches. If TradeExecuted
+	// arrives in an earlier batch than its OrderSagaFillRecorded, the trade
+	// is queued in pendingFills with settledTrades empty. The later batch
+	// must prune the pendingFill entry — otherwise SetReady triggers a
+	// duplicate settlement on the portfolio.
+
+	registry := newFullTestRegistry()
+	store := memstore.New()
+	ctx := context.Background()
+	pub := &collectingPublisher{}
+
+	obHandler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
+		return orderbook.NewOrderBook(id)
+	}, slog.Default()).WithPublisher(pub)
+
+	sagaHandler := es.NewHandler(store, registry, func(id string) *ordersaga.OrderSaga {
+		return ordersaga.NewOrderSaga(id)
+	}, slog.Default()).WithPublisher(pub)
+
+	portfolioHandler := es.NewHandler(store, registry, func(id string) *portfolio.Portfolio {
+		return portfolio.NewPortfolio(id)
+	}, slog.Default()).WithPublisher(pub)
+
+	reactor := ordersaga.NewReactor(sagaHandler, portfolioHandler, obHandler, slog.Default())
+	reactor.SetReady(ctx)
+
+	env := &reactorTestEnv{
+		ctx: ctx, obHandler: obHandler, sagaHandler: sagaHandler,
+		portfolioHandler: portfolioHandler, reactor: reactor,
+		store: store, registry: registry, pub: pub,
+	}
+
+	depositCash(t, env, "acct-1", 150000000)
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1500000, 60)
+	env.pub.events = nil
+
+	startOrderSaga(t, env, "saga-1", "acct-1", "AAPL", orderbookv1.Side_SIDE_BUY, 1500000, 100)
+	env.flush()
+
+	// 60 shares filled & settled; 40 still pending.
+	p := loadPortfolio(t, env, "acct-1")
+	require.Equal(t, int64(60000000), p.CashHeld)
+	require.Equal(t, int64(0), p.CashBalance)
+
+	// --- Restart: feed every event as its own batch ---
+	reactor2 := ordersaga.NewReactor(sagaHandler, portfolioHandler, obHandler, slog.Default())
+
+	rawEvents, err := store.LoadAll(ctx)
+	require.NoError(t, err)
+
+	for _, raw := range rawEvents {
+		evt, err := registry.Deserialize(raw)
+		require.NoError(t, err)
+		require.NoError(t, reactor2.HandleEvents(ctx, []es.Event{evt}))
+	}
+
+	reactor2.SetReady(ctx)
+	env.pub.events = nil
+
+	env2 := &reactorTestEnv{
+		ctx: ctx, obHandler: obHandler, sagaHandler: sagaHandler,
+		portfolioHandler: portfolioHandler, reactor: reactor2,
+		store: store, registry: registry, pub: pub,
+	}
+	env2.flush()
+
+	// Critical: CashHeld must still be 60M for the 40 unfilled shares — not
+	// 0 (double-settled, deleting the hold) or anything weird.
+	p = loadPortfolio(t, env2, "acct-1")
+	assert.Equal(t, int64(60000000), p.CashHeld, "first 60 must not have been re-settled")
+	assert.Equal(t, int64(0), p.CashBalance)
+	assert.Equal(t, int64(60), p.Holdings["AAPL"].Quantity, "holdings must not double-count the first 60")
+}
+
 func TestReactor_Recovery_FillsDuringReplay(t *testing.T) {
 	registry := newFullTestRegistry()
 	store := memstore.New()

@@ -236,6 +236,19 @@ func (r *Reactor) onFillRecorded(data *portfoliov1.OrderSagaFillRecorded) {
 		state.settledTrades = make(map[string]struct{})
 	}
 	state.settledTrades[data.TradeId] = struct{}{}
+	// Drop any pendingFill for this trade: if TradeExecuted and FillRecorded
+	// arrive in different replay batches the trade can be queued before the
+	// settle event marks it complete. Without this, executeRecordFills would
+	// settle the same trade again on the portfolio.
+	if len(state.pendingFills) > 0 {
+		kept := state.pendingFills[:0]
+		for _, f := range state.pendingFills {
+			if f.tradeID != data.TradeId {
+				kept = append(kept, f)
+			}
+		}
+		state.pendingFills = kept
+	}
 }
 
 func (r *Reactor) onSagaCompleted(data *portfoliov1.OrderSagaCompleted) {
