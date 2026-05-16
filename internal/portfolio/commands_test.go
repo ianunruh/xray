@@ -343,6 +343,84 @@ func TestHoldAndReleaseShares(t *testing.T) {
 	assert.Empty(t, p.ShareHoldsBySaga)
 }
 
+func TestReleaseCash_Idempotent(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	deposit := portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000}
+	err := handler.Handle(ctx, deposit, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, deposit)
+	})
+	require.NoError(t, err)
+
+	hold := portfolio.HoldCash{AccountID: "acct-1", OrderSagaID: "saga-1", Amount: 4000000}
+	err = handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCash(p, hold)
+	})
+	require.NoError(t, err)
+
+	release := portfolio.ReleaseCash{AccountID: "acct-1", OrderSagaID: "saga-1", Amount: 4000000}
+	err = handler.Handle(ctx, release, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteReleaseCash(p, release)
+	})
+	require.NoError(t, err)
+
+	// Second release for the same saga must be a no-op: no event, no balance change.
+	err = handler.Handle(ctx, release, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteReleaseCash(p, release)
+	})
+	require.NoError(t, err)
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(10000000), p.CashBalance)
+	assert.Equal(t, int64(0), p.CashHeld)
+	assert.Equal(t, p.Version(), 3) // Deposit + Hold + Release, no second Release event.
+}
+
+func TestReleaseShares_Idempotent(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	setupPortfolioWithHolding(t, handler, ctx, "acct-1", "AAPL", 100, 1500000)
+	versionBeforeHold := mustLoad(t, handler, ctx, "acct-1").Version()
+
+	hold := portfolio.HoldShares{AccountID: "acct-1", OrderSagaID: "saga-1", Symbol: "AAPL", Quantity: 60}
+	err := handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShares(p, hold)
+	})
+	require.NoError(t, err)
+
+	release := portfolio.ReleaseShares{AccountID: "acct-1", OrderSagaID: "saga-1", Symbol: "AAPL", Quantity: 60}
+	err = handler.Handle(ctx, release, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteReleaseShares(p, release)
+	})
+	require.NoError(t, err)
+
+	// Second release for the same saga must be a no-op: no event, no state change.
+	err = handler.Handle(ctx, release, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteReleaseShares(p, release)
+	})
+	require.NoError(t, err)
+
+	p := mustLoad(t, handler, ctx, "acct-1")
+	assert.Equal(t, int64(100), p.Holdings["AAPL"].Quantity)
+	assert.Empty(t, p.SharesHeld)
+	assert.Empty(t, p.ShareHoldsBySaga)
+	assert.Equal(t, p.Version(), versionBeforeHold+2) // Hold + Release, no second Release event.
+}
+
+func mustLoad(t *testing.T, handler *es.Handler[*portfolio.Portfolio], ctx context.Context, accountID string) *portfolio.Portfolio {
+	t.Helper()
+	p, err := handler.Load(ctx, portfolio.AggregateID(accountID))
+	require.NoError(t, err)
+	return p
+}
+
 func TestHoldShares_InsufficientShares(t *testing.T) {
 	registry := newTestRegistry()
 	store := memstore.New()

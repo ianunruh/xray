@@ -134,6 +134,9 @@ func ExecuteReleaseCash(p *Portfolio, cmd ReleaseCash) ([]es.Event, error) {
 	if cmd.Amount <= 0 {
 		return nil, ErrInvalidAmount
 	}
+	if p.HoldsBySaga[cmd.OrderSagaID] == 0 {
+		return nil, nil
+	}
 
 	now := time.Now()
 	evt := es.Event{
@@ -284,6 +287,9 @@ func (c ReleaseShares) AggregateID() string {
 func ExecuteReleaseShares(p *Portfolio, cmd ReleaseShares) ([]es.Event, error) {
 	if cmd.Quantity <= 0 {
 		return nil, ErrInvalidQuantity
+	}
+	if p.ShareHoldsBySaga[cmd.OrderSagaID] == nil {
+		return nil, nil
 	}
 
 	now := time.Now()
