@@ -49,11 +49,8 @@ type Reactor struct {
 	orderbookHandler *es.Handler[*orderbook.OrderBook]
 	log              *slog.Logger
 
-	mu          sync.Mutex
-	orderToSaga map[string]string
-	sagas       map[string]*reactorState
-	lastVersion map[string]int
-	ready       bool
+	mu    sync.Mutex
+	sagas map[string]*reactorState
 }
 
 func NewReactor(sagaHandler *es.Handler[*BracketSaga], orderbookHandler *es.Handler[*orderbook.OrderBook], log *slog.Logger) *Reactor {
@@ -61,62 +58,7 @@ func NewReactor(sagaHandler *es.Handler[*BracketSaga], orderbookHandler *es.Hand
 		sagaHandler:      sagaHandler,
 		orderbookHandler: orderbookHandler,
 		log:              log,
-		orderToSaga:      make(map[string]string),
 		sagas:            make(map[string]*reactorState),
-		lastVersion:      make(map[string]int),
-	}
-}
-
-func (r *Reactor) SetReady(ctx context.Context) {
-	r.mu.Lock()
-	r.ready = true
-
-	symbolSagas := make(map[string][]string)
-	for _, state := range r.sagas {
-		if state.status == PendingEntry && !state.entryCancelled && state.filledQty < state.entryQty {
-			symbolSagas[state.symbol] = append(symbolSagas[state.symbol], state.sagaID)
-		}
-	}
-	r.mu.Unlock()
-
-	for symbol, sagaIDs := range symbolSagas {
-		book, err := r.orderbookHandler.Load(ctx, orderbook.AggregateID(symbol))
-		if err != nil {
-			r.log.Error("recovery: failed to load orderbook", "symbol", symbol, "error", err)
-			continue
-		}
-		r.mu.Lock()
-		for _, sagaID := range sagaIDs {
-			r.reconcileEntryFromBook(sagaID, book)
-		}
-		r.mu.Unlock()
-	}
-
-	r.mu.Lock()
-	actions := r.collectActions()
-	r.mu.Unlock()
-
-	r.executeActions(ctx, actions)
-}
-
-// reconcileEntryFromBook adjusts a saga's filled quantity from the orderbook state. Caller must hold r.mu.
-func (r *Reactor) reconcileEntryFromBook(sagaID string, book *orderbook.OrderBook) {
-	state, ok := r.sagas[sagaID]
-	if !ok || state.status != PendingEntry {
-		return
-	}
-
-	order, ok := book.Orders[state.entryOrderID]
-	if !ok {
-		r.log.Info("recovery: entry order not found in orderbook", "saga_id", sagaID)
-		state.entryCancelled = true
-		return
-	}
-
-	totalFilled := state.entryQty - order.RemainingQty
-	if totalFilled > state.filledQty {
-		r.log.Info("recovery: adjusted filled qty from orderbook", "saga_id", sagaID, "filled", totalFilled)
-		state.filledQty = totalFilled
 	}
 }
 
@@ -178,7 +120,6 @@ func (r *Reactor) onSagaStarted(data *orderbookv1.SagaStarted) {
 		status:          PendingEntry,
 	}
 	r.sagas[data.SagaId] = state
-	r.orderToSaga[data.EntryOrderId] = data.SagaId
 }
 
 func (r *Reactor) onEntryFilled(data *orderbookv1.EntryFilled) {
@@ -190,8 +131,6 @@ func (r *Reactor) onEntryFilled(data *orderbookv1.EntryFilled) {
 	state.slOrderID = data.StopLossOrderId
 	state.status = PendingExit
 	state.actionPending = false
-	r.orderToSaga[data.TakeProfitOrderId] = data.SagaId
-	r.orderToSaga[data.StopLossOrderId] = data.SagaId
 }
 
 func (r *Reactor) onExitFilled(_ *orderbookv1.ExitFilled) {
@@ -223,84 +162,46 @@ func (r *Reactor) onSagaActionFailed(data *orderbookv1.SagaActionFailed) {
 	state.actionPending = false
 }
 
-func (r *Reactor) applyTrade(evt es.Event, data *orderbookv1.TradeExecuted) {
-	if v, ok := r.lastVersion[evt.AggregateID]; ok && evt.Version <= v {
-		return
-	}
-	if evt.Version > 0 {
-		r.lastVersion[evt.AggregateID] = evt.Version
-	}
-
-	orderID := r.matchOrderID(data)
-	if orderID == "" {
-		return
-	}
-
-	sagaID := r.orderToSaga[orderID]
-	state, ok := r.sagas[sagaID]
-	if !ok {
-		return
-	}
-
-	if orderID == state.entryOrderID && state.status == PendingEntry {
-		state.filledQty += data.Quantity
-	}
-	if (orderID == state.tpOrderID || orderID == state.slOrderID) && state.status == PendingExit {
-		if state.exitFilledOrderID == "" {
-			state.exitFilledOrderID = orderID
+func (r *Reactor) applyTrade(_ es.Event, data *orderbookv1.TradeExecuted) {
+	for _, orderID := range []string{data.BuyOrderId, data.SellOrderId} {
+		sagaID, ok := sagaIDFromOrderID(orderID)
+		if !ok {
+			continue
+		}
+		state, ok := r.sagas[sagaID]
+		if !ok {
+			continue
+		}
+		if orderID == state.entryOrderID && state.status == PendingEntry {
+			state.filledQty += data.Quantity
+		}
+		if (orderID == state.tpOrderID || orderID == state.slOrderID) && state.status == PendingExit {
+			if state.exitFilledOrderID == "" {
+				state.exitFilledOrderID = orderID
+			}
 		}
 	}
 }
 
-func (r *Reactor) applyCancel(evt es.Event, data *orderbookv1.OrderCancelled) {
-	if v, ok := r.lastVersion[evt.AggregateID]; ok && evt.Version <= v {
-		return
-	}
-	if evt.Version > 0 {
-		r.lastVersion[evt.AggregateID] = evt.Version
-	}
-
-	sagaID, ok := r.orderToSaga[data.OrderId]
+func (r *Reactor) applyCancel(_ es.Event, data *orderbookv1.OrderCancelled) {
+	sagaID, ok := sagaIDFromOrderID(data.OrderId)
 	if !ok {
 		return
 	}
-
 	state, ok := r.sagas[sagaID]
 	if !ok {
 		return
 	}
-
 	if data.OrderId == state.entryOrderID && state.status == PendingEntry {
 		state.entryCancelled = true
 	}
 }
 
 func (r *Reactor) cleanupSaga(state *reactorState) {
-	delete(r.orderToSaga, state.entryOrderID)
-	if state.tpOrderID != "" {
-		delete(r.orderToSaga, state.tpOrderID)
-	}
-	if state.slOrderID != "" {
-		delete(r.orderToSaga, state.slOrderID)
-	}
 	delete(r.sagas, state.sagaID)
 }
 
-func (r *Reactor) matchOrderID(data *orderbookv1.TradeExecuted) string {
-	if _, ok := r.orderToSaga[data.BuyOrderId]; ok {
-		return data.BuyOrderId
-	}
-	if _, ok := r.orderToSaga[data.SellOrderId]; ok {
-		return data.SellOrderId
-	}
-	return ""
-}
-
 func (r *Reactor) collectActions() []action {
-	if !r.ready {
-		return nil
-	}
-
 	var actions []action
 	for _, state := range r.sagas {
 		if state.actionPending {

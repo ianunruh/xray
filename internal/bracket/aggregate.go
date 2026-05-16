@@ -2,6 +2,7 @@ package bracket
 
 import (
 	"fmt"
+	"strings"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/internal/orderbook"
@@ -14,16 +15,40 @@ func AggregateID(sagaID string) string {
 	return AggregateType + ":" + sagaID
 }
 
-// TakeProfitOrderID and StopLossOrderID return deterministic orderbook
-// orderIDs for a bracket saga's exit legs. Deriving them from sagaID lets
-// the reactor safely retry exit placement after a crash between PlaceOrder
-// and RecordEntryFilled — the orderbook treats the retry as a duplicate.
+// EntryOrderID, TakeProfitOrderID, and StopLossOrderID return deterministic
+// orderbook orderIDs for a bracket saga's legs. Deriving them from sagaID
+// lets the reactor reverse-lookup which saga owns an order without
+// maintaining an in-memory map, and lets PlaceOrder retries after a crash
+// be treated as duplicates by the orderbook's idempotency check.
+func EntryOrderID(sagaID string) string {
+	return orderIDPrefix + sagaID + ":entry"
+}
+
 func TakeProfitOrderID(sagaID string) string {
-	return "bracket-saga:" + sagaID + ":tp"
+	return orderIDPrefix + sagaID + ":tp"
 }
 
 func StopLossOrderID(sagaID string) string {
-	return "bracket-saga:" + sagaID + ":sl"
+	return orderIDPrefix + sagaID + ":sl"
+}
+
+const orderIDPrefix = "bracket-saga:"
+
+// sagaIDFromOrderID reverses any of the *OrderID helpers, returning
+// ok=false if the orderID wasn't placed by a bracket saga (e.g. resting
+// liquidity from another source). Recognizes the :entry, :tp, and :sl
+// suffixes.
+func sagaIDFromOrderID(orderID string) (string, bool) {
+	rest, ok := strings.CutPrefix(orderID, orderIDPrefix)
+	if !ok {
+		return "", false
+	}
+	for _, suffix := range []string{":entry", ":tp", ":sl"} {
+		if s, ok := strings.CutSuffix(rest, suffix); ok {
+			return s, true
+		}
+	}
+	return "", false
 }
 
 type Status int

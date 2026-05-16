@@ -5,7 +5,6 @@ import (
 	"log/slog"
 
 	"connectrpc.com/connect"
-	"github.com/google/uuid"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
@@ -40,7 +39,7 @@ func (s *Server) PlaceBracketOrder(ctx context.Context, req *connect.Request[ord
 	}
 
 	sagaID := NewSagaID()
-	entryOrderID := uuid.New().String()
+	entryOrderID := EntryOrderID(sagaID)
 
 	// Create the saga first so the reactor has the order mapping before any
 	// trades can occur.
