@@ -556,6 +556,127 @@ func TestReactor_Recovery_NoDoubleFillSettlement(t *testing.T) {
 	assert.Equal(t, int64(100), p.Holdings["AAPL"].Quantity)
 }
 
+func TestReactor_Recovery_DirtyPlacement_FailsAndReleases(t *testing.T) {
+	// Crash scenario: the order saga reactor placed the order on the book
+	// (which immediately matched against existing liquidity) but crashed
+	// before writing RecordOrderPlaced. On restart, NATS replay drops the
+	// TradeExecuted (no orderToSaga mapping yet) and the saga reactor
+	// cannot reconstruct the fills. The recovery path must detect this and
+	// fail the saga loudly, releasing the portfolio's *actual* remaining
+	// hold rather than silently advancing into OrderPlaced.
+
+	registry := newFullTestRegistry()
+	store := memstore.New()
+	ctx := context.Background()
+	pub := &collectingPublisher{}
+
+	obHandler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
+		return orderbook.NewOrderBook(id)
+	}, slog.Default()).WithPublisher(pub)
+
+	sagaHandler := es.NewHandler(store, registry, func(id string) *ordersaga.OrderSaga {
+		return ordersaga.NewOrderSaga(id)
+	}, slog.Default()).WithPublisher(pub)
+
+	portfolioHandler := es.NewHandler(store, registry, func(id string) *portfolio.Portfolio {
+		return portfolio.NewPortfolio(id)
+	}, slog.Default()).WithPublisher(pub)
+
+	// Reactor NOT ready — it accumulates state from events but won't dispatch
+	// actions until we explicitly call SetReady.
+	reactor := ordersaga.NewReactor(sagaHandler, portfolioHandler, obHandler, slog.Default())
+
+	env := &reactorTestEnv{
+		ctx: ctx, obHandler: obHandler, sagaHandler: sagaHandler,
+		portfolioHandler: portfolioHandler, reactor: reactor,
+		store: store, registry: registry, pub: pub,
+	}
+
+	const accountID = "acct-1"
+	const sagaID = "saga-1"
+	const symbol = "AAPL"
+	const price = int64(1500000)
+
+	// Credit the account 100 AAPL.
+	creditCmd := portfolio.CreditShares{AccountID: accountID, Symbol: symbol, Quantity: 100, CostPerShare: price}
+	require.NoError(t, portfolioHandler.Handle(ctx, creditCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteCreditShares(p, creditCmd)
+	}))
+
+	// Construct the pre-crash event stream directly: saga reached CashHeld,
+	// the order was placed on the book with the deterministic ID and matched
+	// 30 of its 100 shares against a counterparty, and the sale was settled
+	// on the portfolio — but RecordOrderPlaced was never written.
+	startCmd := ordersaga.StartOrderSaga{
+		SagaID: sagaID, AccountID: accountID, Symbol: symbol,
+		Side: orderbookv1.Side_SIDE_SELL, Price: price, Quantity: 100,
+		OrderType: orderbookv1.OrderType_ORDER_TYPE_LIMIT, TimeInForce: orderbookv1.TimeInForce_TIME_IN_FORCE_GTC,
+	}
+	require.NoError(t, sagaHandler.Handle(ctx, startCmd, func(s *ordersaga.OrderSaga) ([]es.Event, error) {
+		return ordersaga.ExecuteStartOrderSaga(s, startCmd)
+	}))
+
+	holdCmd := portfolio.HoldShares{AccountID: accountID, OrderSagaID: sagaID, Symbol: symbol, Quantity: 100}
+	require.NoError(t, portfolioHandler.Handle(ctx, holdCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShares(p, holdCmd)
+	}))
+
+	cashHeldCmd := ordersaga.RecordCashHeld{SagaID: sagaID, AmountHeld: 100}
+	require.NoError(t, sagaHandler.Handle(ctx, cashHeldCmd, func(s *ordersaga.OrderSaga) ([]es.Event, error) {
+		return ordersaga.ExecuteRecordCashHeld(s, cashHeldCmd)
+	}))
+
+	placeCmd := orderbook.PlaceOrder{
+		Symbol: symbol, Side: orderbook.Sell, Price: price, Quantity: 100,
+		OrderType: orderbook.Limit, TimeInForce: orderbook.GTC,
+		OrderID: ordersaga.OrderID(sagaID), AccountID: accountID,
+	}
+	require.NoError(t, obHandler.Handle(ctx, placeCmd, func(b *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecutePlaceOrder(b, placeCmd)
+	}))
+
+	matchCmd := orderbook.PlaceOrder{
+		Symbol: symbol, Side: orderbook.Buy, Price: price, Quantity: 30,
+		OrderType: orderbook.Limit, TimeInForce: orderbook.IOC,
+		AccountID: "counterparty",
+	}
+	require.NoError(t, obHandler.Handle(ctx, matchCmd, func(b *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecutePlaceOrder(b, matchCmd)
+	}))
+
+	settleCmd := portfolio.SettleSale{
+		AccountID: accountID, OrderSagaID: sagaID, Symbol: symbol,
+		Quantity: 30, PricePerShare: price, Proceeds: 30 * price,
+	}
+	require.NoError(t, portfolioHandler.Handle(ctx, settleCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteSettleSale(p, settleCmd)
+	}))
+
+	// Confirm the pre-crash state: 70 shares still held for this saga, book
+	// shows 70 remaining on our SELL.
+	p := loadPortfolio(t, env, accountID)
+	require.NotNil(t, p.ShareHoldsBySaga[sagaID])
+	require.Equal(t, int64(70), p.ShareHoldsBySaga[sagaID].Quantity)
+	require.Equal(t, int64(45000000), p.CashBalance)
+
+	// Feed all accumulated events to the reactor (it builds in-memory state
+	// but takes no action because !ready).
+	env.flush()
+
+	// Recovery starts here.
+	reactor.SetReady(ctx)
+	env.flush()
+
+	s := loadSaga(t, env, sagaID)
+	assert.Equal(t, ordersaga.Failed, s.Status, "saga must fail on dirty recovery")
+
+	p = loadPortfolio(t, env, accountID)
+	assert.Empty(t, p.SharesHeld, "hold must be fully released")
+	assert.Empty(t, p.ShareHoldsBySaga)
+	assert.Equal(t, int64(70), p.Holdings[symbol].Quantity, "the 70 unsold shares must still be in holdings")
+	assert.Equal(t, int64(45000000), p.CashBalance, "the proceeds from the 30 sold shares must remain")
+}
+
 func TestReactor_Recovery_TradeBeforeFillRecord_CrossBatch(t *testing.T) {
 	// Replay can split events across HandleEvents batches. If TradeExecuted
 	// arrives in an earlier batch than its OrderSagaFillRecorded, the trade

@@ -544,6 +544,17 @@ func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
 	r.orderToSaga[orderID] = sagaID
 	r.mu.Unlock()
 
+	// Capture pre-placement RemainingQty (sentinel -1 = no existing order)
+	// to detect the recovery case where the order was placed before a
+	// previous crash. The closure runs inside Handle's aggregate load, so
+	// reading book.Orders here doesn't cost an extra round-trip.
+	preExistingRemaining := int64(-1)
+	captureExisting := func(book *orderbook.OrderBook) {
+		if existing, ok := book.Orders[orderID]; ok {
+			preExistingRemaining = existing.RemainingQty
+		}
+	}
+
 	var err error
 	if replaceOrderID != "" {
 		replaceCmd := orderbook.ReplaceOrder{
@@ -558,6 +569,7 @@ func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
 			AccountID:   accountID,
 		}
 		err = r.orderbookHandler.Handle(ctx, replaceCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+			captureExisting(book)
 			return orderbook.ExecuteReplaceOrder(book, replaceCmd)
 		})
 	} else {
@@ -572,6 +584,7 @@ func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
 			OrderID:     orderID,
 		}
 		err = r.orderbookHandler.Handle(ctx, placeCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+			captureExisting(book)
 			return orderbook.ExecutePlaceOrder(book, placeCmd)
 		})
 	}
@@ -581,6 +594,19 @@ func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
 		r.mu.Unlock()
 		r.log.Error("failed to place order", "saga_id", sagaID, "error", err)
 		return r.emitActionFailed(ctx, sagaID, "place_order", err.Error())
+	}
+
+	// Dirty-recovery detection: the order was already on the book AND had
+	// fewer remaining shares than expected, meaning trades executed against
+	// it before the previous crash. Those TradeExecuted events were skipped
+	// during NATS replay (no orderToSaga mapping at the time), so the saga
+	// reactor cannot reconstruct fills and the portfolio is missing
+	// settlements. Fail the saga loudly rather than silently advancing into
+	// OrderPlaced with filledQty=0 (which would later over-release the hold
+	// and report an over-completed order). An operator must reconcile the
+	// missed trades manually against the orderbook event log.
+	if preExistingRemaining >= 0 && preExistingRemaining < quantity {
+		return r.failDirtyRecovery(ctx, sagaID, accountID, symbol, side, orderID, quantity, preExistingRemaining)
 	}
 
 	cmd := RecordOrderPlaced{SagaID: sagaID, OrderID: orderID}
@@ -883,6 +909,67 @@ func (r *Reactor) executeReleaseResourcesOnFailure(ctx context.Context, sagaID s
 	r.mu.Unlock()
 
 	r.log.Info("order saga cleanup after failure", "saga_id", sagaID)
+	return nil
+}
+
+// failDirtyRecovery handles a place_order retry where the orderbook has
+// the order with fewer shares remaining than expected — fills happened
+// before the previous crash that the reactor cannot reconstruct. It
+// releases the portfolio's actual remaining hold (queried directly so the
+// amount is correct even though reactor in-memory state has filledQty=0)
+// and records the saga as failed. The downstream release in the failure
+// flow becomes a no-op via the per-saga idempotency check.
+func (r *Reactor) failDirtyRecovery(ctx context.Context, sagaID, accountID, symbol string, side orderbookv1.Side, orderID string, quantity, remaining int64) error {
+	missedFills := quantity - remaining
+	r.log.Error("place_order recovery detected unreconciled fills — failing saga",
+		"saga_id", sagaID, "order_id", orderID,
+		"expected_qty", quantity, "remaining_qty", remaining, "missed_fills", missedFills)
+
+	p, err := r.portfolioHandler.Load(ctx, portfolio.AggregateID(accountID))
+	if err != nil {
+		r.log.Error("dirty recovery: failed to load portfolio", "saga_id", sagaID, "error", err)
+		return r.emitActionFailed(ctx, sagaID, "place_order", err.Error())
+	}
+
+	if side == orderbookv1.Side_SIDE_SELL {
+		if hold := p.ShareHoldsBySaga[sagaID]; hold != nil && hold.Quantity > 0 {
+			releaseCmd := portfolio.ReleaseShares{
+				AccountID:   accountID,
+				OrderSagaID: sagaID,
+				Symbol:      symbol,
+				Quantity:    hold.Quantity,
+			}
+			if err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteReleaseShares(p, releaseCmd)
+			}); err != nil {
+				r.log.Error("dirty recovery: failed to release shares", "saga_id", sagaID, "error", err)
+				return r.emitActionFailed(ctx, sagaID, "place_order", err.Error())
+			}
+		}
+	} else {
+		if amount := p.HoldsBySaga[sagaID]; amount > 0 {
+			releaseCmd := portfolio.ReleaseCash{
+				AccountID:   accountID,
+				OrderSagaID: sagaID,
+				Amount:      amount,
+			}
+			if err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteReleaseCash(p, releaseCmd)
+			}); err != nil {
+				r.log.Error("dirty recovery: failed to release cash", "saga_id", sagaID, "error", err)
+				return r.emitActionFailed(ctx, sagaID, "place_order", err.Error())
+			}
+		}
+	}
+
+	reason := fmt.Sprintf("recovery: order had %d shares filled before crash; manual reconciliation required", missedFills)
+	failCmd := RecordFailed{SagaID: sagaID, Reason: reason}
+	if err := r.sagaHandler.Handle(ctx, failCmd, func(saga *OrderSaga) ([]es.Event, error) {
+		return ExecuteRecordFailed(saga, failCmd)
+	}); err != nil {
+		r.log.Error("dirty recovery: failed to record saga failed", "saga_id", sagaID, "error", err)
+		return r.emitActionFailed(ctx, sagaID, "place_order", err.Error())
+	}
 	return nil
 }
 
