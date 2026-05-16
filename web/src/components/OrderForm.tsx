@@ -38,6 +38,8 @@ const MARKET_TIF_OPTIONS = [
   { label: "FOK", value: "FOK" },
 ];
 
+type Mode = "SINGLE" | "BRACKET";
+
 export function OrderForm({
   accountId,
   symbol,
@@ -45,13 +47,17 @@ export function OrderForm({
   accountId: string;
   symbol: string;
 }) {
+  const [mode, setMode] = useState<Mode>("SINGLE");
   const [side, setSide] = useState<string>("BUY");
   const [orderType, setOrderType] = useState<string>("MARKET");
   const [price, setPrice] = useState<number | string>("");
   const [quantity, setQuantity] = useState<number | string>(100);
   const [tif, setTif] = useState<string>("IOC");
+  const [takeProfit, setTakeProfit] = useState<number | string>("");
+  const [stopLoss, setStopLoss] = useState<number | string>("");
   const [loading, setLoading] = useState(false);
 
+  const isSingle = mode === "SINGLE";
   const isMarket = orderType === "MARKET";
 
   function handleOrderTypeChange(v: string | null) {
@@ -67,13 +73,79 @@ export function OrderForm({
 
   async function handleSubmit() {
     const qty = typeof quantity === "number" ? quantity : parseInt(quantity, 10);
-    const prc = typeof price === "number" ? price : parseFloat(price);
     if (!qty || qty <= 0) {
       notifications.show({ message: "Enter a valid quantity", color: "red" });
       return;
     }
-    if (!isMarket && (!prc || prc <= 0)) {
-      notifications.show({ message: "Enter a valid price", color: "red" });
+
+    if (isSingle) {
+      const prc = typeof price === "number" ? price : parseFloat(price);
+      if (!isMarket && (!prc || prc <= 0)) {
+        notifications.show({ message: "Enter a valid price", color: "red" });
+        return;
+      }
+      setLoading(true);
+      try {
+        await sagaClient.place({
+          accountId,
+          plan: {
+            case: "singleOrder",
+            value: {
+              symbol,
+              side: side === "BUY" ? Side.BUY : Side.SELL,
+              orderType: ORDER_TYPES[orderType] ?? OrderType.MARKET,
+              price: isMarket ? 0n : moneyToPrice(prc),
+              quantity: BigInt(qty),
+              timeInForce: TIME_IN_FORCE[tif] ?? TimeInForce.IOC,
+            },
+          },
+        });
+        notifications.show({
+          title: "Order placed",
+          message: `${side} ${qty} ${symbol}`,
+          color: "green",
+        });
+      } catch (e: unknown) {
+        notifications.show({
+          title: "Order failed",
+          message: e instanceof Error ? e.message : String(e),
+          color: "red",
+        });
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Bracket mode: entry is always a LIMIT order today.
+    const entry = typeof price === "number" ? price : parseFloat(price);
+    const tp = typeof takeProfit === "number" ? takeProfit : parseFloat(takeProfit);
+    const sl = typeof stopLoss === "number" ? stopLoss : parseFloat(stopLoss);
+    if (!entry || entry <= 0) {
+      notifications.show({ message: "Enter a valid entry price", color: "red" });
+      return;
+    }
+    if (!tp || tp <= 0) {
+      notifications.show({ message: "Enter a valid take-profit price", color: "red" });
+      return;
+    }
+    if (!sl || sl <= 0) {
+      notifications.show({ message: "Enter a valid stop-loss price", color: "red" });
+      return;
+    }
+    // Sanity check: TP and SL should be on opposite sides of entry.
+    if (side === "BUY" && (tp <= entry || sl >= entry)) {
+      notifications.show({
+        message: "For a BUY bracket, TP must be above entry and SL below",
+        color: "red",
+      });
+      return;
+    }
+    if (side === "SELL" && (tp >= entry || sl <= entry)) {
+      notifications.show({
+        message: "For a SELL bracket, TP must be below entry and SL above",
+        color: "red",
+      });
       return;
     }
 
@@ -82,25 +154,25 @@ export function OrderForm({
       await sagaClient.place({
         accountId,
         plan: {
-          case: "singleOrder",
+          case: "bracket",
           value: {
             symbol,
-            side: side === "BUY" ? Side.BUY : Side.SELL,
-            orderType: ORDER_TYPES[orderType] ?? OrderType.MARKET,
-            price: isMarket ? 0n : moneyToPrice(prc),
-            quantity: BigInt(qty),
-            timeInForce: TIME_IN_FORCE[tif] ?? TimeInForce.IOC,
+            entrySide: side === "BUY" ? Side.BUY : Side.SELL,
+            entryPrice: moneyToPrice(entry),
+            entryQuantity: BigInt(qty),
+            takeProfitPrice: moneyToPrice(tp),
+            stopLossPrice: moneyToPrice(sl),
           },
         },
       });
       notifications.show({
-        title: "Order placed",
-        message: `${side} ${qty} ${symbol}`,
+        title: "Bracket placed",
+        message: `${side} ${qty} ${symbol} @ ${entry} (TP ${tp} / SL ${sl})`,
         color: "green",
       });
     } catch (e: unknown) {
       notifications.show({
-        title: "Order failed",
+        title: "Bracket failed",
         message: e instanceof Error ? e.message : String(e),
         color: "red",
       });
@@ -115,6 +187,16 @@ export function OrderForm({
         <Title order={5}>Place Order</Title>
         <SegmentedControl
           fullWidth
+          size="xs"
+          value={mode}
+          onChange={(v) => setMode((v as Mode) ?? "SINGLE")}
+          data={[
+            { label: "Single", value: "SINGLE" },
+            { label: "Bracket", value: "BRACKET" },
+          ]}
+        />
+        <SegmentedControl
+          fullWidth
           value={side}
           onChange={setSide}
           data={[
@@ -123,30 +205,32 @@ export function OrderForm({
           ]}
           color={side === "BUY" ? "green" : "red"}
         />
-        <Group grow>
-          <Select
-            label="Type"
-            size="xs"
-            value={orderType}
-            onChange={handleOrderTypeChange}
-            data={[
-              { label: "Limit", value: "LIMIT" },
-              { label: "Market", value: "MARKET" },
-            ]}
-            checkIconPosition="right"
-          />
-          <Select
-            label="TIF"
-            size="xs"
-            value={tif}
-            onChange={(v) => setTif(v ?? "IOC")}
-            data={isMarket ? MARKET_TIF_OPTIONS : LIMIT_TIF_OPTIONS}
-            checkIconPosition="right"
-          />
-        </Group>
-        {!isMarket && (
+        {isSingle && (
+          <Group grow>
+            <Select
+              label="Type"
+              size="xs"
+              value={orderType}
+              onChange={handleOrderTypeChange}
+              data={[
+                { label: "Limit", value: "LIMIT" },
+                { label: "Market", value: "MARKET" },
+              ]}
+              checkIconPosition="right"
+            />
+            <Select
+              label="TIF"
+              size="xs"
+              value={tif}
+              onChange={(v) => setTif(v ?? "IOC")}
+              data={isMarket ? MARKET_TIF_OPTIONS : LIMIT_TIF_OPTIONS}
+              checkIconPosition="right"
+            />
+          </Group>
+        )}
+        {(!isSingle || !isMarket) && (
           <NumberInput
-            label="Price"
+            label={isSingle ? "Price" : "Entry Price"}
             size="xs"
             placeholder="0.00"
             min={0}
@@ -164,13 +248,35 @@ export function OrderForm({
           value={quantity}
           onChange={setQuantity}
         />
+        {!isSingle && (
+          <Group grow>
+            <NumberInput
+              label="Take Profit"
+              size="xs"
+              placeholder="0.00"
+              min={0}
+              decimalScale={4}
+              value={takeProfit}
+              onChange={setTakeProfit}
+            />
+            <NumberInput
+              label="Stop Loss"
+              size="xs"
+              placeholder="0.00"
+              min={0}
+              decimalScale={4}
+              value={stopLoss}
+              onChange={setStopLoss}
+            />
+          </Group>
+        )}
         <Button
           fullWidth
           color={side === "BUY" ? "green" : "red"}
           loading={loading}
           onClick={handleSubmit}
         >
-          {side === "BUY" ? "Buy" : "Sell"} {symbol}
+          {isSingle ? (side === "BUY" ? "Buy" : "Sell") : `${side} Bracket`} {symbol}
         </Button>
       </Stack>
     </Card>
