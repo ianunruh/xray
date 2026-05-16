@@ -24,6 +24,10 @@ type OrderBook struct {
 	Orders     map[string]*Order
 	BuyStops   *stopSide
 	SellStops  *stopSide
+	// OCOGroups maps an OCO group ID to the set of order IDs in it.
+	// Used by the matching engine to cancel siblings when any member
+	// of the group trades.
+	OCOGroups map[string]map[string]struct{}
 }
 
 // NewOrderBook creates a new OrderBook aggregate with the given ID.
@@ -35,6 +39,7 @@ func NewOrderBook(id string) *OrderBook {
 		Orders:     make(map[string]*Order),
 		BuyStops:   newBuyStopSide(),
 		SellStops:  newSellStopSide(),
+		OCOGroups:  make(map[string]map[string]struct{}),
 	}
 	ob.SetID(id)
 	return ob
@@ -102,9 +107,18 @@ func (ob *OrderBook) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 		PlacedAt:     data.PlacedAt.AsTime(),
 		OrderType:    OrderTypeFromProto(data.OrderType),
 		TimeInForce:  TimeInForceFromProto(data.TimeInForce),
+		OCOGroupID:   data.OcoGroupId,
 	}
 
 	ob.Orders[order.ID] = order
+	if order.OCOGroupID != "" {
+		group := ob.OCOGroups[order.OCOGroupID]
+		if group == nil {
+			group = make(map[string]struct{})
+			ob.OCOGroups[order.OCOGroupID] = group
+		}
+		group[order.ID] = struct{}{}
+	}
 
 	if order.OrderType == StopMarket || order.OrderType == StopLimit {
 		switch order.Side {
@@ -162,6 +176,15 @@ func (ob *OrderBook) applyOrderCancelled(data *orderbookv1.OrderCancelled) {
 			ob.Bids.Remove(order)
 		case Sell:
 			ob.Asks.Remove(order)
+		}
+	}
+
+	if order.OCOGroupID != "" {
+		if group := ob.OCOGroups[order.OCOGroupID]; group != nil {
+			delete(group, order.ID)
+			if len(group) == 0 {
+				delete(ob.OCOGroups, order.OCOGroupID)
+			}
 		}
 	}
 

@@ -64,6 +64,15 @@ export declare type OrderPlaced = Message<"orderbook.v1.OrderPlaced"> & {
    * @generated from field: string account_id = 10;
    */
   accountId: string;
+
+  /**
+   * oco_group_id links orders such that the first to trade (any qty)
+   * atomically cancels every other order in the group, before further
+   * matching or stop-trigger passes. Empty = not in a group.
+   *
+   * @generated from field: string oco_group_id = 11;
+   */
+  ocoGroupId: string;
 };
 
 /**

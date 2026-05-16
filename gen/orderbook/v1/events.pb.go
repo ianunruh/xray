@@ -182,17 +182,21 @@ func (TimeInForce) EnumDescriptor() ([]byte, []int) {
 }
 
 type OrderPlaced struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	OrderId       string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
-	Symbol        string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
-	Side          Side                   `protobuf:"varint,3,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
-	Price         int64                  `protobuf:"varint,4,opt,name=price,proto3" json:"price,omitempty"`
-	Quantity      int64                  `protobuf:"varint,5,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	PlacedAt      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=placed_at,json=placedAt,proto3" json:"placed_at,omitempty"`
-	OrderType     OrderType              `protobuf:"varint,7,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
-	TimeInForce   TimeInForce            `protobuf:"varint,8,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
-	StopPrice     int64                  `protobuf:"varint,9,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
-	AccountId     string                 `protobuf:"bytes,10,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	OrderId     string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	Symbol      string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Side        Side                   `protobuf:"varint,3,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
+	Price       int64                  `protobuf:"varint,4,opt,name=price,proto3" json:"price,omitempty"`
+	Quantity    int64                  `protobuf:"varint,5,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	PlacedAt    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=placed_at,json=placedAt,proto3" json:"placed_at,omitempty"`
+	OrderType   OrderType              `protobuf:"varint,7,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
+	TimeInForce TimeInForce            `protobuf:"varint,8,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
+	StopPrice   int64                  `protobuf:"varint,9,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
+	AccountId   string                 `protobuf:"bytes,10,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	// oco_group_id links orders such that the first to trade (any qty)
+	// atomically cancels every other order in the group, before further
+	// matching or stop-trigger passes. Empty = not in a group.
+	OcoGroupId    string `protobuf:"bytes,11,opt,name=oco_group_id,json=ocoGroupId,proto3" json:"oco_group_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -293,6 +297,13 @@ func (x *OrderPlaced) GetStopPrice() int64 {
 func (x *OrderPlaced) GetAccountId() string {
 	if x != nil {
 		return x.AccountId
+	}
+	return ""
+}
+
+func (x *OrderPlaced) GetOcoGroupId() string {
+	if x != nil {
+		return x.OcoGroupId
 	}
 	return ""
 }
@@ -1016,7 +1027,7 @@ var File_orderbook_v1_events_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"\x19orderbook/v1/events.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x88\x03\n" +
+	"\x19orderbook/v1/events.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xaa\x03\n" +
 	"\vOrderPlaced\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12&\n" +
@@ -1031,7 +1042,9 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"stop_price\x18\t \x01(\x03R\tstopPrice\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\n" +
-	" \x01(\tR\taccountId\"[\n" +
+	" \x01(\tR\taccountId\x12 \n" +
+	"\foco_group_id\x18\v \x01(\tR\n" +
+	"ocoGroupId\"[\n" +
 	"\x0eOrderCancelled\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12\x16\n" +

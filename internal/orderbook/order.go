@@ -42,4 +42,5 @@ type Order struct {
 	PlacedAt     time.Time
 	OrderType    OrderType
 	TimeInForce  TimeInForce
+	OCOGroupID   string
 }

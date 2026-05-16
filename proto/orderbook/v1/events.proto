@@ -39,6 +39,10 @@ message OrderPlaced {
   TimeInForce time_in_force = 8;
   int64 stop_price = 9;
   string account_id = 10;
+  // oco_group_id links orders such that the first to trade (any qty)
+  // atomically cancels every other order in the group, before further
+  // matching or stop-trigger passes. Empty = not in a group.
+  string oco_group_id = 11;
 }
 
 message OrderCancelled {

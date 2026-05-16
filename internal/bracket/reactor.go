@@ -137,14 +137,18 @@ func (r *Reactor) prepareExit(ctx context.Context, b *BracketSaga) error {
 		exitSide = orderbookv1.Side_SIDE_BUY
 	}
 
+	// TP and SL share an OCO group so the orderbook atomically cancels
+	// the loser when the winner trades — closes the race where price
+	// moves through SL before the reactor's cancel arrives.
+	ocoGroup := OCOGroupID(b.SagaID)
 	tpOrderID := TakeProfitOrderID(b.SagaID)
-	if err := r.placeExitOrder(ctx, b.Symbol, exitSide, b.TakeProfitPrice, b.EntryQty, orderbook.Limit, 0, tpOrderID); err != nil {
+	if err := r.placeExitOrder(ctx, b.Symbol, exitSide, b.TakeProfitPrice, b.EntryQty, orderbook.Limit, 0, tpOrderID, ocoGroup); err != nil {
 		r.log.Error("failed to place take-profit order", "saga_id", b.SagaID, "error", err)
 		return r.emitActionFailed(ctx, b.SagaID, "prepare_exit", err.Error())
 	}
 
 	slOrderID := StopLossOrderID(b.SagaID)
-	if err := r.placeExitOrder(ctx, b.Symbol, exitSide, 0, b.EntryQty, orderbook.StopMarket, b.StopLossPrice, slOrderID); err != nil {
+	if err := r.placeExitOrder(ctx, b.Symbol, exitSide, 0, b.EntryQty, orderbook.StopMarket, b.StopLossPrice, slOrderID, ocoGroup); err != nil {
 		r.log.Error("failed to place stop-loss order", "saga_id", b.SagaID, "error", err)
 		return r.emitActionFailed(ctx, b.SagaID, "prepare_exit", err.Error())
 	}
@@ -393,7 +397,7 @@ func (r *Reactor) cancelOrder(ctx context.Context, symbol, orderID string) error
 	})
 }
 
-func (r *Reactor) placeExitOrder(ctx context.Context, symbol string, side orderbookv1.Side, price, qty int64, orderType orderbook.OrderType, stopPrice int64, orderID string) error {
+func (r *Reactor) placeExitOrder(ctx context.Context, symbol string, side orderbookv1.Side, price, qty int64, orderType orderbook.OrderType, stopPrice int64, orderID, ocoGroupID string) error {
 	cmd := orderbook.PlaceOrder{
 		Symbol:      symbol,
 		Side:        orderbook.SideFromProto(side),
@@ -403,6 +407,7 @@ func (r *Reactor) placeExitOrder(ctx context.Context, symbol string, side orderb
 		OrderType:   orderType,
 		TimeInForce: orderbook.GTC,
 		OrderID:     orderID,
+		OCOGroupID:  ocoGroupID,
 	}
 	return r.orderbookHandler.Handle(ctx, cmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
 		return orderbook.ExecutePlaceOrder(book, cmd)

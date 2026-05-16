@@ -37,6 +37,7 @@ type PlaceOrder struct {
 	TimeInForce TimeInForce
 	OrderID     string
 	AccountID   string
+	OCOGroupID  string
 }
 
 func (c PlaceOrder) AggregateID() string {
@@ -146,6 +147,7 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 			OrderType:   OrderTypeToProto(cmd.OrderType),
 			TimeInForce: TimeInForceToProto(tif),
 			AccountId:   cmd.AccountID,
+			OcoGroupId:  cmd.OCOGroupID,
 		},
 	}
 
@@ -180,6 +182,15 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 func matchAndAppend(book *OrderBook, incoming *Order, events []es.Event, now time.Time) ([]es.Event, bool) {
 	result := Match(book, incoming, now)
 	for _, trade := range result.Trades {
+		// Identify the resting (non-incoming) order so we can fire OCO
+		// cancellations against its group before the next match cycle
+		// (or before triggerStops gets a chance to fire siblings).
+		restingID := trade.BuyOrderId
+		if restingID == incoming.ID {
+			restingID = trade.SellOrderId
+		}
+		resting := book.Orders[restingID]
+
 		tradeEvt := es.Event{
 			AggregateID: book.AggregateID(),
 			Type:        EventTradeExecuted,
@@ -188,11 +199,56 @@ func matchAndAppend(book *OrderBook, incoming *Order, events []es.Event, now tim
 		}
 		book.Apply(tradeEvt)
 		events = append(events, tradeEvt)
+
+		if resting != nil && resting.OCOGroupID != "" {
+			events = cancelOCOSiblings(book, resting, events, now)
+		}
 	}
 	if result.SelfTradePrevented {
 		events = cancelUnfilled(book, incoming, events, now, "self-trade prevention")
 	}
 	return events, result.SelfTradePrevented
+}
+
+// cancelOCOSiblings emits OrderCancelled events for every other member
+// of `winner`'s OCO group, and removes `winner` from the group so a
+// subsequent fill of the same resting order doesn't fire the cancels
+// again. Idempotent at the orderbook layer — cancelling an order that's
+// already gone is a no-op.
+func cancelOCOSiblings(book *OrderBook, winner *Order, events []es.Event, now time.Time) []es.Event {
+	group := book.OCOGroups[winner.OCOGroupID]
+	if group == nil {
+		return events
+	}
+	delete(group, winner.ID)
+	if len(group) == 0 {
+		delete(book.OCOGroups, winner.OCOGroupID)
+		return events
+	}
+	// Snapshot the membership; cancelling each one mutates `group` via
+	// applyOrderCancelled, so iterating it directly would be unsafe.
+	siblings := make([]string, 0, len(group))
+	for id := range group {
+		siblings = append(siblings, id)
+	}
+	for _, id := range siblings {
+		if _, ok := book.Orders[id]; !ok {
+			continue
+		}
+		cancelEvt := es.Event{
+			AggregateID: book.AggregateID(),
+			Type:        EventOrderCancelled,
+			Timestamp:   now,
+			Data: &orderbookv1.OrderCancelled{
+				OrderId: id,
+				Symbol:  book.Symbol,
+				Reason:  "oco_triggered",
+			},
+		}
+		book.Apply(cancelEvt)
+		events = append(events, cancelEvt)
+	}
+	return events
 }
 
 func cancelUnfilled(book *OrderBook, order *Order, events []es.Event, now time.Time, reason string) []es.Event {

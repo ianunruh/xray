@@ -27,6 +27,13 @@ func StopLossOrderID(sagaID string) string {
 	return orderIDPrefix + sagaID + ":sl"
 }
 
+// OCOGroupID returns the orderbook OCO group ID that links a bracket's
+// TP and SL exit legs. When either fills, the orderbook atomically
+// cancels the other.
+func OCOGroupID(sagaID string) string {
+	return orderIDPrefix + sagaID + ":oco"
+}
+
 const (
 	orderIDPrefix          = "bracket-saga:"
 	entryOrderSagaIDPrefix = "bracket-entry:"
