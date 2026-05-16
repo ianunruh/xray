@@ -1038,3 +1038,193 @@ func eventTypes(events []es.Event) []string {
 	}
 	return types
 }
+
+func TestReplaceOrder_BasicReplace(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	// Place a resting sell.
+	sellEvents, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:    "AAPL",
+		Side:      orderbook.Sell,
+		Price:     1500000,
+		Quantity:  100,
+		AccountID: "mm-1",
+	})
+	require.NoError(t, err)
+	oldOrderID := sellEvents[0].Data.(*orderbookv1.OrderPlaced).OrderId
+
+	// Replace it with a new sell at a different price.
+	events, err := orderbook.ExecuteReplaceOrder(book, orderbook.ReplaceOrder{
+		Symbol:     "AAPL",
+		OldOrderID: oldOrderID,
+		Side:       orderbook.Sell,
+		Price:      1510000,
+		Quantity:   50,
+		AccountID:  "mm-1",
+	})
+	require.NoError(t, err)
+
+	types := eventTypes(events)
+	assert.Equal(t, []string{"OrderCancelled", "OrderPlaced"}, types)
+
+	cancelled := events[0].Data.(*orderbookv1.OrderCancelled)
+	assert.Equal(t, oldOrderID, cancelled.OrderId)
+
+	placed := events[1].Data.(*orderbookv1.OrderPlaced)
+	assert.Equal(t, int64(1510000), placed.Price)
+	assert.Equal(t, int64(50), placed.Quantity)
+	assert.NotEqual(t, oldOrderID, placed.OrderId)
+
+	// Old order should be gone, new order should be on the book.
+	assert.Len(t, book.Orders, 1)
+	_, hasOld := book.Orders[oldOrderID]
+	assert.False(t, hasOld)
+	_, hasNew := book.Orders[placed.OrderId]
+	assert.True(t, hasNew)
+}
+
+func TestReplaceOrder_WithMatch(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	// Resting bid from a different account.
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:    "AAPL",
+		Side:      orderbook.Buy,
+		Price:     1500000,
+		Quantity:  100,
+		AccountID: "noise-1",
+	})
+	require.NoError(t, err)
+
+	// Place a resting sell far from the bid.
+	sellEvents, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:    "AAPL",
+		Side:      orderbook.Sell,
+		Price:     1600000,
+		Quantity:  50,
+		AccountID: "mm-1",
+	})
+	require.NoError(t, err)
+	oldOrderID := sellEvents[0].Data.(*orderbookv1.OrderPlaced).OrderId
+
+	// Replace the sell with a price that crosses the bid.
+	events, err := orderbook.ExecuteReplaceOrder(book, orderbook.ReplaceOrder{
+		Symbol:     "AAPL",
+		OldOrderID: oldOrderID,
+		Side:       orderbook.Sell,
+		Price:      1500000,
+		Quantity:   50,
+		AccountID:  "mm-1",
+	})
+	require.NoError(t, err)
+
+	types := eventTypes(events)
+	assert.Equal(t, []string{"OrderCancelled", "OrderPlaced", "TradeExecuted"}, types)
+
+	trade := events[2].Data.(*orderbookv1.TradeExecuted)
+	assert.Equal(t, int64(1500000), trade.Price)
+	assert.Equal(t, int64(50), trade.Quantity)
+}
+
+func TestReplaceOrder_OldOrderNotFound(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	_, err := orderbook.ExecuteReplaceOrder(book, orderbook.ReplaceOrder{
+		Symbol:     "AAPL",
+		OldOrderID: "nonexistent",
+		Side:       orderbook.Sell,
+		Price:      1500000,
+		Quantity:   100,
+		AccountID:  "mm-1",
+	})
+	assert.ErrorIs(t, err, orderbook.ErrOrderNotFound)
+}
+
+func TestReplaceOrder_AccountMismatch(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	sellEvents, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:    "AAPL",
+		Side:      orderbook.Sell,
+		Price:     1500000,
+		Quantity:  100,
+		AccountID: "acct-1",
+	})
+	require.NoError(t, err)
+	oldOrderID := sellEvents[0].Data.(*orderbookv1.OrderPlaced).OrderId
+
+	_, err = orderbook.ExecuteReplaceOrder(book, orderbook.ReplaceOrder{
+		Symbol:     "AAPL",
+		OldOrderID: oldOrderID,
+		Side:       orderbook.Sell,
+		Price:      1510000,
+		Quantity:   100,
+		AccountID:  "acct-2",
+	})
+	assert.ErrorIs(t, err, orderbook.ErrAccountMismatch)
+}
+
+func TestReplaceOrder_ThroughHandler(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+
+	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
+		return orderbook.NewOrderBook(id)
+	}, slog.Default())
+
+	ctx := context.Background()
+
+	// Place a resting sell.
+	var oldOrderID string
+	cmd := orderbook.PlaceOrder{
+		Symbol: "AAPL", Side: orderbook.Sell, Price: 1500000, Quantity: 100,
+		AccountID: "mm-1",
+	}
+	err := handler.Handle(ctx, cmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		events, err := orderbook.ExecutePlaceOrder(book, cmd)
+		if err != nil {
+			return nil, err
+		}
+		oldOrderID = events[0].Data.(*orderbookv1.OrderPlaced).OrderId
+		return events, nil
+	})
+	require.NoError(t, err)
+
+	// Replace it.
+	replaceCmd := orderbook.ReplaceOrder{
+		Symbol:     "AAPL",
+		OldOrderID: oldOrderID,
+		Side:       orderbook.Sell,
+		Price:      1510000,
+		Quantity:   75,
+		AccountID:  "mm-1",
+	}
+	err = handler.Handle(ctx, replaceCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecuteReplaceOrder(book, replaceCmd)
+	})
+	require.NoError(t, err)
+
+	// Verify event stream: OrderPlaced(sell), OrderCancelled, OrderPlaced(new).
+	raw, err := store.Load(ctx, "orderbook:AAPL")
+	require.NoError(t, err)
+	require.Len(t, raw, 3)
+
+	evt0, err := registry.Deserialize(raw[0])
+	require.NoError(t, err)
+	assert.Equal(t, "OrderPlaced", evt0.Type)
+
+	evt1, err := registry.Deserialize(raw[1])
+	require.NoError(t, err)
+	assert.Equal(t, "OrderCancelled", evt1.Type)
+
+	evt2, err := registry.Deserialize(raw[2])
+	require.NoError(t, err)
+	assert.Equal(t, "OrderPlaced", evt2.Type)
+	newPlaced := evt2.Data.(*orderbookv1.OrderPlaced)
+	assert.Equal(t, int64(1510000), newPlaced.Price)
+	assert.Equal(t, int64(75), newPlaced.Quantity)
+}

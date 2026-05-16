@@ -25,6 +25,8 @@ type PortfolioReader interface {
 
 type PlaceOrderFunc func(ctx context.Context, req *portfoliov1.PortfolioPlaceOrderRequest) (sagaID string, err error)
 
+type ReplaceOrderFunc func(ctx context.Context, req *portfoliov1.PortfolioReplaceOrderRequest) (sagaID string, err error)
+
 type GetOrderStatusFunc func(ctx context.Context, sagaID string) (*portfoliov1.GetOrderStatusResponse, error)
 
 type Server struct {
@@ -34,17 +36,19 @@ type Server struct {
 	reader           PortfolioReader
 	pnlReader        PnLReader
 	placeOrder       PlaceOrderFunc
+	replaceOrder     ReplaceOrderFunc
 	getOrderStatus   GetOrderStatusFunc
 	broker           *PortfolioBroker
 	log              *slog.Logger
 }
 
-func NewServer(portfolioHandler *es.Handler[*Portfolio], reader PortfolioReader, pnlReader PnLReader, placeOrder PlaceOrderFunc, getOrderStatus GetOrderStatusFunc, broker *PortfolioBroker, log *slog.Logger) *Server {
+func NewServer(portfolioHandler *es.Handler[*Portfolio], reader PortfolioReader, pnlReader PnLReader, placeOrder PlaceOrderFunc, replaceOrder ReplaceOrderFunc, getOrderStatus GetOrderStatusFunc, broker *PortfolioBroker, log *slog.Logger) *Server {
 	return &Server{
 		portfolioHandler: portfolioHandler,
 		reader:           reader,
 		pnlReader:        pnlReader,
 		placeOrder:       placeOrder,
+		replaceOrder:     replaceOrder,
 		getOrderStatus:   getOrderStatus,
 		broker:           broker,
 		log:              log,
@@ -148,6 +152,36 @@ func (s *Server) PlaceOrder(ctx context.Context, req *connect.Request[portfoliov
 		"quantity", msg.Quantity)
 
 	return connect.NewResponse(&portfoliov1.PortfolioPlaceOrderResponse{
+		SagaId: sagaID,
+	}), nil
+}
+
+func (s *Server) ReplaceOrder(ctx context.Context, req *connect.Request[portfoliov1.PortfolioReplaceOrderRequest]) (*connect.Response[portfoliov1.PortfolioReplaceOrderResponse], error) {
+	msg := req.Msg
+
+	if msg.Price <= 0 && msg.OrderType != orderbookv1.OrderType_ORDER_TYPE_MARKET {
+		return nil, connect.NewError(connect.CodeInvalidArgument, ErrInvalidPrice)
+	}
+	if msg.Quantity <= 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, ErrInvalidQuantity)
+	}
+
+	sagaID, err := s.replaceOrder(ctx, msg)
+	if err != nil {
+		s.log.Error("ReplaceOrder failed", "account_id", msg.AccountId, "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	s.log.Info("ReplaceOrder",
+		"saga_id", sagaID,
+		"account_id", msg.AccountId,
+		"symbol", msg.Symbol,
+		"old_order_id", msg.OldOrderId,
+		"side", msg.Side,
+		"price", msg.Price,
+		"quantity", msg.Quantity)
+
+	return connect.NewResponse(&portfoliov1.PortfolioReplaceOrderResponse{
 		SagaId: sagaID,
 	}), nil
 }

@@ -111,8 +111,6 @@ func (e *Engine) requote(ctx context.Context) {
 		return
 	}
 
-	e.tracker.CancelAll(ctx)
-
 	portfolio := trader.GetPortfolio(ctx, e.pfClient, e.cfg.AccountID, e.log)
 	position := trader.GetPosition(portfolio, e.cfg.Symbol)
 
@@ -122,21 +120,43 @@ func (e *Engine) requote(ctx context.Context) {
 	}
 	levels := e.strategy.ComputeQuotes(snap.Price, inv)
 
-	if len(levels) == 0 {
-		e.log.Info("no quotes to place")
-		return
-	}
-
 	e.lastRefPrice = snap.Price
 
-	e.log.Info("placing quotes",
+	e.log.Info("requoting",
 		"ref_price", snap.Price,
 		"position", position,
 		"cash_available", portfolio.CashBalance-portfolio.CashHeld,
 		"levels", len(levels))
 
+	var newBids, newAsks []QuoteLevel
 	for _, level := range levels {
-		e.tracker.PlaceOrder(ctx, e.cfg.AccountID, level.Side, level.Price, level.Quantity)
+		if level.Side == orderbookv1.Side_SIDE_BUY {
+			newBids = append(newBids, level)
+		} else {
+			newAsks = append(newAsks, level)
+		}
+	}
+
+	oldBids := e.tracker.OrdersBySide(orderbookv1.Side_SIDE_BUY)
+	oldAsks := e.tracker.OrdersBySide(orderbookv1.Side_SIDE_SELL)
+
+	e.replaceOrders(ctx, oldBids, newBids)
+	e.replaceOrders(ctx, oldAsks, newAsks)
+}
+
+func (e *Engine) replaceOrders(ctx context.Context, oldSagaIDs []string, newLevels []QuoteLevel) {
+	matched := min(len(oldSagaIDs), len(newLevels))
+
+	for i := 0; i < matched; i++ {
+		e.tracker.ReplaceOrder(ctx, e.cfg.AccountID, oldSagaIDs[i], newLevels[i].Side, newLevels[i].Price, newLevels[i].Quantity)
+	}
+
+	for i := matched; i < len(oldSagaIDs); i++ {
+		e.tracker.CancelTracked(ctx, oldSagaIDs[i])
+	}
+
+	for i := matched; i < len(newLevels); i++ {
+		e.tracker.PlaceOrder(ctx, e.cfg.AccountID, newLevels[i].Side, newLevels[i].Price, newLevels[i].Quantity)
 	}
 }
 

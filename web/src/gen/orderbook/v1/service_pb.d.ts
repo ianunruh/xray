@@ -118,6 +118,83 @@ export declare type CancelOrderResponse = Message<"orderbook.v1.CancelOrderRespo
 export declare const CancelOrderResponseSchema: GenMessage<CancelOrderResponse>;
 
 /**
+ * @generated from message orderbook.v1.ReplaceOrderRequest
+ */
+export declare type ReplaceOrderRequest = Message<"orderbook.v1.ReplaceOrderRequest"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: string old_order_id = 2;
+   */
+  oldOrderId: string;
+
+  /**
+   * @generated from field: string new_order_id = 3;
+   */
+  newOrderId: string;
+
+  /**
+   * @generated from field: orderbook.v1.Side side = 4;
+   */
+  side: Side;
+
+  /**
+   * @generated from field: int64 price = 5;
+   */
+  price: bigint;
+
+  /**
+   * @generated from field: int64 quantity = 6;
+   */
+  quantity: bigint;
+
+  /**
+   * @generated from field: orderbook.v1.OrderType order_type = 7;
+   */
+  orderType: OrderType;
+
+  /**
+   * @generated from field: orderbook.v1.TimeInForce time_in_force = 8;
+   */
+  timeInForce: TimeInForce;
+
+  /**
+   * @generated from field: string account_id = 9;
+   */
+  accountId: string;
+};
+
+/**
+ * Describes the message orderbook.v1.ReplaceOrderRequest.
+ * Use `create(ReplaceOrderRequestSchema)` to create a new message.
+ */
+export declare const ReplaceOrderRequestSchema: GenMessage<ReplaceOrderRequest>;
+
+/**
+ * @generated from message orderbook.v1.ReplaceOrderResponse
+ */
+export declare type ReplaceOrderResponse = Message<"orderbook.v1.ReplaceOrderResponse"> & {
+  /**
+   * @generated from field: string order_id = 1;
+   */
+  orderId: string;
+
+  /**
+   * @generated from field: repeated orderbook.v1.TradeExecuted trades = 2;
+   */
+  trades: TradeExecuted[];
+};
+
+/**
+ * Describes the message orderbook.v1.ReplaceOrderResponse.
+ * Use `create(ReplaceOrderResponseSchema)` to create a new message.
+ */
+export declare const ReplaceOrderResponseSchema: GenMessage<ReplaceOrderResponse>;
+
+/**
  * @generated from message orderbook.v1.CloseMarketRequest
  */
 export declare type CloseMarketRequest = Message<"orderbook.v1.CloseMarketRequest"> & {
@@ -1081,6 +1158,14 @@ export declare const OrderBookService: GenService<{
     methodKind: "unary";
     input: typeof CancelOrderRequestSchema;
     output: typeof CancelOrderResponseSchema;
+  },
+  /**
+   * @generated from rpc orderbook.v1.OrderBookService.ReplaceOrder
+   */
+  replaceOrder: {
+    methodKind: "unary";
+    input: typeof ReplaceOrderRequestSchema;
+    output: typeof ReplaceOrderResponseSchema;
   },
   /**
    * @generated from rpc orderbook.v1.OrderBookService.CloseMarket

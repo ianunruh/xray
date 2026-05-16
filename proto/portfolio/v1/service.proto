@@ -15,6 +15,7 @@ service PortfolioService {
   rpc StreamPortfolio(StreamPortfolioRequest) returns (stream GetPortfolioResponse);
   rpc GetPnL(GetPnLRequest) returns (GetPnLResponse);
   rpc PlaceOrder(PortfolioPlaceOrderRequest) returns (PortfolioPlaceOrderResponse);
+  rpc ReplaceOrder(PortfolioReplaceOrderRequest) returns (PortfolioReplaceOrderResponse);
   rpc GetOrderStatus(GetOrderStatusRequest) returns (GetOrderStatusResponse);
   rpc ListPortfolios(ListPortfoliosRequest) returns (ListPortfoliosResponse);
 }
@@ -94,6 +95,21 @@ message PortfolioPlaceOrderRequest {
 }
 
 message PortfolioPlaceOrderResponse {
+  string saga_id = 1;
+}
+
+message PortfolioReplaceOrderRequest {
+  string account_id = 1;
+  string symbol = 2;
+  string old_order_id = 3;
+  orderbook.v1.Side side = 4;
+  int64 price = 5;
+  int64 quantity = 6;
+  orderbook.v1.OrderType order_type = 7;
+  orderbook.v1.TimeInForce time_in_force = 8;
+}
+
+message PortfolioReplaceOrderResponse {
   string saga_id = 1;
 }
 

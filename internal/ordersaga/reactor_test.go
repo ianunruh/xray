@@ -118,6 +118,25 @@ func startOrderSaga(t *testing.T, env *reactorTestEnv, sagaID, accountID, symbol
 	require.NoError(t, err)
 }
 
+func startReplaceOrderSaga(t *testing.T, env *reactorTestEnv, sagaID, accountID, symbol string, side orderbookv1.Side, price, qty int64, replaceOrderID string) {
+	t.Helper()
+	cmd := ordersaga.StartOrderSaga{
+		SagaID:         sagaID,
+		AccountID:      accountID,
+		Symbol:         symbol,
+		Side:           side,
+		Price:          price,
+		Quantity:       qty,
+		OrderType:      orderbookv1.OrderType_ORDER_TYPE_LIMIT,
+		TimeInForce:    orderbookv1.TimeInForce_TIME_IN_FORCE_GTC,
+		ReplaceOrderID: replaceOrderID,
+	}
+	err := env.sagaHandler.Handle(env.ctx, cmd, func(s *ordersaga.OrderSaga) ([]es.Event, error) {
+		return ordersaga.ExecuteStartOrderSaga(s, cmd)
+	})
+	require.NoError(t, err)
+}
+
 func placeLimitOrder(t *testing.T, env *reactorTestEnv, symbol string, side orderbook.Side, price, qty int64) string {
 	t.Helper()
 	cmd := orderbook.PlaceOrder{
@@ -582,4 +601,115 @@ func TestReactor_Recovery_FillsDuringReplay(t *testing.T) {
 	// Saga should progress through the full lifecycle.
 	s = loadSaga(t, env, "saga-1")
 	assert.Equal(t, ordersaga.Completed, s.Status)
+}
+
+func TestReactor_ReplaceOrder_FullLifecycle(t *testing.T) {
+	env := setupReactorTest(t)
+
+	// Deposit enough for both sagas to hold cash simultaneously.
+	// Old saga holds $150k, new saga holds $151k before the old is released.
+	depositCash(t, env, "acct-1", 301000000)
+
+	// Place a resting buy order via saga at $150.
+	startOrderSaga(t, env, "saga-old", "acct-1", "AAPL", orderbookv1.Side_SIDE_BUY, 1500000, 100)
+	env.flush()
+
+	oldSaga := loadSaga(t, env, "saga-old")
+	require.Equal(t, ordersaga.OrderPlaced, oldSaga.Status)
+	oldOrderID := oldSaga.OrderID
+	require.NotEmpty(t, oldOrderID)
+
+	// Place sell liquidity at $151 so the replacement order can match.
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1510000, 100)
+	env.pub.events = nil
+
+	// Start a replace saga: cancel old order at $150, place new buy at $151.
+	startReplaceOrderSaga(t, env, "saga-new", "acct-1", "AAPL", orderbookv1.Side_SIDE_BUY, 1510000, 100, oldOrderID)
+	env.flush()
+
+	// Old saga should fail (its order was cancelled by the replace).
+	oldSaga = loadSaga(t, env, "saga-old")
+	assert.Equal(t, ordersaga.Failed, oldSaga.Status)
+
+	// New saga should complete (matched against the sell liquidity).
+	newSaga := loadSaga(t, env, "saga-new")
+	assert.Equal(t, ordersaga.Completed, newSaga.Status)
+	assert.Equal(t, int64(100), newSaga.FilledQty)
+
+	// Portfolio: old saga released $150k, new saga settled $151k at fill.
+	p := loadPortfolio(t, env, "acct-1")
+	assert.Equal(t, int64(0), p.CashHeld)
+	assert.Equal(t, int64(100), p.Holdings["AAPL"].Quantity)
+	assert.Equal(t, int64(151000000), p.Holdings["AAPL"].TotalCost)
+	assert.Equal(t, int64(150000000), p.CashBalance) // $301k - $151k settled
+}
+
+func TestReactor_ReplaceOrder_OldOrderGone(t *testing.T) {
+	env := setupReactorTest(t)
+
+	depositCash(t, env, "acct-1", 150000000)
+
+	// Start a replace saga targeting a nonexistent order ID.
+	startReplaceOrderSaga(t, env, "saga-replace", "acct-1", "AAPL", orderbookv1.Side_SIDE_BUY, 1500000, 100, "nonexistent-order")
+	for i := 0; i < ordersaga.MaxActionAttempts+1; i++ {
+		env.flush()
+	}
+
+	// Saga should fail after max retries (ReplaceOrder fails with order not found).
+	s := loadSaga(t, env, "saga-replace")
+	assert.Equal(t, ordersaga.Failed, s.Status)
+
+	// Cash should be fully released.
+	p := loadPortfolio(t, env, "acct-1")
+	assert.Equal(t, int64(150000000), p.CashBalance)
+	assert.Equal(t, int64(0), p.CashHeld)
+}
+
+func TestReactor_ReplaceOrder_NoMatch_RestingThenCancel(t *testing.T) {
+	env := setupReactorTest(t)
+
+	// Deposit enough for both sagas to hold cash simultaneously.
+	depositCash(t, env, "acct-1", 301000000)
+
+	// Place a resting buy order via saga at $150.
+	startOrderSaga(t, env, "saga-old", "acct-1", "AAPL", orderbookv1.Side_SIDE_BUY, 1500000, 100)
+	env.flush()
+
+	oldSaga := loadSaga(t, env, "saga-old")
+	require.Equal(t, ordersaga.OrderPlaced, oldSaga.Status)
+	oldOrderID := oldSaga.OrderID
+
+	// Replace with a new buy at $151, but no sell liquidity — new order rests.
+	startReplaceOrderSaga(t, env, "saga-new", "acct-1", "AAPL", orderbookv1.Side_SIDE_BUY, 1510000, 100, oldOrderID)
+	env.flush()
+
+	// Old saga should fail.
+	oldSaga = loadSaga(t, env, "saga-old")
+	assert.Equal(t, ordersaga.Failed, oldSaga.Status)
+
+	// New saga should be OrderPlaced (resting, no fills).
+	newSaga := loadSaga(t, env, "saga-new")
+	assert.Equal(t, ordersaga.OrderPlaced, newSaga.Status)
+	newOrderID := newSaga.OrderID
+	require.NotEmpty(t, newOrderID)
+
+	// Cash: old saga released $150k, new saga holds $151k.
+	p := loadPortfolio(t, env, "acct-1")
+	assert.Equal(t, int64(151000000), p.CashHeld)
+	assert.Equal(t, int64(150000000), p.CashBalance) // $301k - $151k held
+
+	// Cancel the new resting order.
+	cancelCmd := orderbook.CancelOrder{Symbol: "AAPL", OrderID: newOrderID}
+	err := env.obHandler.Handle(env.ctx, cancelCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecuteCancelOrder(book, cancelCmd)
+	})
+	require.NoError(t, err)
+	env.flush()
+
+	newSaga = loadSaga(t, env, "saga-new")
+	assert.Equal(t, ordersaga.Failed, newSaga.Status)
+
+	p = loadPortfolio(t, env, "acct-1")
+	assert.Equal(t, int64(301000000), p.CashBalance)
+	assert.Equal(t, int64(0), p.CashHeld)
 }

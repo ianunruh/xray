@@ -151,7 +151,7 @@ func main() {
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, broker)
 	bracketSrv := bracket.NewServer(bracketHandler, obHandler, log)
-	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, pnlProjection, ordersaga.NewPlaceOrderFunc(orderSagaHandler), ordersaga.NewGetOrderStatusFunc(orderSagaHandler), portfolioBroker, log)
+	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, pnlProjection, ordersaga.NewPlaceOrderFunc(orderSagaHandler), ordersaga.NewReplaceOrderFunc(orderSagaHandler), ordersaga.NewGetOrderStatusFunc(orderSagaHandler), portfolioBroker, log)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)

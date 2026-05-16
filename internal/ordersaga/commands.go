@@ -22,14 +22,15 @@ var (
 )
 
 type StartOrderSaga struct {
-	SagaID      string
-	AccountID   string
-	Symbol      string
-	Side        orderbookv1.Side
-	Price       int64
-	Quantity    int64
-	OrderType   orderbookv1.OrderType
-	TimeInForce orderbookv1.TimeInForce
+	SagaID         string
+	AccountID      string
+	Symbol         string
+	Side           orderbookv1.Side
+	Price          int64
+	Quantity       int64
+	OrderType      orderbookv1.OrderType
+	TimeInForce    orderbookv1.TimeInForce
+	ReplaceOrderID string
 }
 
 func (c StartOrderSaga) AggregateID() string {
@@ -53,9 +54,10 @@ func ExecuteStartOrderSaga(saga *OrderSaga, cmd StartOrderSaga) ([]es.Event, err
 			Side:        cmd.Side,
 			Price:       cmd.Price,
 			Quantity:    cmd.Quantity,
-			OrderType:   cmd.OrderType,
-			TimeInForce: cmd.TimeInForce,
-			StartedAt:   timestamppb.New(now),
+			OrderType:      cmd.OrderType,
+			TimeInForce:    cmd.TimeInForce,
+			StartedAt:      timestamppb.New(now),
+			ReplaceOrderId: cmd.ReplaceOrderID,
 		},
 	}
 

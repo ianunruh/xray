@@ -23,6 +23,7 @@ const (
 	actionRecordFills
 	actionComplete
 	actionReleaseCashAndFail
+	actionReleaseResourcesOnFailure
 )
 
 type action struct {
@@ -43,9 +44,10 @@ type reactorState struct {
 	side        orderbookv1.Side
 	price       int64
 	quantity    int64
-	orderType   orderbook.OrderType
-	timeInForce orderbook.TimeInForce
-	orderID     string
+	orderType      orderbook.OrderType
+	timeInForce    orderbook.TimeInForce
+	replaceOrderID string
+	orderID        string
 	amountHeld  int64
 	filledQty   int64
 	cashSettled int64
@@ -194,9 +196,10 @@ func (r *Reactor) onSagaStarted(data *portfoliov1.OrderSagaStarted) {
 		side:        data.Side,
 		price:       data.Price,
 		quantity:    data.Quantity,
-		orderType:   orderbook.OrderTypeFromProto(data.OrderType),
-		timeInForce: orderbook.TimeInForceFromProto(data.TimeInForce),
-		status:      Started,
+		orderType:      orderbook.OrderTypeFromProto(data.OrderType),
+		timeInForce:    orderbook.TimeInForceFromProto(data.TimeInForce),
+		replaceOrderID: data.ReplaceOrderId,
+		status:         Started,
 	}
 	r.sagas[data.SagaId] = state
 }
@@ -250,7 +253,17 @@ func (r *Reactor) onSagaFailed(data *portfoliov1.OrderSagaFailed) {
 		return
 	}
 	state.status = Failed
-	r.cleanupSaga(state)
+	state.actionPending = false
+
+	needsRelease := false
+	if state.side == orderbookv1.Side_SIDE_SELL {
+		needsRelease = state.amountHeld > state.filledQty
+	} else {
+		needsRelease = state.amountHeld > state.cashSettled
+	}
+	if !needsRelease {
+		r.cleanupSaga(state)
+	}
 }
 
 func (r *Reactor) onActionFailed(data *portfoliov1.OrderSagaActionFailed) {
@@ -363,6 +376,8 @@ func (r *Reactor) actionForState(state *reactorState) (action, bool) {
 		return action{sagaID: state.sagaID, kind: actionComplete}, true
 	case state.status == OrderPlaced && len(state.pendingFills) > 0:
 		return action{sagaID: state.sagaID, kind: actionRecordFills}, true
+	case state.status == Failed:
+		return action{sagaID: state.sagaID, kind: actionReleaseResourcesOnFailure}, true
 	}
 	return action{}, false
 }
@@ -382,6 +397,8 @@ func (r *Reactor) executeActions(ctx context.Context, actions []action) error {
 			err = r.executeComplete(ctx, a.sagaID)
 		case actionReleaseCashAndFail:
 			err = r.executeReleaseCashAndFail(ctx, a.sagaID)
+		case actionReleaseResourcesOnFailure:
+			err = r.executeReleaseResourcesOnFailure(ctx, a.sagaID)
 		}
 		if err != nil {
 			errs = append(errs, err)
@@ -502,6 +519,7 @@ func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
 	orderType := state.orderType
 	timeInForce := state.timeInForce
 	accountID := state.accountID
+	replaceOrderID := state.replaceOrderID
 	r.mu.Unlock()
 
 	// Pre-generate orderID and register the mapping before placing the order
@@ -512,20 +530,37 @@ func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
 	r.orderToSaga[orderID] = sagaID
 	r.mu.Unlock()
 
-	placeCmd := orderbook.PlaceOrder{
-		Symbol:      symbol,
-		Side:        orderbook.SideFromProto(side),
-		Price:       price,
-		Quantity:    quantity,
-		OrderType:   orderType,
-		TimeInForce: timeInForce,
-		AccountID:   accountID,
-		OrderID:     orderID,
+	var err error
+	if replaceOrderID != "" {
+		replaceCmd := orderbook.ReplaceOrder{
+			Symbol:      symbol,
+			OldOrderID:  replaceOrderID,
+			NewOrderID:  orderID,
+			Side:        orderbook.SideFromProto(side),
+			Price:       price,
+			Quantity:    quantity,
+			OrderType:   orderType,
+			TimeInForce: timeInForce,
+			AccountID:   accountID,
+		}
+		err = r.orderbookHandler.Handle(ctx, replaceCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+			return orderbook.ExecuteReplaceOrder(book, replaceCmd)
+		})
+	} else {
+		placeCmd := orderbook.PlaceOrder{
+			Symbol:      symbol,
+			Side:        orderbook.SideFromProto(side),
+			Price:       price,
+			Quantity:    quantity,
+			OrderType:   orderType,
+			TimeInForce: timeInForce,
+			AccountID:   accountID,
+			OrderID:     orderID,
+		}
+		err = r.orderbookHandler.Handle(ctx, placeCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+			return orderbook.ExecutePlaceOrder(book, placeCmd)
+		})
 	}
-
-	err := r.orderbookHandler.Handle(ctx, placeCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
-		return orderbook.ExecutePlaceOrder(book, placeCmd)
-	})
 	if err != nil {
 		r.mu.Lock()
 		delete(r.orderToSaga, orderID)
@@ -733,6 +768,11 @@ func (r *Reactor) executeReleaseCashAndFail(ctx context.Context, sagaID string) 
 				return r.emitActionFailed(ctx, sagaID, "release_cash_and_fail")
 			}
 		}
+		r.mu.Lock()
+		if s, ok := r.sagas[sagaID]; ok {
+			s.filledQty = s.amountHeld
+		}
+		r.mu.Unlock()
 	} else {
 		remaining := amountHeld - cashSettled
 		if remaining > 0 {
@@ -749,6 +789,11 @@ func (r *Reactor) executeReleaseCashAndFail(ctx context.Context, sagaID string) 
 				return r.emitActionFailed(ctx, sagaID, "release_cash_and_fail")
 			}
 		}
+		r.mu.Lock()
+		if s, ok := r.sagas[sagaID]; ok {
+			s.cashSettled = s.amountHeld
+		}
+		r.mu.Unlock()
 	}
 
 	cmd := RecordFailed{SagaID: sagaID, Reason: "order cancelled"}
@@ -761,6 +806,62 @@ func (r *Reactor) executeReleaseCashAndFail(ctx context.Context, sagaID string) 
 	}
 
 	r.log.Info("order saga failed — order cancelled", "saga_id", sagaID)
+	return nil
+}
+
+func (r *Reactor) executeReleaseResourcesOnFailure(ctx context.Context, sagaID string) error {
+	r.mu.Lock()
+	state, ok := r.sagas[sagaID]
+	if !ok || state.status != Failed {
+		r.mu.Unlock()
+		return nil
+	}
+	accountID := state.accountID
+	symbol := state.symbol
+	side := state.side
+	amountHeld := state.amountHeld
+	filledQty := state.filledQty
+	cashSettled := state.cashSettled
+	r.mu.Unlock()
+
+	if side == orderbookv1.Side_SIDE_SELL {
+		remainingShares := amountHeld - filledQty
+		if remainingShares > 0 {
+			releaseCmd := portfolio.ReleaseShares{
+				AccountID:   accountID,
+				OrderSagaID: sagaID,
+				Symbol:      symbol,
+				Quantity:    remainingShares,
+			}
+			if err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteReleaseShares(p, releaseCmd)
+			}); err != nil {
+				r.log.Error("failed to release shares on failure", "saga_id", sagaID, "error", err)
+				return err
+			}
+		}
+	} else {
+		remaining := amountHeld - cashSettled
+		if remaining > 0 {
+			releaseCmd := portfolio.ReleaseCash{
+				AccountID:   accountID,
+				OrderSagaID: sagaID,
+				Amount:      remaining,
+			}
+			if err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteReleaseCash(p, releaseCmd)
+			}); err != nil {
+				r.log.Error("failed to release cash on failure", "saga_id", sagaID, "error", err)
+				return err
+			}
+		}
+	}
+
+	r.mu.Lock()
+	r.cleanupSaga(state)
+	r.mu.Unlock()
+
+	r.log.Info("order saga cleanup after failure", "saga_id", sagaID)
 	return nil
 }
 

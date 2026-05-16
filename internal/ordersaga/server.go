@@ -33,6 +33,30 @@ func NewPlaceOrderFunc(handler *es.Handler[*OrderSaga]) portfolio.PlaceOrderFunc
 	}
 }
 
+func NewReplaceOrderFunc(handler *es.Handler[*OrderSaga]) portfolio.ReplaceOrderFunc {
+	return func(ctx context.Context, req *portfoliov1.PortfolioReplaceOrderRequest) (string, error) {
+		sagaID := NewSagaID()
+		cmd := StartOrderSaga{
+			SagaID:         sagaID,
+			AccountID:      req.AccountId,
+			Symbol:         req.Symbol,
+			Side:           req.Side,
+			Price:          req.Price,
+			Quantity:       req.Quantity,
+			OrderType:      req.OrderType,
+			TimeInForce:    req.TimeInForce,
+			ReplaceOrderID: req.OldOrderId,
+		}
+		err := handler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
+			return ExecuteStartOrderSaga(saga, cmd)
+		})
+		if err != nil {
+			return "", err
+		}
+		return sagaID, nil
+	}
+}
+
 func NewGetOrderStatusFunc(handler *es.Handler[*OrderSaga]) portfolio.GetOrderStatusFunc {
 	return func(ctx context.Context, sagaID string) (*portfoliov1.GetOrderStatusResponse, error) {
 		saga, err := handler.Load(ctx, AggregateID(sagaID))

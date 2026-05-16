@@ -122,33 +122,109 @@ func (t *OrderTracker) RemoveFilledOrder(trade *orderbookv1.Trade) {
 	}
 }
 
-func (t *OrderTracker) CancelAll(ctx context.Context) {
-	for sagaID, tracked := range t.Orders {
-		orderID := tracked.OrderID
-		if orderID == "" {
-			resp, err := t.PfClient.GetOrderStatus(ctx, connect.NewRequest(&portfoliov1.GetOrderStatusRequest{
-				SagaId: sagaID,
-			}))
-			if err == nil && resp.Msg.OrderId != "" {
-				orderID = resp.Msg.OrderId
-			} else {
-				t.Log.Warn("could not resolve order_id for cancel", "saga_id", sagaID, "error", err)
-			}
-		}
-		if orderID != "" {
-			_, err := t.ObClient.CancelOrder(ctx, connect.NewRequest(&orderbookv1.CancelOrderRequest{
-				Symbol:  t.Symbol,
-				OrderId: orderID,
-			}))
-			if err != nil && connect.CodeOf(err) != connect.CodeNotFound {
-				t.Log.Error("failed to cancel order", "order_id", orderID, "error", err)
-			} else {
-				t.Log.Info("cancelled order", "order_id", orderID)
-			}
-		}
-		delete(t.OrderIDIndex, tracked.OrderID)
-		delete(t.Orders, sagaID)
+func (t *OrderTracker) CancelTracked(ctx context.Context, sagaID string) {
+	tracked, ok := t.Orders[sagaID]
+	if !ok {
+		return
 	}
+	orderID := tracked.OrderID
+	if orderID == "" {
+		resp, err := t.PfClient.GetOrderStatus(ctx, connect.NewRequest(&portfoliov1.GetOrderStatusRequest{
+			SagaId: sagaID,
+		}))
+		if err == nil && resp.Msg.OrderId != "" {
+			orderID = resp.Msg.OrderId
+		} else {
+			t.Log.Warn("could not resolve order_id for cancel", "saga_id", sagaID, "error", err)
+		}
+	}
+	if orderID != "" {
+		_, err := t.ObClient.CancelOrder(ctx, connect.NewRequest(&orderbookv1.CancelOrderRequest{
+			Symbol:  t.Symbol,
+			OrderId: orderID,
+		}))
+		if err != nil && connect.CodeOf(err) != connect.CodeNotFound {
+			t.Log.Error("failed to cancel order", "order_id", orderID, "error", err)
+		} else {
+			t.Log.Info("cancelled order", "order_id", orderID)
+		}
+	}
+	delete(t.OrderIDIndex, tracked.OrderID)
+	delete(t.Orders, sagaID)
+}
+
+func (t *OrderTracker) CancelAll(ctx context.Context) {
+	sagaIDs := make([]string, 0, len(t.Orders))
+	for sagaID := range t.Orders {
+		sagaIDs = append(sagaIDs, sagaID)
+	}
+	for _, sagaID := range sagaIDs {
+		t.CancelTracked(ctx, sagaID)
+	}
+}
+
+func (t *OrderTracker) ReplaceOrder(
+	ctx context.Context,
+	accountID string,
+	oldSagaID string,
+	side orderbookv1.Side,
+	price, qty int64,
+) {
+	oldTracked, ok := t.Orders[oldSagaID]
+	if !ok {
+		t.PlaceOrder(ctx, accountID, side, price, qty)
+		return
+	}
+
+	oldOrderID := oldTracked.OrderID
+	if oldOrderID == "" {
+		t.CancelTracked(ctx, oldSagaID)
+		t.PlaceOrder(ctx, accountID, side, price, qty)
+		return
+	}
+
+	resp, err := t.PfClient.ReplaceOrder(ctx, connect.NewRequest(&portfoliov1.PortfolioReplaceOrderRequest{
+		AccountId:   accountID,
+		Symbol:      t.Symbol,
+		OldOrderId:  oldOrderID,
+		Side:        side,
+		Price:       price,
+		Quantity:    qty,
+		OrderType:   orderbookv1.OrderType_ORDER_TYPE_LIMIT,
+		TimeInForce: orderbookv1.TimeInForce_TIME_IN_FORCE_GTC,
+	}))
+	if err != nil {
+		t.Log.Error("failed to replace order, falling back to cancel+place",
+			"old_order_id", oldOrderID,
+			"error", err)
+		t.CancelTracked(ctx, oldSagaID)
+		t.PlaceOrder(ctx, accountID, side, price, qty)
+		return
+	}
+
+	delete(t.OrderIDIndex, oldTracked.OrderID)
+	delete(t.Orders, oldSagaID)
+
+	sagaID := resp.Msg.SagaId
+	t.Orders[sagaID] = &TrackedOrder{
+		SagaID:   sagaID,
+		Side:     side,
+		Price:    price,
+		Qty:      qty,
+		PlacedAt: time.Now(),
+	}
+
+	go t.resolveOrderID(ctx, sagaID)
+}
+
+func (t *OrderTracker) OrdersBySide(side orderbookv1.Side) []string {
+	var sagaIDs []string
+	for sagaID, tracked := range t.Orders {
+		if tracked.Side == side {
+			sagaIDs = append(sagaIDs, sagaID)
+		}
+	}
+	return sagaIDs
 }
 
 func (t *OrderTracker) CleanupOrphans(ctx context.Context, accountID string) {

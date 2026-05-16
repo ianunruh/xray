@@ -410,6 +410,11 @@ export declare type OrderSagaStarted = Message<"portfolio.v1.OrderSagaStarted"> 
    * @generated from field: google.protobuf.Timestamp started_at = 9;
    */
   startedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: string replace_order_id = 10;
+   */
+  replaceOrderId: string;
 };
 
 /**

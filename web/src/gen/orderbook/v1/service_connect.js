@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, GetSagaRequest, GetSagaResponse, ListOrdersRequest, ListOrdersResponse, ListSagasRequest, ListSagasResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, PlaceBracketOrderRequest, PlaceBracketOrderResponse, PlaceOrderRequest, PlaceOrderResponse, StreamCandlesRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade } from "./service_pb.js";
+import { CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, GetSagaRequest, GetSagaResponse, ListOrdersRequest, ListOrdersResponse, ListSagasRequest, ListSagasResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, PlaceBracketOrderRequest, PlaceBracketOrderResponse, PlaceOrderRequest, PlaceOrderResponse, ReplaceOrderRequest, ReplaceOrderResponse, StreamCandlesRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -28,6 +28,15 @@ export const OrderBookService = {
       name: "CancelOrder",
       I: CancelOrderRequest,
       O: CancelOrderResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc orderbook.v1.OrderBookService.ReplaceOrder
+     */
+    replaceOrder: {
+      name: "ReplaceOrder",
+      I: ReplaceOrderRequest,
+      O: ReplaceOrderResponse,
       kind: MethodKind.Unary,
     },
     /**

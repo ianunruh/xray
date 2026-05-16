@@ -768,18 +768,19 @@ func (x *SharesSettled) GetSettledAt() *timestamppb.Timestamp {
 }
 
 type OrderSagaStarted struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SagaId        string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
-	AccountId     string                 `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
-	Symbol        string                 `protobuf:"bytes,3,opt,name=symbol,proto3" json:"symbol,omitempty"`
-	Side          v1.Side                `protobuf:"varint,4,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
-	Price         int64                  `protobuf:"varint,5,opt,name=price,proto3" json:"price,omitempty"`
-	Quantity      int64                  `protobuf:"varint,6,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	OrderType     v1.OrderType           `protobuf:"varint,7,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
-	TimeInForce   v1.TimeInForce         `protobuf:"varint,8,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
-	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	SagaId         string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
+	AccountId      string                 `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	Symbol         string                 `protobuf:"bytes,3,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Side           v1.Side                `protobuf:"varint,4,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
+	Price          int64                  `protobuf:"varint,5,opt,name=price,proto3" json:"price,omitempty"`
+	Quantity       int64                  `protobuf:"varint,6,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	OrderType      v1.OrderType           `protobuf:"varint,7,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
+	TimeInForce    v1.TimeInForce         `protobuf:"varint,8,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
+	StartedAt      *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	ReplaceOrderId string                 `protobuf:"bytes,10,opt,name=replace_order_id,json=replaceOrderId,proto3" json:"replace_order_id,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *OrderSagaStarted) Reset() {
@@ -873,6 +874,13 @@ func (x *OrderSagaStarted) GetStartedAt() *timestamppb.Timestamp {
 		return x.StartedAt
 	}
 	return nil
+}
+
+func (x *OrderSagaStarted) GetReplaceOrderId() string {
+	if x != nil {
+		return x.ReplaceOrderId
+	}
+	return ""
 }
 
 type OrderSagaCashHeld struct {
@@ -1338,7 +1346,7 @@ const file_portfolio_v1_events_proto_rawDesc = "" +
 	"\x0fprice_per_share\x18\x05 \x01(\x03R\rpricePerShare\x12\x1a\n" +
 	"\bproceeds\x18\x06 \x01(\x03R\bproceeds\x129\n" +
 	"\n" +
-	"settled_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tsettledAt\"\xee\x02\n" +
+	"settled_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tsettledAt\"\x98\x03\n" +
 	"\x10OrderSagaStarted\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x1d\n" +
 	"\n" +
@@ -1351,7 +1359,9 @@ const file_portfolio_v1_events_proto_rawDesc = "" +
 	"order_type\x18\a \x01(\x0e2\x17.orderbook.v1.OrderTypeR\torderType\x12=\n" +
 	"\rtime_in_force\x18\b \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\x129\n" +
 	"\n" +
-	"started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\"\x82\x01\n" +
+	"started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12(\n" +
+	"\x10replace_order_id\x18\n" +
+	" \x01(\tR\x0ereplaceOrderId\"\x82\x01\n" +
 	"\x11OrderSagaCashHeld\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x1f\n" +
 	"\vamount_held\x18\x02 \x01(\x03R\n" +

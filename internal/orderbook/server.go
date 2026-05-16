@@ -111,6 +111,55 @@ func (s *Server) CancelOrder(ctx context.Context, req *connect.Request[orderbook
 	return connect.NewResponse(&orderbookv1.CancelOrderResponse{}), nil
 }
 
+func (s *Server) ReplaceOrder(ctx context.Context, req *connect.Request[orderbookv1.ReplaceOrderRequest]) (*connect.Response[orderbookv1.ReplaceOrderResponse], error) {
+	msg := req.Msg
+
+	tif := TimeInForceFromProto(msg.TimeInForce)
+	if OrderTypeFromProto(msg.OrderType) == Market && msg.TimeInForce == orderbookv1.TimeInForce_TIME_IN_FORCE_UNSPECIFIED {
+		tif = IOC
+	}
+
+	cmd := ReplaceOrder{
+		Symbol:      msg.Symbol,
+		OldOrderID:  msg.OldOrderId,
+		NewOrderID:  msg.NewOrderId,
+		Side:        SideFromProto(msg.Side),
+		Price:       msg.Price,
+		Quantity:    msg.Quantity,
+		OrderType:   OrderTypeFromProto(msg.OrderType),
+		TimeInForce: tif,
+		AccountID:   msg.AccountId,
+	}
+
+	var produced []es.Event
+	err := s.handler.Handle(ctx, cmd, func(book *OrderBook) ([]es.Event, error) {
+		events, err := ExecuteReplaceOrder(book, cmd)
+		if err != nil {
+			return nil, err
+		}
+		produced = events
+		return events, nil
+	})
+	if err != nil {
+		s.log.Warn("ReplaceOrder failed", "symbol", msg.Symbol, "old_order_id", msg.OldOrderId, "error", err)
+		return nil, mapError(err)
+	}
+
+	resp := &orderbookv1.ReplaceOrderResponse{}
+	for _, evt := range produced {
+		switch data := evt.Data.(type) {
+		case *orderbookv1.OrderPlaced:
+			resp.OrderId = data.OrderId
+		case *orderbookv1.TradeExecuted:
+			resp.Trades = append(resp.Trades, data)
+		}
+	}
+
+	s.log.Info("ReplaceOrder", "symbol", msg.Symbol, "old_order_id", msg.OldOrderId, "new_order_id", resp.OrderId, "trade_count", len(resp.Trades))
+
+	return connect.NewResponse(resp), nil
+}
+
 func (s *Server) CloseMarket(ctx context.Context, req *connect.Request[orderbookv1.CloseMarketRequest]) (*connect.Response[orderbookv1.CloseMarketResponse], error) {
 	msg := req.Msg
 
@@ -392,6 +441,8 @@ func mapError(err error) *connect.Error {
 		return connect.NewError(connect.CodeFailedPrecondition, unwrapped)
 	case ErrOrderNotFound, ErrNoRemainingQty:
 		return connect.NewError(connect.CodeNotFound, unwrapped)
+	case ErrAccountMismatch:
+		return connect.NewError(connect.CodePermissionDenied, unwrapped)
 	case es.ErrOptimisticConcurrency:
 		return connect.NewError(connect.CodeAborted, unwrapped)
 	default:

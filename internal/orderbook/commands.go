@@ -23,6 +23,7 @@ var (
 	ErrStopRequiresStopPrice       = errors.New("stop orders require a positive stop price")
 	ErrStopMarketRequiresZeroPrice = errors.New("stop-market orders must have zero price")
 	ErrStopLimitRequiresPrice      = errors.New("stop-limit orders require a positive limit price")
+	ErrAccountMismatch             = errors.New("old order belongs to a different account")
 )
 
 // PlaceOrder is a command to place a new order on the book.
@@ -49,6 +50,25 @@ type CancelOrder struct {
 }
 
 func (c CancelOrder) AggregateID() string {
+	return AggregateID(c.Symbol)
+}
+
+// ReplaceOrder is a command to atomically cancel an existing order and place a
+// new one. The old order is cancelled and the new order is placed and matched
+// in a single event batch.
+type ReplaceOrder struct {
+	Symbol      string
+	OldOrderID  string
+	NewOrderID  string
+	Side        Side
+	Price       int64
+	Quantity    int64
+	OrderType   OrderType
+	TimeInForce TimeInForce
+	AccountID   string
+}
+
+func (c ReplaceOrder) AggregateID() string {
 	return AggregateID(c.Symbol)
 }
 
@@ -328,4 +348,105 @@ func ExecuteCancelOrder(book *OrderBook, cmd CancelOrder) ([]es.Event, error) {
 	}
 
 	return []es.Event{evt}, nil
+}
+
+// ExecuteReplaceOrder atomically cancels an existing order and places a new one.
+// It produces OrderCancelled (for the old order), OrderPlaced (for the new
+// order), and any TradeExecuted events from matching the new order.
+func ExecuteReplaceOrder(book *OrderBook, cmd ReplaceOrder) ([]es.Event, error) {
+	oldOrder, ok := book.Orders[cmd.OldOrderID]
+	if !ok {
+		return nil, ErrOrderNotFound
+	}
+	if oldOrder.RemainingQty <= 0 {
+		return nil, ErrNoRemainingQty
+	}
+	if cmd.AccountID != "" && oldOrder.AccountID != cmd.AccountID {
+		return nil, ErrAccountMismatch
+	}
+
+	now := time.Now()
+
+	cancelEvt := es.Event{
+		AggregateID: book.AggregateID(),
+		Type:        EventOrderCancelled,
+		Timestamp:   now,
+		Data: &orderbookv1.OrderCancelled{
+			OrderId: cmd.OldOrderID,
+			Symbol:  cmd.Symbol,
+		},
+	}
+	if err := book.Apply(cancelEvt); err != nil {
+		return nil, fmt.Errorf("apply cancel old order: %w", err)
+	}
+
+	if cmd.Quantity <= 0 {
+		return nil, ErrInvalidQuantity
+	}
+
+	switch cmd.OrderType {
+	case Market:
+		if cmd.TimeInForce == GTC || cmd.TimeInForce == Day {
+			return nil, ErrMarketGTC
+		}
+		if cmd.Price != 0 {
+			return nil, ErrMarketRequiresZeroPrice
+		}
+	case StopMarket:
+		return nil, errors.New("stop orders cannot be used with replace")
+	case StopLimit:
+		return nil, errors.New("stop orders cannot be used with replace")
+	default: // Limit
+		if cmd.Price <= 0 {
+			return nil, ErrInvalidPrice
+		}
+	}
+
+	tif := cmd.TimeInForce
+
+	if tif == FOK {
+		avail := AvailableQty(book, cmd.Side, cmd.Price, cmd.OrderType == Market, cmd.AccountID)
+		if avail < cmd.Quantity {
+			return nil, ErrInsufficientLiquidity
+		}
+	}
+
+	orderID := cmd.NewOrderID
+	if orderID == "" {
+		orderID = uuid.New().String()
+	}
+
+	placedEvt := es.Event{
+		AggregateID: book.AggregateID(),
+		Type:        EventOrderPlaced,
+		Timestamp:   now,
+		Data: &orderbookv1.OrderPlaced{
+			OrderId:     orderID,
+			Symbol:      cmd.Symbol,
+			Side:        SideToProto(cmd.Side),
+			Price:       cmd.Price,
+			Quantity:    cmd.Quantity,
+			PlacedAt:    timestamppb.New(now),
+			OrderType:   OrderTypeToProto(cmd.OrderType),
+			TimeInForce: TimeInForceToProto(tif),
+			AccountId:   cmd.AccountID,
+		},
+	}
+
+	if err := book.Apply(placedEvt); err != nil {
+		return nil, fmt.Errorf("apply order placed: %w", err)
+	}
+
+	events := []es.Event{cancelEvt, placedEvt}
+
+	incoming := book.Orders[orderID]
+	events, selfTradePrevented := matchAndAppend(book, incoming, events, now)
+
+	if tif == IOC || cmd.OrderType == Market || selfTradePrevented {
+		events = cancelUnfilled(book, incoming, events, now)
+	}
+
+	events = triggerStops(book, events, now)
+
+	return events, nil
 }

@@ -338,6 +338,73 @@ export declare type PortfolioPlaceOrderResponse = Message<"portfolio.v1.Portfoli
 export declare const PortfolioPlaceOrderResponseSchema: GenMessage<PortfolioPlaceOrderResponse>;
 
 /**
+ * @generated from message portfolio.v1.PortfolioReplaceOrderRequest
+ */
+export declare type PortfolioReplaceOrderRequest = Message<"portfolio.v1.PortfolioReplaceOrderRequest"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string symbol = 2;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: string old_order_id = 3;
+   */
+  oldOrderId: string;
+
+  /**
+   * @generated from field: orderbook.v1.Side side = 4;
+   */
+  side: Side;
+
+  /**
+   * @generated from field: int64 price = 5;
+   */
+  price: bigint;
+
+  /**
+   * @generated from field: int64 quantity = 6;
+   */
+  quantity: bigint;
+
+  /**
+   * @generated from field: orderbook.v1.OrderType order_type = 7;
+   */
+  orderType: OrderType;
+
+  /**
+   * @generated from field: orderbook.v1.TimeInForce time_in_force = 8;
+   */
+  timeInForce: TimeInForce;
+};
+
+/**
+ * Describes the message portfolio.v1.PortfolioReplaceOrderRequest.
+ * Use `create(PortfolioReplaceOrderRequestSchema)` to create a new message.
+ */
+export declare const PortfolioReplaceOrderRequestSchema: GenMessage<PortfolioReplaceOrderRequest>;
+
+/**
+ * @generated from message portfolio.v1.PortfolioReplaceOrderResponse
+ */
+export declare type PortfolioReplaceOrderResponse = Message<"portfolio.v1.PortfolioReplaceOrderResponse"> & {
+  /**
+   * @generated from field: string saga_id = 1;
+   */
+  sagaId: string;
+};
+
+/**
+ * Describes the message portfolio.v1.PortfolioReplaceOrderResponse.
+ * Use `create(PortfolioReplaceOrderResponseSchema)` to create a new message.
+ */
+export declare const PortfolioReplaceOrderResponseSchema: GenMessage<PortfolioReplaceOrderResponse>;
+
+/**
  * @generated from message portfolio.v1.GetOrderStatusRequest
  */
 export declare type GetOrderStatusRequest = Message<"portfolio.v1.GetOrderStatusRequest"> & {
@@ -726,6 +793,14 @@ export declare const PortfolioService: GenService<{
     methodKind: "unary";
     input: typeof PortfolioPlaceOrderRequestSchema;
     output: typeof PortfolioPlaceOrderResponseSchema;
+  },
+  /**
+   * @generated from rpc portfolio.v1.PortfolioService.ReplaceOrder
+   */
+  replaceOrder: {
+    methodKind: "unary";
+    input: typeof PortfolioReplaceOrderRequestSchema;
+    output: typeof PortfolioReplaceOrderResponseSchema;
   },
   /**
    * @generated from rpc portfolio.v1.PortfolioService.GetOrderStatus

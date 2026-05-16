@@ -18,6 +18,7 @@ enum OrderStatus {
 service OrderBookService {
   rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
   rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+  rpc ReplaceOrder(ReplaceOrderRequest) returns (ReplaceOrderResponse);
   rpc CloseMarket(CloseMarketRequest) returns (CloseMarketResponse);
   rpc GetOrderBook(GetOrderBookRequest) returns (GetOrderBookResponse);
   rpc GetMarketDepth(GetMarketDepthRequest) returns (GetMarketDepthResponse);
@@ -53,6 +54,23 @@ message CancelOrderRequest {
 }
 
 message CancelOrderResponse {}
+
+message ReplaceOrderRequest {
+  string symbol = 1;
+  string old_order_id = 2;
+  string new_order_id = 3;
+  Side side = 4;
+  int64 price = 5;
+  int64 quantity = 6;
+  OrderType order_type = 7;
+  TimeInForce time_in_force = 8;
+  string account_id = 9;
+}
+
+message ReplaceOrderResponse {
+  string order_id = 1;
+  repeated TradeExecuted trades = 2;
+}
 
 message CloseMarketRequest {
   string symbol = 1;

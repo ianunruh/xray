@@ -36,6 +36,7 @@ type OrderSaga struct {
 	Quantity       int64
 	OrderType      orderbook.OrderType
 	TimeInForce    orderbook.TimeInForce
+	ReplaceOrderID string
 	OrderID        string
 	AmountHeld     int64
 	FilledQty      int64
@@ -82,6 +83,7 @@ func (s *OrderSaga) applyStarted(data *portfoliov1.OrderSagaStarted) {
 	s.Quantity = data.Quantity
 	s.OrderType = orderbook.OrderTypeFromProto(data.OrderType)
 	s.TimeInForce = orderbook.TimeInForceFromProto(data.TimeInForce)
+	s.ReplaceOrderID = data.ReplaceOrderId
 	s.Status = Started
 }
 

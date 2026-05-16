@@ -53,6 +53,9 @@ const (
 	// PortfolioServicePlaceOrderProcedure is the fully-qualified name of the PortfolioService's
 	// PlaceOrder RPC.
 	PortfolioServicePlaceOrderProcedure = "/portfolio.v1.PortfolioService/PlaceOrder"
+	// PortfolioServiceReplaceOrderProcedure is the fully-qualified name of the PortfolioService's
+	// ReplaceOrder RPC.
+	PortfolioServiceReplaceOrderProcedure = "/portfolio.v1.PortfolioService/ReplaceOrder"
 	// PortfolioServiceGetOrderStatusProcedure is the fully-qualified name of the PortfolioService's
 	// GetOrderStatus RPC.
 	PortfolioServiceGetOrderStatusProcedure = "/portfolio.v1.PortfolioService/GetOrderStatus"
@@ -70,6 +73,7 @@ type PortfolioServiceClient interface {
 	StreamPortfolio(context.Context, *connect.Request[v1.StreamPortfolioRequest]) (*connect.ServerStreamForClient[v1.GetPortfolioResponse], error)
 	GetPnL(context.Context, *connect.Request[v1.GetPnLRequest]) (*connect.Response[v1.GetPnLResponse], error)
 	PlaceOrder(context.Context, *connect.Request[v1.PortfolioPlaceOrderRequest]) (*connect.Response[v1.PortfolioPlaceOrderResponse], error)
+	ReplaceOrder(context.Context, *connect.Request[v1.PortfolioReplaceOrderRequest]) (*connect.Response[v1.PortfolioReplaceOrderResponse], error)
 	GetOrderStatus(context.Context, *connect.Request[v1.GetOrderStatusRequest]) (*connect.Response[v1.GetOrderStatusResponse], error)
 	ListPortfolios(context.Context, *connect.Request[v1.ListPortfoliosRequest]) (*connect.Response[v1.ListPortfoliosResponse], error)
 }
@@ -127,6 +131,12 @@ func NewPortfolioServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(portfolioServiceMethods.ByName("PlaceOrder")),
 			connect.WithClientOptions(opts...),
 		),
+		replaceOrder: connect.NewClient[v1.PortfolioReplaceOrderRequest, v1.PortfolioReplaceOrderResponse](
+			httpClient,
+			baseURL+PortfolioServiceReplaceOrderProcedure,
+			connect.WithSchema(portfolioServiceMethods.ByName("ReplaceOrder")),
+			connect.WithClientOptions(opts...),
+		),
 		getOrderStatus: connect.NewClient[v1.GetOrderStatusRequest, v1.GetOrderStatusResponse](
 			httpClient,
 			baseURL+PortfolioServiceGetOrderStatusProcedure,
@@ -151,6 +161,7 @@ type portfolioServiceClient struct {
 	streamPortfolio *connect.Client[v1.StreamPortfolioRequest, v1.GetPortfolioResponse]
 	getPnL          *connect.Client[v1.GetPnLRequest, v1.GetPnLResponse]
 	placeOrder      *connect.Client[v1.PortfolioPlaceOrderRequest, v1.PortfolioPlaceOrderResponse]
+	replaceOrder    *connect.Client[v1.PortfolioReplaceOrderRequest, v1.PortfolioReplaceOrderResponse]
 	getOrderStatus  *connect.Client[v1.GetOrderStatusRequest, v1.GetOrderStatusResponse]
 	listPortfolios  *connect.Client[v1.ListPortfoliosRequest, v1.ListPortfoliosResponse]
 }
@@ -190,6 +201,11 @@ func (c *portfolioServiceClient) PlaceOrder(ctx context.Context, req *connect.Re
 	return c.placeOrder.CallUnary(ctx, req)
 }
 
+// ReplaceOrder calls portfolio.v1.PortfolioService.ReplaceOrder.
+func (c *portfolioServiceClient) ReplaceOrder(ctx context.Context, req *connect.Request[v1.PortfolioReplaceOrderRequest]) (*connect.Response[v1.PortfolioReplaceOrderResponse], error) {
+	return c.replaceOrder.CallUnary(ctx, req)
+}
+
 // GetOrderStatus calls portfolio.v1.PortfolioService.GetOrderStatus.
 func (c *portfolioServiceClient) GetOrderStatus(ctx context.Context, req *connect.Request[v1.GetOrderStatusRequest]) (*connect.Response[v1.GetOrderStatusResponse], error) {
 	return c.getOrderStatus.CallUnary(ctx, req)
@@ -209,6 +225,7 @@ type PortfolioServiceHandler interface {
 	StreamPortfolio(context.Context, *connect.Request[v1.StreamPortfolioRequest], *connect.ServerStream[v1.GetPortfolioResponse]) error
 	GetPnL(context.Context, *connect.Request[v1.GetPnLRequest]) (*connect.Response[v1.GetPnLResponse], error)
 	PlaceOrder(context.Context, *connect.Request[v1.PortfolioPlaceOrderRequest]) (*connect.Response[v1.PortfolioPlaceOrderResponse], error)
+	ReplaceOrder(context.Context, *connect.Request[v1.PortfolioReplaceOrderRequest]) (*connect.Response[v1.PortfolioReplaceOrderResponse], error)
 	GetOrderStatus(context.Context, *connect.Request[v1.GetOrderStatusRequest]) (*connect.Response[v1.GetOrderStatusResponse], error)
 	ListPortfolios(context.Context, *connect.Request[v1.ListPortfoliosRequest]) (*connect.Response[v1.ListPortfoliosResponse], error)
 }
@@ -262,6 +279,12 @@ func NewPortfolioServiceHandler(svc PortfolioServiceHandler, opts ...connect.Han
 		connect.WithSchema(portfolioServiceMethods.ByName("PlaceOrder")),
 		connect.WithHandlerOptions(opts...),
 	)
+	portfolioServiceReplaceOrderHandler := connect.NewUnaryHandler(
+		PortfolioServiceReplaceOrderProcedure,
+		svc.ReplaceOrder,
+		connect.WithSchema(portfolioServiceMethods.ByName("ReplaceOrder")),
+		connect.WithHandlerOptions(opts...),
+	)
 	portfolioServiceGetOrderStatusHandler := connect.NewUnaryHandler(
 		PortfolioServiceGetOrderStatusProcedure,
 		svc.GetOrderStatus,
@@ -290,6 +313,8 @@ func NewPortfolioServiceHandler(svc PortfolioServiceHandler, opts ...connect.Han
 			portfolioServiceGetPnLHandler.ServeHTTP(w, r)
 		case PortfolioServicePlaceOrderProcedure:
 			portfolioServicePlaceOrderHandler.ServeHTTP(w, r)
+		case PortfolioServiceReplaceOrderProcedure:
+			portfolioServiceReplaceOrderHandler.ServeHTTP(w, r)
 		case PortfolioServiceGetOrderStatusProcedure:
 			portfolioServiceGetOrderStatusHandler.ServeHTTP(w, r)
 		case PortfolioServiceListPortfoliosProcedure:
@@ -329,6 +354,10 @@ func (UnimplementedPortfolioServiceHandler) GetPnL(context.Context, *connect.Req
 
 func (UnimplementedPortfolioServiceHandler) PlaceOrder(context.Context, *connect.Request[v1.PortfolioPlaceOrderRequest]) (*connect.Response[v1.PortfolioPlaceOrderResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portfolio.v1.PortfolioService.PlaceOrder is not implemented"))
+}
+
+func (UnimplementedPortfolioServiceHandler) ReplaceOrder(context.Context, *connect.Request[v1.PortfolioReplaceOrderRequest]) (*connect.Response[v1.PortfolioReplaceOrderResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portfolio.v1.PortfolioService.ReplaceOrder is not implemented"))
 }
 
 func (UnimplementedPortfolioServiceHandler) GetOrderStatus(context.Context, *connect.Request[v1.GetOrderStatusRequest]) (*connect.Response[v1.GetOrderStatusResponse], error) {

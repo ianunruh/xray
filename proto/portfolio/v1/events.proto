@@ -99,6 +99,7 @@ message OrderSagaStarted {
   orderbook.v1.OrderType order_type = 7;
   orderbook.v1.TimeInForce time_in_force = 8;
   google.protobuf.Timestamp started_at = 9;
+  string replace_order_id = 10;
 }
 
 message OrderSagaCashHeld {

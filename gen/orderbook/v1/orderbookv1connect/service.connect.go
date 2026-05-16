@@ -41,6 +41,9 @@ const (
 	// OrderBookServiceCancelOrderProcedure is the fully-qualified name of the OrderBookService's
 	// CancelOrder RPC.
 	OrderBookServiceCancelOrderProcedure = "/orderbook.v1.OrderBookService/CancelOrder"
+	// OrderBookServiceReplaceOrderProcedure is the fully-qualified name of the OrderBookService's
+	// ReplaceOrder RPC.
+	OrderBookServiceReplaceOrderProcedure = "/orderbook.v1.OrderBookService/ReplaceOrder"
 	// OrderBookServiceCloseMarketProcedure is the fully-qualified name of the OrderBookService's
 	// CloseMarket RPC.
 	OrderBookServiceCloseMarketProcedure = "/orderbook.v1.OrderBookService/CloseMarket"
@@ -87,6 +90,7 @@ const (
 type OrderBookServiceClient interface {
 	PlaceOrder(context.Context, *connect.Request[v1.PlaceOrderRequest]) (*connect.Response[v1.PlaceOrderResponse], error)
 	CancelOrder(context.Context, *connect.Request[v1.CancelOrderRequest]) (*connect.Response[v1.CancelOrderResponse], error)
+	ReplaceOrder(context.Context, *connect.Request[v1.ReplaceOrderRequest]) (*connect.Response[v1.ReplaceOrderResponse], error)
 	CloseMarket(context.Context, *connect.Request[v1.CloseMarketRequest]) (*connect.Response[v1.CloseMarketResponse], error)
 	GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error)
 	GetMarketDepth(context.Context, *connect.Request[v1.GetMarketDepthRequest]) (*connect.Response[v1.GetMarketDepthResponse], error)
@@ -121,6 +125,12 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			httpClient,
 			baseURL+OrderBookServiceCancelOrderProcedure,
 			connect.WithSchema(orderBookServiceMethods.ByName("CancelOrder")),
+			connect.WithClientOptions(opts...),
+		),
+		replaceOrder: connect.NewClient[v1.ReplaceOrderRequest, v1.ReplaceOrderResponse](
+			httpClient,
+			baseURL+OrderBookServiceReplaceOrderProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("ReplaceOrder")),
 			connect.WithClientOptions(opts...),
 		),
 		closeMarket: connect.NewClient[v1.CloseMarketRequest, v1.CloseMarketResponse](
@@ -196,6 +206,7 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 type orderBookServiceClient struct {
 	placeOrder        *connect.Client[v1.PlaceOrderRequest, v1.PlaceOrderResponse]
 	cancelOrder       *connect.Client[v1.CancelOrderRequest, v1.CancelOrderResponse]
+	replaceOrder      *connect.Client[v1.ReplaceOrderRequest, v1.ReplaceOrderResponse]
 	closeMarket       *connect.Client[v1.CloseMarketRequest, v1.CloseMarketResponse]
 	getOrderBook      *connect.Client[v1.GetOrderBookRequest, v1.GetOrderBookResponse]
 	getMarketDepth    *connect.Client[v1.GetMarketDepthRequest, v1.GetMarketDepthResponse]
@@ -217,6 +228,11 @@ func (c *orderBookServiceClient) PlaceOrder(ctx context.Context, req *connect.Re
 // CancelOrder calls orderbook.v1.OrderBookService.CancelOrder.
 func (c *orderBookServiceClient) CancelOrder(ctx context.Context, req *connect.Request[v1.CancelOrderRequest]) (*connect.Response[v1.CancelOrderResponse], error) {
 	return c.cancelOrder.CallUnary(ctx, req)
+}
+
+// ReplaceOrder calls orderbook.v1.OrderBookService.ReplaceOrder.
+func (c *orderBookServiceClient) ReplaceOrder(ctx context.Context, req *connect.Request[v1.ReplaceOrderRequest]) (*connect.Response[v1.ReplaceOrderResponse], error) {
+	return c.replaceOrder.CallUnary(ctx, req)
 }
 
 // CloseMarket calls orderbook.v1.OrderBookService.CloseMarket.
@@ -278,6 +294,7 @@ func (c *orderBookServiceClient) StreamCandles(ctx context.Context, req *connect
 type OrderBookServiceHandler interface {
 	PlaceOrder(context.Context, *connect.Request[v1.PlaceOrderRequest]) (*connect.Response[v1.PlaceOrderResponse], error)
 	CancelOrder(context.Context, *connect.Request[v1.CancelOrderRequest]) (*connect.Response[v1.CancelOrderResponse], error)
+	ReplaceOrder(context.Context, *connect.Request[v1.ReplaceOrderRequest]) (*connect.Response[v1.ReplaceOrderResponse], error)
 	CloseMarket(context.Context, *connect.Request[v1.CloseMarketRequest]) (*connect.Response[v1.CloseMarketResponse], error)
 	GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error)
 	GetMarketDepth(context.Context, *connect.Request[v1.GetMarketDepthRequest]) (*connect.Response[v1.GetMarketDepthResponse], error)
@@ -308,6 +325,12 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 		OrderBookServiceCancelOrderProcedure,
 		svc.CancelOrder,
 		connect.WithSchema(orderBookServiceMethods.ByName("CancelOrder")),
+		connect.WithHandlerOptions(opts...),
+	)
+	orderBookServiceReplaceOrderHandler := connect.NewUnaryHandler(
+		OrderBookServiceReplaceOrderProcedure,
+		svc.ReplaceOrder,
+		connect.WithSchema(orderBookServiceMethods.ByName("ReplaceOrder")),
 		connect.WithHandlerOptions(opts...),
 	)
 	orderBookServiceCloseMarketHandler := connect.NewUnaryHandler(
@@ -382,6 +405,8 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 			orderBookServicePlaceOrderHandler.ServeHTTP(w, r)
 		case OrderBookServiceCancelOrderProcedure:
 			orderBookServiceCancelOrderHandler.ServeHTTP(w, r)
+		case OrderBookServiceReplaceOrderProcedure:
+			orderBookServiceReplaceOrderHandler.ServeHTTP(w, r)
 		case OrderBookServiceCloseMarketProcedure:
 			orderBookServiceCloseMarketHandler.ServeHTTP(w, r)
 		case OrderBookServiceGetOrderBookProcedure:
@@ -419,6 +444,10 @@ func (UnimplementedOrderBookServiceHandler) PlaceOrder(context.Context, *connect
 
 func (UnimplementedOrderBookServiceHandler) CancelOrder(context.Context, *connect.Request[v1.CancelOrderRequest]) (*connect.Response[v1.CancelOrderResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.CancelOrder is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) ReplaceOrder(context.Context, *connect.Request[v1.ReplaceOrderRequest]) (*connect.Response[v1.ReplaceOrderResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.ReplaceOrder is not implemented"))
 }
 
 func (UnimplementedOrderBookServiceHandler) CloseMarket(context.Context, *connect.Request[v1.CloseMarketRequest]) (*connect.Response[v1.CloseMarketResponse], error) {
