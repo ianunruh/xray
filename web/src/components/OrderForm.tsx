@@ -25,15 +25,22 @@ export function OrderForm({
   const [orderType, setOrderType] = useState<string>("LIMIT");
   const [price, setPrice] = useState<number | string>("");
   const [quantity, setQuantity] = useState<number | string>("");
-  const [tif, setTif] = useState<string>("GTC");
+  const [tif, setTif] = useState<string>("DAY");
   const [loading, setLoading] = useState(false);
 
   const isMarket = orderType === "MARKET";
 
   async function handleSubmit() {
-    const qty = Number(quantity);
-    if (!qty || qty <= 0) return;
-    if (!isMarket && (!Number(price) || Number(price) <= 0)) return;
+    const qty = typeof quantity === "number" ? quantity : parseInt(quantity, 10);
+    const prc = typeof price === "number" ? price : parseFloat(price);
+    if (!qty || qty <= 0) {
+      notifications.show({ message: "Enter a valid quantity", color: "red" });
+      return;
+    }
+    if (!isMarket && (!prc || prc <= 0)) {
+      notifications.show({ message: "Enter a valid price", color: "red" });
+      return;
+    }
 
     setLoading(true);
     try {
@@ -43,7 +50,7 @@ export function OrderForm({
         side: side === "BUY" ? Side.BUY : Side.SELL,
         orderType:
           orderType === "LIMIT" ? OrderType.LIMIT : OrderType.MARKET,
-        price: isMarket ? 0n : moneyToPrice(Number(price)),
+        price: isMarket ? 0n : moneyToPrice(prc),
         quantity: BigInt(qty),
         timeInForce:
           tif === "GTC"
@@ -96,18 +103,20 @@ export function OrderForm({
               { label: "Limit", value: "LIMIT" },
               { label: "Market", value: "MARKET" },
             ]}
+            checkIconPosition="right"
           />
           <Select
             label="TIF"
             size="xs"
             value={tif}
-            onChange={(v) => setTif(v ?? "GTC")}
+            onChange={(v) => setTif(v ?? "DAY")}
             data={[
               { label: "GTC", value: "GTC" },
               { label: "IOC", value: "IOC" },
               { label: "FOK", value: "FOK" },
               { label: "DAY", value: "DAY" },
             ]}
+            checkIconPosition="right"
           />
         </Group>
         {!isMarket && (
