@@ -52,6 +52,7 @@ type reactorState struct {
 	status      Status
 
 	pendingFills   []fill
+	settledTrades  map[string]struct{}
 	orderCancelled bool
 	actionPending  bool
 }
@@ -227,7 +228,11 @@ func (r *Reactor) onFillRecorded(data *portfoliov1.OrderSagaFillRecorded) {
 		return
 	}
 	state.actionPending = false
-	_ = state // fills already tracked via filledQty in applyTrade
+	state.cashSettled += data.CashSettled
+	if state.settledTrades == nil {
+		state.settledTrades = make(map[string]struct{})
+	}
+	state.settledTrades[data.TradeId] = struct{}{}
 }
 
 func (r *Reactor) onSagaCompleted(data *portfoliov1.OrderSagaCompleted) {
@@ -272,6 +277,11 @@ func (r *Reactor) applyTrade(evt es.Event, data *orderbookv1.TradeExecuted) {
 	sagaID := r.orderToSaga[orderID]
 	state, ok := r.sagas[sagaID]
 	if !ok || state.status != OrderPlaced {
+		return
+	}
+
+	if _, settled := state.settledTrades[data.TradeId]; settled {
+		state.filledQty += data.Quantity
 		return
 	}
 

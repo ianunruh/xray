@@ -452,6 +452,91 @@ func TestReactor_SellOrder_InsufficientShares_SagaFails(t *testing.T) {
 	assert.Empty(t, p.SharesHeld)
 }
 
+func TestReactor_Recovery_NoDoubleFillSettlement(t *testing.T) {
+	// Simulate a restart after partial fills have been settled.
+	// Before the fix, replaying orderbook TradeExecuted events would add
+	// already-settled fills back to pendingFills, causing cash_held to go
+	// negative from duplicate CashSettled events on the portfolio.
+
+	registry := newFullTestRegistry()
+	store := memstore.New()
+	ctx := context.Background()
+	pub := &collectingPublisher{}
+
+	obHandler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
+		return orderbook.NewOrderBook(id)
+	}, slog.Default()).WithPublisher(pub)
+
+	sagaHandler := es.NewHandler(store, registry, func(id string) *ordersaga.OrderSaga {
+		return ordersaga.NewOrderSaga(id)
+	}, slog.Default()).WithPublisher(pub)
+
+	portfolioHandler := es.NewHandler(store, registry, func(id string) *portfolio.Portfolio {
+		return portfolio.NewPortfolio(id)
+	}, slog.Default()).WithPublisher(pub)
+
+	reactor := ordersaga.NewReactor(sagaHandler, portfolioHandler, obHandler, slog.Default())
+	reactor.SetReady(ctx)
+
+	env := &reactorTestEnv{
+		ctx: ctx, obHandler: obHandler, sagaHandler: sagaHandler,
+		portfolioHandler: portfolioHandler, reactor: reactor,
+		store: store, registry: registry, pub: pub,
+	}
+
+	depositCash(t, env, "acct-1", 150000000)
+
+	// Place partial sell liquidity — only 60 of 100 shares.
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1500000, 60)
+	env.pub.events = nil
+
+	startOrderSaga(t, env, "saga-1", "acct-1", "AAPL", orderbookv1.Side_SIDE_BUY, 1500000, 100)
+	env.flush()
+
+	// 60 shares filled & settled, saga still in OrderPlaced.
+	s := loadSaga(t, env, "saga-1")
+	require.Equal(t, ordersaga.OrderPlaced, s.Status)
+
+	p := loadPortfolio(t, env, "acct-1")
+	require.Equal(t, int64(60000000), p.CashHeld)
+	require.Equal(t, int64(0), p.CashBalance)
+
+	// --- Simulate restart: new reactor replays all events ---
+	reactor2 := ordersaga.NewReactor(sagaHandler, portfolioHandler, obHandler, slog.Default())
+
+	rawEvents, err := store.LoadAll(ctx)
+	require.NoError(t, err)
+
+	events := make([]es.Event, 0, len(rawEvents))
+	for _, raw := range rawEvents {
+		evt, err := registry.Deserialize(raw)
+		require.NoError(t, err)
+		events = append(events, evt)
+	}
+	err = reactor2.HandleEvents(ctx, events)
+	require.NoError(t, err)
+
+	reactor2.SetReady(ctx)
+
+	env2 := &reactorTestEnv{
+		ctx: ctx, obHandler: obHandler, sagaHandler: sagaHandler,
+		portfolioHandler: portfolioHandler, reactor: reactor2,
+		store: store, registry: registry, pub: pub,
+	}
+
+	// Place remaining liquidity to complete the order.
+	placeLimitOrder(t, env2, "AAPL", orderbook.Sell, 1500000, 40)
+	env2.flush()
+
+	s = loadSaga(t, env2, "saga-1")
+	assert.Equal(t, ordersaga.Completed, s.Status)
+
+	p = loadPortfolio(t, env2, "acct-1")
+	assert.Equal(t, int64(0), p.CashHeld)
+	assert.Equal(t, int64(0), p.CashBalance)
+	assert.Equal(t, int64(100), p.Holdings["AAPL"].Quantity)
+}
+
 func TestReactor_Recovery_FillsDuringReplay(t *testing.T) {
 	registry := newFullTestRegistry()
 	store := memstore.New()
