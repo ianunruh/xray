@@ -78,8 +78,8 @@ func (p *PgPnLProjection) handleSell(batch *pgx.Batch, accountID, symbol string,
 	// proceeds - (total_cost * sold_quantity / quantity)
 	batch.Queue(
 		`INSERT INTO projection_pnl (account_id, symbol, side, quantity, price, realized_pnl, settled_at)
-		SELECT $1, $2, $3, $4, $5,
-			$6 - CASE WHEN pp.quantity > 0 THEN pp.total_cost * $4 / pp.quantity ELSE 0 END,
+		SELECT $1, $2, $3::INT, $4::BIGINT, $5::BIGINT,
+			$6::BIGINT - CASE WHEN pp.quantity > 0 THEN pp.total_cost * $4::BIGINT / pp.quantity ELSE 0 END,
 			$7
 		FROM projection_pnl_positions pp
 		WHERE pp.account_id = $1 AND pp.symbol = $2`,
