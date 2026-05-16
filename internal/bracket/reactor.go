@@ -380,14 +380,14 @@ func (r *Reactor) executePlaceExitOrders(ctx context.Context, sagaID string) err
 		exitSide = orderbookv1.Side_SIDE_BUY
 	}
 
-	tpOrderID, err := r.placeExitOrder(ctx, symbol, exitSide, tpPrice, entryQty, orderbook.Limit, 0)
-	if err != nil {
+	tpOrderID := TakeProfitOrderID(sagaID)
+	if err := r.placeExitOrder(ctx, symbol, exitSide, tpPrice, entryQty, orderbook.Limit, 0, tpOrderID); err != nil {
 		r.log.Error("failed to place take-profit order", "saga_id", sagaID, "error", err)
 		return r.emitActionFailed(ctx, sagaID, "place_exit_orders", err.Error())
 	}
 
-	slOrderID, err := r.placeExitOrder(ctx, symbol, exitSide, 0, entryQty, orderbook.StopMarket, slPrice)
-	if err != nil {
+	slOrderID := StopLossOrderID(sagaID)
+	if err := r.placeExitOrder(ctx, symbol, exitSide, 0, entryQty, orderbook.StopMarket, slPrice, slOrderID); err != nil {
 		r.log.Error("failed to place stop-loss order", "saga_id", sagaID, "error", err)
 		r.trackCancelFailure(ctx, sagaID, symbol, tpOrderID)
 		return r.emitActionFailed(ctx, sagaID, "place_exit_orders", err.Error())
@@ -399,7 +399,7 @@ func (r *Reactor) executePlaceExitOrders(ctx context.Context, sagaID string) err
 		StopLossOrderID:   slOrderID,
 	}
 
-	err = r.sagaHandler.Handle(ctx, cmd, func(saga *BracketSaga) ([]es.Event, error) {
+	err := r.sagaHandler.Handle(ctx, cmd, func(saga *BracketSaga) ([]es.Event, error) {
 		return ExecuteRecordEntryFilled(saga, cmd)
 	})
 	if err != nil {
@@ -530,7 +530,7 @@ func (r *Reactor) cancelOrder(ctx context.Context, symbol, orderID string) error
 	})
 }
 
-func (r *Reactor) placeExitOrder(ctx context.Context, symbol string, side orderbookv1.Side, price, qty int64, orderType orderbook.OrderType, stopPrice int64) (string, error) {
+func (r *Reactor) placeExitOrder(ctx context.Context, symbol string, side orderbookv1.Side, price, qty int64, orderType orderbook.OrderType, stopPrice int64, orderID string) error {
 	cmd := orderbook.PlaceOrder{
 		Symbol:      symbol,
 		Side:        orderbook.SideFromProto(side),
@@ -539,21 +539,9 @@ func (r *Reactor) placeExitOrder(ctx context.Context, symbol string, side orderb
 		Quantity:    qty,
 		OrderType:   orderType,
 		TimeInForce: orderbook.GTC,
+		OrderID:     orderID,
 	}
-
-	var orderID string
-	err := r.orderbookHandler.Handle(ctx, cmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
-		events, err := orderbook.ExecutePlaceOrder(book, cmd)
-		if err != nil {
-			return nil, err
-		}
-		for _, evt := range events {
-			if placed, ok := evt.Data.(*orderbookv1.OrderPlaced); ok {
-				orderID = placed.OrderId
-				break
-			}
-		}
-		return events, nil
+	return r.orderbookHandler.Handle(ctx, cmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecutePlaceOrder(book, cmd)
 	})
-	return orderID, err
 }

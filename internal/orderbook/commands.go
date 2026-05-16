@@ -73,7 +73,16 @@ func (c ReplaceOrder) AggregateID() string {
 }
 
 // ExecutePlaceOrder produces events for placing and matching a new order.
+// When cmd.OrderID is provided and the book already contains an order with
+// that ID, the call is treated as a duplicate and returns no events. This
+// lets callers retry placement safely after a crash between PlaceOrder
+// succeeding and the caller's follow-up write.
 func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
+	if cmd.OrderID != "" {
+		if _, exists := book.Orders[cmd.OrderID]; exists {
+			return nil, nil
+		}
+	}
 	if cmd.Quantity <= 0 {
 		return nil, ErrInvalidQuantity
 	}
@@ -364,7 +373,16 @@ func ExecuteCancelOrder(book *OrderBook, cmd CancelOrder) ([]es.Event, error) {
 // ExecuteReplaceOrder atomically cancels an existing order and places a new one.
 // It produces OrderCancelled (for the old order), OrderPlaced (for the new
 // order), and any TradeExecuted events from matching the new order.
+//
+// When cmd.NewOrderID is provided and already exists on the book, the call
+// is treated as a duplicate and returns no events — the replacement has
+// already happened.
 func ExecuteReplaceOrder(book *OrderBook, cmd ReplaceOrder) ([]es.Event, error) {
+	if cmd.NewOrderID != "" {
+		if _, exists := book.Orders[cmd.NewOrderID]; exists {
+			return nil, nil
+		}
+	}
 	oldOrder, ok := book.Orders[cmd.OldOrderID]
 	if !ok {
 		return nil, ErrOrderNotFound

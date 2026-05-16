@@ -14,6 +14,18 @@ func AggregateID(sagaID string) string {
 	return AggregateType + ":" + sagaID
 }
 
+// TakeProfitOrderID and StopLossOrderID return deterministic orderbook
+// orderIDs for a bracket saga's exit legs. Deriving them from sagaID lets
+// the reactor safely retry exit placement after a crash between PlaceOrder
+// and RecordEntryFilled — the orderbook treats the retry as a duplicate.
+func TakeProfitOrderID(sagaID string) string {
+	return "bracket-saga:" + sagaID + ":tp"
+}
+
+func StopLossOrderID(sagaID string) string {
+	return "bracket-saga:" + sagaID + ":sl"
+}
+
 type Status int
 
 const (

@@ -165,6 +165,73 @@ func TestCancelOrder_NotFound(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestPlaceOrder_DuplicateOrderID_Idempotent(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	events, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:   "AAPL",
+		Side:     orderbook.Sell,
+		Price:    1500000,
+		Quantity: 100,
+		OrderID:  "saga-1",
+	})
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+
+	// Retrying with the same OrderID emits no events.
+	events, err = orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:   "AAPL",
+		Side:     orderbook.Sell,
+		Price:    1500000,
+		Quantity: 100,
+		OrderID:  "saga-1",
+	})
+	require.NoError(t, err)
+	assert.Empty(t, events)
+	assert.Equal(t, int64(100), book.Orders["saga-1"].RemainingQty)
+}
+
+func TestReplaceOrder_DuplicateNewOrderID_Idempotent(t *testing.T) {
+	book := orderbook.NewOrderBook("orderbook:AAPL")
+	book.Symbol = "AAPL"
+
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:   "AAPL",
+		Side:     orderbook.Sell,
+		Price:    1500000,
+		Quantity: 100,
+		OrderID:  "old",
+	})
+	require.NoError(t, err)
+
+	events, err := orderbook.ExecuteReplaceOrder(book, orderbook.ReplaceOrder{
+		Symbol:     "AAPL",
+		OldOrderID: "old",
+		NewOrderID: "new",
+		Side:       orderbook.Sell,
+		Price:      1600000,
+		Quantity:   100,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, events)
+	_, oldStillThere := book.Orders["old"]
+	assert.False(t, oldStillThere)
+
+	// Retrying with the same NewOrderID is a no-op — the replacement already happened.
+	events, err = orderbook.ExecuteReplaceOrder(book, orderbook.ReplaceOrder{
+		Symbol:     "AAPL",
+		OldOrderID: "old",
+		NewOrderID: "new",
+		Side:       orderbook.Sell,
+		Price:      1600000,
+		Quantity:   100,
+	})
+	require.NoError(t, err)
+	assert.Empty(t, events)
+	assert.Equal(t, int64(100), book.Orders["new"].RemainingQty)
+}
+
 func TestPlaceOrder_InvalidInput(t *testing.T) {
 	book := orderbook.NewOrderBook("orderbook:AAPL")
 	book.Symbol = "AAPL"

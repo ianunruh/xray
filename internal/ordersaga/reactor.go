@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/google/uuid"
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
 	"github.com/ianunruh/xray/internal/orderbook"
@@ -524,10 +523,10 @@ func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
 	replaceOrderID := state.replaceOrderID
 	r.mu.Unlock()
 
-	// Pre-generate orderID and register the mapping before placing the order
-	// so that orderbook events (trades, cancels) published asynchronously can
-	// be matched to this saga.
-	orderID := uuid.New().String()
+	// Derive orderID from sagaID so that re-running this action after a
+	// crash between PlaceOrder and RecordOrderPlaced computes the same ID,
+	// and the orderbook's duplicate-OrderID check makes the retry a no-op.
+	orderID := OrderID(sagaID)
 	r.mu.Lock()
 	r.orderToSaga[orderID] = sagaID
 	r.mu.Unlock()

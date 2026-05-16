@@ -14,6 +14,13 @@ func AggregateID(sagaID string) string {
 	return AggregateType + ":" + sagaID
 }
 
+// OrderID returns the deterministic orderbook orderID for a given saga.
+// Since each saga places exactly one order, deriving the orderID from
+// the sagaID lets the reactor safely retry placement after a crash.
+func OrderID(sagaID string) string {
+	return "order-saga:" + sagaID
+}
+
 type Status int
 
 const (
