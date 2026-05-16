@@ -283,28 +283,25 @@ func (r *Reactor) applyTrade(evt es.Event, data *orderbookv1.TradeExecuted) {
 		r.lastVersion[evt.AggregateID] = evt.Version
 	}
 
-	orderID := r.matchOrderID(data)
-	if orderID == "" {
-		return
-	}
+	for _, orderID := range r.matchOrderIDs(data) {
+		sagaID := r.orderToSaga[orderID]
+		state, ok := r.sagas[sagaID]
+		if !ok || state.status != OrderPlaced {
+			continue
+		}
 
-	sagaID := r.orderToSaga[orderID]
-	state, ok := r.sagas[sagaID]
-	if !ok || state.status != OrderPlaced {
-		return
-	}
+		if _, settled := state.settledTrades[data.TradeId]; settled {
+			state.filledQty += data.Quantity
+			continue
+		}
 
-	if _, settled := state.settledTrades[data.TradeId]; settled {
 		state.filledQty += data.Quantity
-		return
+		state.pendingFills = append(state.pendingFills, fill{
+			tradeID:  data.TradeId,
+			quantity: data.Quantity,
+			price:    data.Price,
+		})
 	}
-
-	state.filledQty += data.Quantity
-	state.pendingFills = append(state.pendingFills, fill{
-		tradeID:  data.TradeId,
-		quantity: data.Quantity,
-		price:    data.Price,
-	})
 }
 
 func (r *Reactor) applyCancel(evt es.Event, data *orderbookv1.OrderCancelled) {
@@ -338,14 +335,15 @@ func (r *Reactor) cleanupSaga(state *reactorState) {
 	delete(r.sagas, state.sagaID)
 }
 
-func (r *Reactor) matchOrderID(data *orderbookv1.TradeExecuted) string {
+func (r *Reactor) matchOrderIDs(data *orderbookv1.TradeExecuted) []string {
+	var ids []string
 	if _, ok := r.orderToSaga[data.BuyOrderId]; ok {
-		return data.BuyOrderId
+		ids = append(ids, data.BuyOrderId)
 	}
 	if _, ok := r.orderToSaga[data.SellOrderId]; ok {
-		return data.SellOrderId
+		ids = append(ids, data.SellOrderId)
 	}
-	return ""
+	return ids
 }
 
 func (r *Reactor) collectActions() []action {

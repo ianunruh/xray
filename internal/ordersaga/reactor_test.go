@@ -603,6 +603,54 @@ func TestReactor_Recovery_FillsDuringReplay(t *testing.T) {
 	assert.Equal(t, ordersaga.Completed, s.Status)
 }
 
+func TestReactor_BothSidesTracked(t *testing.T) {
+	env := setupReactorTest(t)
+
+	// Portfolio A: has cash, will buy.
+	depositCash(t, env, "acct-A", 150000000)
+	// Portfolio B: has shares (bought previously), will sell.
+	depositCash(t, env, "acct-B", 150000000)
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1500000, 100)
+	env.pub.events = nil
+	startOrderSaga(t, env, "saga-buy-setup", "acct-B", "AAPL", orderbookv1.Side_SIDE_BUY, 1500000, 100)
+	env.flush()
+
+	p := loadPortfolio(t, env, "acct-B")
+	require.Equal(t, int64(100), p.Holdings["AAPL"].Quantity)
+
+	// Start buy limit on A.
+	startOrderSaga(t, env, "saga-buy", "acct-A", "AAPL", orderbookv1.Side_SIDE_BUY, 1500000, 100)
+	env.flush()
+
+	buyS := loadSaga(t, env, "saga-buy")
+	require.Equal(t, ordersaga.OrderPlaced, buyS.Status)
+
+	// Start market sell on B — should match against A's resting buy.
+	startOrderSaga(t, env, "saga-sell", "acct-B", "AAPL", orderbookv1.Side_SIDE_SELL, 1500000, 100)
+	env.flush()
+
+	// Both sagas should complete.
+	buyS = loadSaga(t, env, "saga-buy")
+	assert.Equal(t, ordersaga.Completed, buyS.Status)
+	assert.Equal(t, int64(100), buyS.FilledQty)
+
+	sellS := loadSaga(t, env, "saga-sell")
+	assert.Equal(t, ordersaga.Completed, sellS.Status)
+	assert.Equal(t, int64(100), sellS.FilledQty)
+
+	// Portfolio A: spent $150k, owns 100 shares.
+	pA := loadPortfolio(t, env, "acct-A")
+	assert.Equal(t, int64(0), pA.CashBalance)
+	assert.Equal(t, int64(0), pA.CashHeld)
+	assert.Equal(t, int64(100), pA.Holdings["AAPL"].Quantity)
+
+	// Portfolio B: sold 100 shares, received $150k.
+	pB := loadPortfolio(t, env, "acct-B")
+	assert.Equal(t, int64(150000000), pB.CashBalance)
+	assert.Empty(t, pB.SharesHeld)
+	assert.Nil(t, pB.Holdings["AAPL"])
+}
+
 func TestReactor_ReplaceOrder_FullLifecycle(t *testing.T) {
 	env := setupReactorTest(t)
 
