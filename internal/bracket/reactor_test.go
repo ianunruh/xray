@@ -276,3 +276,38 @@ func TestBracket_InsufficientCash_EntryFails(t *testing.T) {
 	assert.Equal(t, int64(1_000_000), p.CashBalance, "cash untouched")
 	assert.Equal(t, int64(0), p.CashHeld)
 }
+
+func TestBracket_StatelessReactor_FreshInstanceHandlesMidLifecycleEvents(t *testing.T) {
+	// Simulates a process restart: a fresh bracket reactor (with no
+	// in-memory state for the saga) should still correctly transition
+	// the bracket from PendingEntry to PendingExit when it observes
+	// OrderSagaCompleted for the entry saga. This is the property
+	// that motivated the stateless rewrite.
+	e := setupEnv(t)
+	deposit(t, e, "acct-1", 150_000_000)
+	placeLimitOrder(t, e, "AAPL", orderbook.Sell, 1500000, 100)
+	e.pub.events = nil
+
+	startBracket(t, e, "acct-1", "br-1", "AAPL", orderbookv1.Side_SIDE_BUY,
+		1500000, 100, 1550000, 1450000)
+	e.flush()
+
+	// Sanity: bracket is now PendingExit, exits placed on the book.
+	require.Equal(t, bracket.PendingExit, loadBracket(t, e, "br-1").Status)
+
+	// "Restart" the bracket reactor with a fresh instance — no state
+	// inherited from the previous run.
+	e.bracketReactor = bracket.NewReactor(e.bracketHandler, e.orderSagaHandler, e.portfolioHandler, e.obHandler, slog.Default())
+
+	// Drop a buy at TP price; TP sell exits. The fresh reactor sees
+	// TradeExecuted and must settle it correctly with no prior state.
+	placeLimitOrder(t, e, "AAPL", orderbook.Buy, 1550000, 100)
+	e.flush()
+
+	b := loadBracket(t, e, "br-1")
+	assert.Equal(t, bracket.Completed, b.Status, "fresh reactor completed the bracket")
+
+	p := loadPortfolio(t, e, "acct-1")
+	assert.Equal(t, int64(155_000_000), p.CashBalance)
+	assert.Empty(t, p.SharesHeld)
+}
