@@ -88,6 +88,14 @@ func (ps *priceSide) All() iter.Seq[*Order] {
 	}
 }
 
+// BestPrice returns the best (first) price level, or 0 if empty.
+func (ps *priceSide) BestPrice() int64 {
+	if len(ps.prices) == 0 {
+		return 0
+	}
+	return ps.prices[0]
+}
+
 // Len returns the total number of orders across all price levels.
 func (ps *priceSide) Len() int {
 	return ps.count

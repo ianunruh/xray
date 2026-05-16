@@ -400,9 +400,26 @@ func (r *Reactor) executeHoldCash(ctx context.Context, sagaID string) error {
 	accountID := state.accountID
 	symbol := state.symbol
 	side := state.side
-	cashAmount := computeHoldAmount(state.orderType, state.side, state.price, state.quantity)
-	shareQty := computeShareHoldQuantity(state.orderType, state.side, state.quantity)
+	oType := state.orderType
+	price := state.price
+	quantity := state.quantity
 	r.mu.Unlock()
+
+	if oType == orderbook.Market && side == orderbookv1.Side_SIDE_BUY {
+		book, err := r.orderbookHandler.Load(ctx, orderbook.AggregateID(symbol))
+		if err != nil {
+			r.log.Error("failed to load orderbook for market order hold", "saga_id", sagaID, "error", err)
+			return r.emitActionFailed(ctx, sagaID, "hold_cash")
+		}
+		price = book.Asks.BestPrice()
+		if price == 0 {
+			r.log.Error("no ask liquidity for market buy hold", "saga_id", sagaID)
+			return r.emitActionFailed(ctx, sagaID, "hold_cash")
+		}
+	}
+
+	cashAmount := computeHoldAmount(oType, side, price, quantity)
+	shareQty := computeShareHoldQuantity(oType, side, quantity)
 
 	if side == orderbookv1.Side_SIDE_SELL && shareQty > 0 {
 		holdCmd := portfolio.HoldShares{
@@ -766,17 +783,11 @@ func computeHoldAmount(orderType orderbook.OrderType, side orderbookv1.Side, pri
 	if side == orderbookv1.Side_SIDE_SELL {
 		return 0
 	}
-	if orderType == orderbook.Market {
-		return 0
-	}
 	return price * quantity
 }
 
 func computeShareHoldQuantity(orderType orderbook.OrderType, side orderbookv1.Side, quantity int64) int64 {
 	if side == orderbookv1.Side_SIDE_BUY {
-		return 0
-	}
-	if orderType == orderbook.Market {
 		return 0
 	}
 	return quantity
