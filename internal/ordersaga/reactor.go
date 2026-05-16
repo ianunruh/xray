@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/google/uuid"
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
 	"github.com/ianunruh/xray/internal/orderbook"
@@ -485,6 +486,14 @@ func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
 	accountID := state.accountID
 	r.mu.Unlock()
 
+	// Pre-generate orderID and register the mapping before placing the order
+	// so that orderbook events (trades, cancels) published asynchronously can
+	// be matched to this saga.
+	orderID := uuid.New().String()
+	r.mu.Lock()
+	r.orderToSaga[orderID] = sagaID
+	r.mu.Unlock()
+
 	placeCmd := orderbook.PlaceOrder{
 		Symbol:      symbol,
 		Side:        orderbook.SideFromProto(side),
@@ -493,23 +502,16 @@ func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
 		OrderType:   orderType,
 		TimeInForce: timeInForce,
 		AccountID:   accountID,
+		OrderID:     orderID,
 	}
 
-	var orderID string
 	err := r.orderbookHandler.Handle(ctx, placeCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
-		events, err := orderbook.ExecutePlaceOrder(book, placeCmd)
-		if err != nil {
-			return nil, err
-		}
-		for _, evt := range events {
-			if placed, ok := evt.Data.(*orderbookv1.OrderPlaced); ok {
-				orderID = placed.OrderId
-				break
-			}
-		}
-		return events, nil
+		return orderbook.ExecutePlaceOrder(book, placeCmd)
 	})
 	if err != nil {
+		r.mu.Lock()
+		delete(r.orderToSaga, orderID)
+		r.mu.Unlock()
 		r.log.Error("failed to place order", "saga_id", sagaID, "error", err)
 		return r.emitActionFailed(ctx, sagaID, "place_order")
 	}
