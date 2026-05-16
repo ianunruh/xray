@@ -97,6 +97,9 @@ func ExecuteHoldCash(p *Portfolio, cmd HoldCash) ([]es.Event, error) {
 	if cmd.Amount <= 0 {
 		return nil, ErrInvalidAmount
 	}
+	if p.HoldsBySaga[cmd.OrderSagaID] != 0 {
+		return nil, nil
+	}
 	if p.CashBalance < cmd.Amount {
 		return nil, ErrInsufficientFunds
 	}
@@ -243,6 +246,9 @@ func (c HoldShares) AggregateID() string {
 func ExecuteHoldShares(p *Portfolio, cmd HoldShares) ([]es.Event, error) {
 	if cmd.Quantity <= 0 {
 		return nil, ErrInvalidQuantity
+	}
+	if p.ShareHoldsBySaga[cmd.OrderSagaID] != nil {
+		return nil, nil
 	}
 	h := p.Holdings[cmd.Symbol]
 	available := int64(0)

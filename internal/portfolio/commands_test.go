@@ -343,6 +343,64 @@ func TestHoldAndReleaseShares(t *testing.T) {
 	assert.Empty(t, p.ShareHoldsBySaga)
 }
 
+func TestHoldCash_Idempotent(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	deposit := portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000}
+	err := handler.Handle(ctx, deposit, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, deposit)
+	})
+	require.NoError(t, err)
+
+	hold := portfolio.HoldCash{AccountID: "acct-1", OrderSagaID: "saga-1", Amount: 4000000}
+	err = handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCash(p, hold)
+	})
+	require.NoError(t, err)
+
+	// Second hold for the same saga must be a no-op: no event, no double-deduction.
+	err = handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCash(p, hold)
+	})
+	require.NoError(t, err)
+
+	p := mustLoad(t, handler, ctx, "acct-1")
+	assert.Equal(t, int64(6000000), p.CashBalance)
+	assert.Equal(t, int64(4000000), p.CashHeld)
+	assert.Equal(t, int64(4000000), p.HoldsBySaga["saga-1"])
+	assert.Equal(t, p.Version(), 2) // Deposit + Hold, no second Hold event.
+}
+
+func TestHoldShares_Idempotent(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	setupPortfolioWithHolding(t, handler, ctx, "acct-1", "AAPL", 100, 1500000)
+	versionBeforeHold := mustLoad(t, handler, ctx, "acct-1").Version()
+
+	hold := portfolio.HoldShares{AccountID: "acct-1", OrderSagaID: "saga-1", Symbol: "AAPL", Quantity: 60}
+	err := handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShares(p, hold)
+	})
+	require.NoError(t, err)
+
+	// Second hold for the same saga must be a no-op: no event, no double-reservation.
+	err = handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShares(p, hold)
+	})
+	require.NoError(t, err)
+
+	p := mustLoad(t, handler, ctx, "acct-1")
+	assert.Equal(t, int64(60), p.SharesHeld["AAPL"])
+	assert.Equal(t, int64(60), p.ShareHoldsBySaga["saga-1"].Quantity)
+	assert.Equal(t, p.Version(), versionBeforeHold+1) // single Hold event, second was a no-op.
+}
+
 func TestReleaseCash_Idempotent(t *testing.T) {
 	registry := newTestRegistry()
 	store := memstore.New()
