@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, GetSagaRequest, GetSagaResponse, ListOrdersRequest, ListOrdersResponse, ListSagasRequest, ListSagasResponse, ListTradesRequest, ListTradesResponse, PlaceBracketOrderRequest, PlaceBracketOrderResponse, PlaceOrderRequest, PlaceOrderResponse, StreamCandlesRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade } from "./service_pb.js";
+import { CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, GetSagaRequest, GetSagaResponse, ListOrdersRequest, ListOrdersResponse, ListSagasRequest, ListSagasResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, PlaceBracketOrderRequest, PlaceBracketOrderResponse, PlaceOrderRequest, PlaceOrderResponse, StreamCandlesRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -82,6 +82,15 @@ export declare const OrderBookService: {
       readonly name: "ListOrders",
       readonly I: typeof ListOrdersRequest,
       readonly O: typeof ListOrdersResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc orderbook.v1.OrderBookService.ListSymbols
+     */
+    readonly listSymbols: {
+      readonly name: "ListSymbols",
+      readonly I: typeof ListSymbolsRequest,
+      readonly O: typeof ListSymbolsResponse,
       readonly kind: MethodKind.Unary,
     },
     /**

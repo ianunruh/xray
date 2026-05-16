@@ -570,6 +570,34 @@ export declare type PnLEntry = Message<"portfolio.v1.PnLEntry"> & {
 export declare const PnLEntrySchema: GenMessage<PnLEntry>;
 
 /**
+ * @generated from message portfolio.v1.ListPortfoliosRequest
+ */
+export declare type ListPortfoliosRequest = Message<"portfolio.v1.ListPortfoliosRequest"> & {
+};
+
+/**
+ * Describes the message portfolio.v1.ListPortfoliosRequest.
+ * Use `create(ListPortfoliosRequestSchema)` to create a new message.
+ */
+export declare const ListPortfoliosRequestSchema: GenMessage<ListPortfoliosRequest>;
+
+/**
+ * @generated from message portfolio.v1.ListPortfoliosResponse
+ */
+export declare type ListPortfoliosResponse = Message<"portfolio.v1.ListPortfoliosResponse"> & {
+  /**
+   * @generated from field: repeated string account_ids = 1;
+   */
+  accountIds: string[];
+};
+
+/**
+ * Describes the message portfolio.v1.ListPortfoliosResponse.
+ * Use `create(ListPortfoliosResponseSchema)` to create a new message.
+ */
+export declare const ListPortfoliosResponseSchema: GenMessage<ListPortfoliosResponse>;
+
+/**
  * @generated from enum portfolio.v1.PendingOrderStatus
  */
 export enum PendingOrderStatus {
@@ -706,6 +734,14 @@ export declare const PortfolioService: GenService<{
     methodKind: "unary";
     input: typeof GetOrderStatusRequestSchema;
     output: typeof GetOrderStatusResponseSchema;
+  },
+  /**
+   * @generated from rpc portfolio.v1.PortfolioService.ListPortfolios
+   */
+  listPortfolios: {
+    methodKind: "unary";
+    input: typeof ListPortfoliosRequestSchema;
+    output: typeof ListPortfoliosResponseSchema;
   },
 }>;
 

@@ -20,6 +20,7 @@ var (
 
 type PortfolioReader interface {
 	GetPortfolio(ctx context.Context, accountID string) (*portfoliov1.GetPortfolioResponse, error)
+	ListPortfolios(ctx context.Context) ([]string, error)
 }
 
 type PlaceOrderFunc func(ctx context.Context, req *portfoliov1.PortfolioPlaceOrderRequest) (sagaID string, err error)
@@ -198,6 +199,20 @@ func (s *Server) StreamPortfolio(ctx context.Context, req *connect.Request[portf
 			}
 		}
 	}
+}
+
+func (s *Server) ListPortfolios(ctx context.Context, req *connect.Request[portfoliov1.ListPortfoliosRequest]) (*connect.Response[portfoliov1.ListPortfoliosResponse], error) {
+	ids, err := s.reader.ListPortfolios(ctx)
+	if err != nil {
+		s.log.Error("ListPortfolios failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	s.log.Info("ListPortfolios", "count", len(ids))
+
+	return connect.NewResponse(&portfoliov1.ListPortfoliosResponse{
+		AccountIds: ids,
+	}), nil
 }
 
 func (s *Server) GetPnL(ctx context.Context, req *connect.Request[portfoliov1.GetPnLRequest]) (*connect.Response[portfoliov1.GetPnLResponse], error) {

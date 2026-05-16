@@ -16,6 +16,7 @@ service PortfolioService {
   rpc GetPnL(GetPnLRequest) returns (GetPnLResponse);
   rpc PlaceOrder(PortfolioPlaceOrderRequest) returns (PortfolioPlaceOrderResponse);
   rpc GetOrderStatus(GetOrderStatusRequest) returns (GetOrderStatusResponse);
+  rpc ListPortfolios(ListPortfoliosRequest) returns (ListPortfoliosResponse);
 }
 
 message DepositRequest {
@@ -155,4 +156,10 @@ message PnLEntry {
   int64 price = 4;
   int64 realized_pnl = 5;
   google.protobuf.Timestamp settled_at = 6;
+}
+
+message ListPortfoliosRequest {}
+
+message ListPortfoliosResponse {
+  repeated string account_ids = 1;
 }

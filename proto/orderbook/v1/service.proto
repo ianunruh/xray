@@ -24,6 +24,7 @@ service OrderBookService {
   rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
   rpc ListTrades(ListTradesRequest) returns (ListTradesResponse);
   rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+  rpc ListSymbols(ListSymbolsRequest) returns (ListSymbolsResponse);
   rpc StreamMarketDepth(StreamMarketDepthRequest) returns (stream GetMarketDepthResponse);
   rpc StreamTrades(StreamTradesRequest) returns (stream Trade);
   rpc GetCandles(GetCandlesRequest) returns (GetCandlesResponse);
@@ -183,6 +184,12 @@ message StreamCandlesRequest {
 
 message ListOrdersResponse {
   repeated OrderSummary orders = 1;
+}
+
+message ListSymbolsRequest {}
+
+message ListSymbolsResponse {
+  repeated string symbols = 1;
 }
 
 message OrderSummary {

@@ -27,3 +27,8 @@ type CandleReader interface {
 	GetCandles(symbol string, interval orderbookv1.CandleInterval, from, to time.Time) []*orderbookv1.Candle
 	GetLatestCandle(symbol string, interval orderbookv1.CandleInterval) *orderbookv1.Candle
 }
+
+// SymbolReader provides read access to the list of known symbols.
+type SymbolReader interface {
+	ListSymbols() []string
+}

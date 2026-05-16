@@ -651,6 +651,34 @@ export declare type ListOrdersResponse = Message<"orderbook.v1.ListOrdersRespons
 export declare const ListOrdersResponseSchema: GenMessage<ListOrdersResponse>;
 
 /**
+ * @generated from message orderbook.v1.ListSymbolsRequest
+ */
+export declare type ListSymbolsRequest = Message<"orderbook.v1.ListSymbolsRequest"> & {
+};
+
+/**
+ * Describes the message orderbook.v1.ListSymbolsRequest.
+ * Use `create(ListSymbolsRequestSchema)` to create a new message.
+ */
+export declare const ListSymbolsRequestSchema: GenMessage<ListSymbolsRequest>;
+
+/**
+ * @generated from message orderbook.v1.ListSymbolsResponse
+ */
+export declare type ListSymbolsResponse = Message<"orderbook.v1.ListSymbolsResponse"> & {
+  /**
+   * @generated from field: repeated string symbols = 1;
+   */
+  symbols: string[];
+};
+
+/**
+ * Describes the message orderbook.v1.ListSymbolsResponse.
+ * Use `create(ListSymbolsResponseSchema)` to create a new message.
+ */
+export declare const ListSymbolsResponseSchema: GenMessage<ListSymbolsResponse>;
+
+/**
  * @generated from message orderbook.v1.OrderSummary
  */
 export declare type OrderSummary = Message<"orderbook.v1.OrderSummary"> & {
@@ -1101,6 +1129,14 @@ export declare const OrderBookService: GenService<{
     methodKind: "unary";
     input: typeof ListOrdersRequestSchema;
     output: typeof ListOrdersResponseSchema;
+  },
+  /**
+   * @generated from rpc orderbook.v1.OrderBookService.ListSymbols
+   */
+  listSymbols: {
+    methodKind: "unary";
+    input: typeof ListSymbolsRequestSchema;
+    output: typeof ListSymbolsResponseSchema;
   },
   /**
    * @generated from rpc orderbook.v1.OrderBookService.StreamMarketDepth

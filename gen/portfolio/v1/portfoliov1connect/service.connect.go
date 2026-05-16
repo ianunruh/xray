@@ -56,6 +56,9 @@ const (
 	// PortfolioServiceGetOrderStatusProcedure is the fully-qualified name of the PortfolioService's
 	// GetOrderStatus RPC.
 	PortfolioServiceGetOrderStatusProcedure = "/portfolio.v1.PortfolioService/GetOrderStatus"
+	// PortfolioServiceListPortfoliosProcedure is the fully-qualified name of the PortfolioService's
+	// ListPortfolios RPC.
+	PortfolioServiceListPortfoliosProcedure = "/portfolio.v1.PortfolioService/ListPortfolios"
 )
 
 // PortfolioServiceClient is a client for the portfolio.v1.PortfolioService service.
@@ -68,6 +71,7 @@ type PortfolioServiceClient interface {
 	GetPnL(context.Context, *connect.Request[v1.GetPnLRequest]) (*connect.Response[v1.GetPnLResponse], error)
 	PlaceOrder(context.Context, *connect.Request[v1.PortfolioPlaceOrderRequest]) (*connect.Response[v1.PortfolioPlaceOrderResponse], error)
 	GetOrderStatus(context.Context, *connect.Request[v1.GetOrderStatusRequest]) (*connect.Response[v1.GetOrderStatusResponse], error)
+	ListPortfolios(context.Context, *connect.Request[v1.ListPortfoliosRequest]) (*connect.Response[v1.ListPortfoliosResponse], error)
 }
 
 // NewPortfolioServiceClient constructs a client for the portfolio.v1.PortfolioService service. By
@@ -129,6 +133,12 @@ func NewPortfolioServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(portfolioServiceMethods.ByName("GetOrderStatus")),
 			connect.WithClientOptions(opts...),
 		),
+		listPortfolios: connect.NewClient[v1.ListPortfoliosRequest, v1.ListPortfoliosResponse](
+			httpClient,
+			baseURL+PortfolioServiceListPortfoliosProcedure,
+			connect.WithSchema(portfolioServiceMethods.ByName("ListPortfolios")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -142,6 +152,7 @@ type portfolioServiceClient struct {
 	getPnL          *connect.Client[v1.GetPnLRequest, v1.GetPnLResponse]
 	placeOrder      *connect.Client[v1.PortfolioPlaceOrderRequest, v1.PortfolioPlaceOrderResponse]
 	getOrderStatus  *connect.Client[v1.GetOrderStatusRequest, v1.GetOrderStatusResponse]
+	listPortfolios  *connect.Client[v1.ListPortfoliosRequest, v1.ListPortfoliosResponse]
 }
 
 // Deposit calls portfolio.v1.PortfolioService.Deposit.
@@ -184,6 +195,11 @@ func (c *portfolioServiceClient) GetOrderStatus(ctx context.Context, req *connec
 	return c.getOrderStatus.CallUnary(ctx, req)
 }
 
+// ListPortfolios calls portfolio.v1.PortfolioService.ListPortfolios.
+func (c *portfolioServiceClient) ListPortfolios(ctx context.Context, req *connect.Request[v1.ListPortfoliosRequest]) (*connect.Response[v1.ListPortfoliosResponse], error) {
+	return c.listPortfolios.CallUnary(ctx, req)
+}
+
 // PortfolioServiceHandler is an implementation of the portfolio.v1.PortfolioService service.
 type PortfolioServiceHandler interface {
 	Deposit(context.Context, *connect.Request[v1.DepositRequest]) (*connect.Response[v1.DepositResponse], error)
@@ -194,6 +210,7 @@ type PortfolioServiceHandler interface {
 	GetPnL(context.Context, *connect.Request[v1.GetPnLRequest]) (*connect.Response[v1.GetPnLResponse], error)
 	PlaceOrder(context.Context, *connect.Request[v1.PortfolioPlaceOrderRequest]) (*connect.Response[v1.PortfolioPlaceOrderResponse], error)
 	GetOrderStatus(context.Context, *connect.Request[v1.GetOrderStatusRequest]) (*connect.Response[v1.GetOrderStatusResponse], error)
+	ListPortfolios(context.Context, *connect.Request[v1.ListPortfoliosRequest]) (*connect.Response[v1.ListPortfoliosResponse], error)
 }
 
 // NewPortfolioServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -251,6 +268,12 @@ func NewPortfolioServiceHandler(svc PortfolioServiceHandler, opts ...connect.Han
 		connect.WithSchema(portfolioServiceMethods.ByName("GetOrderStatus")),
 		connect.WithHandlerOptions(opts...),
 	)
+	portfolioServiceListPortfoliosHandler := connect.NewUnaryHandler(
+		PortfolioServiceListPortfoliosProcedure,
+		svc.ListPortfolios,
+		connect.WithSchema(portfolioServiceMethods.ByName("ListPortfolios")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/portfolio.v1.PortfolioService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case PortfolioServiceDepositProcedure:
@@ -269,6 +292,8 @@ func NewPortfolioServiceHandler(svc PortfolioServiceHandler, opts ...connect.Han
 			portfolioServicePlaceOrderHandler.ServeHTTP(w, r)
 		case PortfolioServiceGetOrderStatusProcedure:
 			portfolioServiceGetOrderStatusHandler.ServeHTTP(w, r)
+		case PortfolioServiceListPortfoliosProcedure:
+			portfolioServiceListPortfoliosHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -308,4 +333,8 @@ func (UnimplementedPortfolioServiceHandler) PlaceOrder(context.Context, *connect
 
 func (UnimplementedPortfolioServiceHandler) GetOrderStatus(context.Context, *connect.Request[v1.GetOrderStatusRequest]) (*connect.Response[v1.GetOrderStatusResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portfolio.v1.PortfolioService.GetOrderStatus is not implemented"))
+}
+
+func (UnimplementedPortfolioServiceHandler) ListPortfolios(context.Context, *connect.Request[v1.ListPortfoliosRequest]) (*connect.Response[v1.ListPortfoliosResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portfolio.v1.PortfolioService.ListPortfolios is not implemented"))
 }

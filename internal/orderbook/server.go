@@ -21,18 +21,20 @@ type Server struct {
 	log     *slog.Logger
 	trades  TradeReader
 	orders  OrderReader
+	symbols SymbolReader
 	depth   DepthReader
 	candles CandleReader
 	broker  *Broker
 }
 
 // NewServer creates a new Server with the given dependencies.
-func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeReader, orders OrderReader, depth DepthReader, candles CandleReader, broker *Broker) *Server {
+func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeReader, orders OrderReader, symbols SymbolReader, depth DepthReader, candles CandleReader, broker *Broker) *Server {
 	return &Server{
 		handler: handler,
 		log:     log,
 		trades:  trades,
 		orders:  orders,
+		symbols: symbols,
 		depth:   depth,
 		candles: candles,
 		broker:  broker,
@@ -220,6 +222,16 @@ func (s *Server) ListOrders(ctx context.Context, req *connect.Request[orderbookv
 
 	return connect.NewResponse(&orderbookv1.ListOrdersResponse{
 		Orders: orders,
+	}), nil
+}
+
+func (s *Server) ListSymbols(ctx context.Context, req *connect.Request[orderbookv1.ListSymbolsRequest]) (*connect.Response[orderbookv1.ListSymbolsResponse], error) {
+	symbols := s.symbols.ListSymbols()
+
+	s.log.Info("ListSymbols", "count", len(symbols))
+
+	return connect.NewResponse(&orderbookv1.ListSymbolsResponse{
+		Symbols: symbols,
 	}), nil
 }
 

@@ -1,14 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AppShell,
   Group,
+  Select,
   SimpleGrid,
   Stack,
-  TextInput,
   Title,
 } from "@mantine/core";
 import { PortfolioPanel } from "./components/PortfolioPanel";
 import { MarketPanel } from "./components/MarketPanel";
+import { orderBookClient, portfolioClient } from "./client";
 
 function getParam(key: string): string {
   return new URLSearchParams(window.location.search).get(key) ?? "";
@@ -28,30 +29,44 @@ function setParam(key: string, value: string) {
 export function App() {
   const [account, setAccount] = useState(getParam("account"));
   const [symbol, setSymbol] = useState(getParam("symbol"));
+  const [accounts, setAccounts] = useState<string[]>([]);
+  const [symbols, setSymbols] = useState<string[]>([]);
+
+  useEffect(() => {
+    portfolioClient.listPortfolios({}).then((r) => setAccounts(r.accountIds));
+    orderBookClient.listSymbols({}).then((r) => setSymbols(r.symbols));
+  }, []);
 
   return (
     <AppShell header={{ height: 50 }} padding="md">
       <AppShell.Header p="xs">
         <Group gap="md" h="100%">
           <Title order={4}>xray</Title>
-          <TextInput
+          <Select
             size="xs"
-            placeholder="Account ID"
-            value={account}
-            onChange={(e) => {
-              setAccount(e.currentTarget.value);
-              setParam("account", e.currentTarget.value);
+            placeholder="Account"
+            data={accounts}
+            value={account || null}
+            onChange={(v) => {
+              const val = v ?? "";
+              setAccount(val);
+              setParam("account", val);
             }}
+            searchable
+            clearable
           />
-          <TextInput
+          <Select
             size="xs"
             placeholder="Symbol"
-            value={symbol}
-            onChange={(e) => {
-              const v = e.currentTarget.value.toUpperCase();
-              setSymbol(v);
-              setParam("symbol", v);
+            data={symbols}
+            value={symbol || null}
+            onChange={(v) => {
+              const val = v ?? "";
+              setSymbol(val);
+              setParam("symbol", val);
             }}
+            searchable
+            clearable
           />
         </Group>
       </AppShell.Header>

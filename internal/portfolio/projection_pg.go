@@ -151,6 +151,26 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 	return nil
 }
 
+func (p *PgPortfolioProjection) ListPortfolios(ctx context.Context) ([]string, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT account_id FROM projection_portfolios ORDER BY account_id`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query portfolios: %w", err)
+	}
+	defer rows.Close()
+
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan portfolio: %w", err)
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID string) (*portfoliov1.GetPortfolioResponse, error) {
 	resp := &portfoliov1.GetPortfolioResponse{
 		AccountId: accountID,

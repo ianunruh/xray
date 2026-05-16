@@ -106,6 +106,18 @@ func (p *OrderProjection) GetOrder(symbol, orderID string) (*orderbookv1.OrderSu
 	return summary, ok
 }
 
+// ListSymbols returns all known symbols.
+func (p *OrderProjection) ListSymbols() []string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	out := make([]string, 0, len(p.orders))
+	for symbol := range p.orders {
+		out = append(out, symbol)
+	}
+	return out
+}
+
 // ListOrders returns all orders for the given symbol.
 func (p *OrderProjection) ListOrders(symbol string) []*orderbookv1.OrderSummary {
 	p.mu.RLock()

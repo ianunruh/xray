@@ -59,6 +59,9 @@ const (
 	// OrderBookServiceListOrdersProcedure is the fully-qualified name of the OrderBookService's
 	// ListOrders RPC.
 	OrderBookServiceListOrdersProcedure = "/orderbook.v1.OrderBookService/ListOrders"
+	// OrderBookServiceListSymbolsProcedure is the fully-qualified name of the OrderBookService's
+	// ListSymbols RPC.
+	OrderBookServiceListSymbolsProcedure = "/orderbook.v1.OrderBookService/ListSymbols"
 	// OrderBookServiceStreamMarketDepthProcedure is the fully-qualified name of the OrderBookService's
 	// StreamMarketDepth RPC.
 	OrderBookServiceStreamMarketDepthProcedure = "/orderbook.v1.OrderBookService/StreamMarketDepth"
@@ -90,6 +93,7 @@ type OrderBookServiceClient interface {
 	GetOrder(context.Context, *connect.Request[v1.GetOrderRequest]) (*connect.Response[v1.GetOrderResponse], error)
 	ListTrades(context.Context, *connect.Request[v1.ListTradesRequest]) (*connect.Response[v1.ListTradesResponse], error)
 	ListOrders(context.Context, *connect.Request[v1.ListOrdersRequest]) (*connect.Response[v1.ListOrdersResponse], error)
+	ListSymbols(context.Context, *connect.Request[v1.ListSymbolsRequest]) (*connect.Response[v1.ListSymbolsResponse], error)
 	StreamMarketDepth(context.Context, *connect.Request[v1.StreamMarketDepthRequest]) (*connect.ServerStreamForClient[v1.GetMarketDepthResponse], error)
 	StreamTrades(context.Context, *connect.Request[v1.StreamTradesRequest]) (*connect.ServerStreamForClient[v1.Trade], error)
 	GetCandles(context.Context, *connect.Request[v1.GetCandlesRequest]) (*connect.Response[v1.GetCandlesResponse], error)
@@ -155,6 +159,12 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(orderBookServiceMethods.ByName("ListOrders")),
 			connect.WithClientOptions(opts...),
 		),
+		listSymbols: connect.NewClient[v1.ListSymbolsRequest, v1.ListSymbolsResponse](
+			httpClient,
+			baseURL+OrderBookServiceListSymbolsProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("ListSymbols")),
+			connect.WithClientOptions(opts...),
+		),
 		streamMarketDepth: connect.NewClient[v1.StreamMarketDepthRequest, v1.GetMarketDepthResponse](
 			httpClient,
 			baseURL+OrderBookServiceStreamMarketDepthProcedure,
@@ -192,6 +202,7 @@ type orderBookServiceClient struct {
 	getOrder          *connect.Client[v1.GetOrderRequest, v1.GetOrderResponse]
 	listTrades        *connect.Client[v1.ListTradesRequest, v1.ListTradesResponse]
 	listOrders        *connect.Client[v1.ListOrdersRequest, v1.ListOrdersResponse]
+	listSymbols       *connect.Client[v1.ListSymbolsRequest, v1.ListSymbolsResponse]
 	streamMarketDepth *connect.Client[v1.StreamMarketDepthRequest, v1.GetMarketDepthResponse]
 	streamTrades      *connect.Client[v1.StreamTradesRequest, v1.Trade]
 	getCandles        *connect.Client[v1.GetCandlesRequest, v1.GetCandlesResponse]
@@ -238,6 +249,11 @@ func (c *orderBookServiceClient) ListOrders(ctx context.Context, req *connect.Re
 	return c.listOrders.CallUnary(ctx, req)
 }
 
+// ListSymbols calls orderbook.v1.OrderBookService.ListSymbols.
+func (c *orderBookServiceClient) ListSymbols(ctx context.Context, req *connect.Request[v1.ListSymbolsRequest]) (*connect.Response[v1.ListSymbolsResponse], error) {
+	return c.listSymbols.CallUnary(ctx, req)
+}
+
 // StreamMarketDepth calls orderbook.v1.OrderBookService.StreamMarketDepth.
 func (c *orderBookServiceClient) StreamMarketDepth(ctx context.Context, req *connect.Request[v1.StreamMarketDepthRequest]) (*connect.ServerStreamForClient[v1.GetMarketDepthResponse], error) {
 	return c.streamMarketDepth.CallServerStream(ctx, req)
@@ -268,6 +284,7 @@ type OrderBookServiceHandler interface {
 	GetOrder(context.Context, *connect.Request[v1.GetOrderRequest]) (*connect.Response[v1.GetOrderResponse], error)
 	ListTrades(context.Context, *connect.Request[v1.ListTradesRequest]) (*connect.Response[v1.ListTradesResponse], error)
 	ListOrders(context.Context, *connect.Request[v1.ListOrdersRequest]) (*connect.Response[v1.ListOrdersResponse], error)
+	ListSymbols(context.Context, *connect.Request[v1.ListSymbolsRequest]) (*connect.Response[v1.ListSymbolsResponse], error)
 	StreamMarketDepth(context.Context, *connect.Request[v1.StreamMarketDepthRequest], *connect.ServerStream[v1.GetMarketDepthResponse]) error
 	StreamTrades(context.Context, *connect.Request[v1.StreamTradesRequest], *connect.ServerStream[v1.Trade]) error
 	GetCandles(context.Context, *connect.Request[v1.GetCandlesRequest]) (*connect.Response[v1.GetCandlesResponse], error)
@@ -329,6 +346,12 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 		connect.WithSchema(orderBookServiceMethods.ByName("ListOrders")),
 		connect.WithHandlerOptions(opts...),
 	)
+	orderBookServiceListSymbolsHandler := connect.NewUnaryHandler(
+		OrderBookServiceListSymbolsProcedure,
+		svc.ListSymbols,
+		connect.WithSchema(orderBookServiceMethods.ByName("ListSymbols")),
+		connect.WithHandlerOptions(opts...),
+	)
 	orderBookServiceStreamMarketDepthHandler := connect.NewServerStreamHandler(
 		OrderBookServiceStreamMarketDepthProcedure,
 		svc.StreamMarketDepth,
@@ -371,6 +394,8 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 			orderBookServiceListTradesHandler.ServeHTTP(w, r)
 		case OrderBookServiceListOrdersProcedure:
 			orderBookServiceListOrdersHandler.ServeHTTP(w, r)
+		case OrderBookServiceListSymbolsProcedure:
+			orderBookServiceListSymbolsHandler.ServeHTTP(w, r)
 		case OrderBookServiceStreamMarketDepthProcedure:
 			orderBookServiceStreamMarketDepthHandler.ServeHTTP(w, r)
 		case OrderBookServiceStreamTradesProcedure:
@@ -418,6 +443,10 @@ func (UnimplementedOrderBookServiceHandler) ListTrades(context.Context, *connect
 
 func (UnimplementedOrderBookServiceHandler) ListOrders(context.Context, *connect.Request[v1.ListOrdersRequest]) (*connect.Response[v1.ListOrdersResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.ListOrders is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) ListSymbols(context.Context, *connect.Request[v1.ListSymbolsRequest]) (*connect.Response[v1.ListSymbolsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.ListSymbols is not implemented"))
 }
 
 func (UnimplementedOrderBookServiceHandler) StreamMarketDepth(context.Context, *connect.Request[v1.StreamMarketDepthRequest], *connect.ServerStream[v1.GetMarketDepthResponse]) error {

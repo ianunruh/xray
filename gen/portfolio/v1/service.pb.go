@@ -1369,6 +1369,86 @@ func (x *PnLEntry) GetSettledAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type ListPortfoliosRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListPortfoliosRequest) Reset() {
+	*x = ListPortfoliosRequest{}
+	mi := &file_portfolio_v1_service_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListPortfoliosRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListPortfoliosRequest) ProtoMessage() {}
+
+func (x *ListPortfoliosRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_portfolio_v1_service_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListPortfoliosRequest.ProtoReflect.Descriptor instead.
+func (*ListPortfoliosRequest) Descriptor() ([]byte, []int) {
+	return file_portfolio_v1_service_proto_rawDescGZIP(), []int{19}
+}
+
+type ListPortfoliosResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AccountIds    []string               `protobuf:"bytes,1,rep,name=account_ids,json=accountIds,proto3" json:"account_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListPortfoliosResponse) Reset() {
+	*x = ListPortfoliosResponse{}
+	mi := &file_portfolio_v1_service_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListPortfoliosResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListPortfoliosResponse) ProtoMessage() {}
+
+func (x *ListPortfoliosResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_portfolio_v1_service_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListPortfoliosResponse.ProtoReflect.Descriptor instead.
+func (*ListPortfoliosResponse) Descriptor() ([]byte, []int) {
+	return file_portfolio_v1_service_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *ListPortfoliosResponse) GetAccountIds() []string {
+	if x != nil {
+		return x.AccountIds
+	}
+	return nil
+}
+
 var File_portfolio_v1_service_proto protoreflect.FileDescriptor
 
 const file_portfolio_v1_service_proto_rawDesc = "" +
@@ -1482,7 +1562,11 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\x05price\x18\x04 \x01(\x03R\x05price\x12!\n" +
 	"\frealized_pnl\x18\x05 \x01(\x03R\vrealizedPnl\x129\n" +
 	"\n" +
-	"settled_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tsettledAt*\xa7\x01\n" +
+	"settled_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tsettledAt\"\x17\n" +
+	"\x15ListPortfoliosRequest\"9\n" +
+	"\x16ListPortfoliosResponse\x12\x1f\n" +
+	"\vaccount_ids\x18\x01 \x03(\tR\n" +
+	"accountIds*\xa7\x01\n" +
 	"\x12PendingOrderStatus\x12$\n" +
 	" PENDING_ORDER_STATUS_UNSPECIFIED\x10\x00\x12 \n" +
 	"\x1cPENDING_ORDER_STATUS_STARTED\x10\x01\x12\"\n" +
@@ -1494,7 +1578,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\x16ORDER_STATUS_CASH_HELD\x10\x02\x12\x1d\n" +
 	"\x19ORDER_STATUS_ORDER_PLACED\x10\x03\x12\x1a\n" +
 	"\x16ORDER_STATUS_COMPLETED\x10\x04\x12\x17\n" +
-	"\x13ORDER_STATUS_FAILED\x10\x052\xb7\x05\n" +
+	"\x13ORDER_STATUS_FAILED\x10\x052\x94\x06\n" +
 	"\x10PortfolioService\x12F\n" +
 	"\aDeposit\x12\x1c.portfolio.v1.DepositRequest\x1a\x1d.portfolio.v1.DepositResponse\x12I\n" +
 	"\bWithdraw\x12\x1d.portfolio.v1.WithdrawRequest\x1a\x1e.portfolio.v1.WithdrawResponse\x12U\n" +
@@ -1504,7 +1588,8 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\x06GetPnL\x12\x1b.portfolio.v1.GetPnLRequest\x1a\x1c.portfolio.v1.GetPnLResponse\x12a\n" +
 	"\n" +
 	"PlaceOrder\x12(.portfolio.v1.PortfolioPlaceOrderRequest\x1a).portfolio.v1.PortfolioPlaceOrderResponse\x12[\n" +
-	"\x0eGetOrderStatus\x12#.portfolio.v1.GetOrderStatusRequest\x1a$.portfolio.v1.GetOrderStatusResponseB7Z5github.com/ianunruh/xray/gen/portfolio/v1;portfoliov1b\x06proto3"
+	"\x0eGetOrderStatus\x12#.portfolio.v1.GetOrderStatusRequest\x1a$.portfolio.v1.GetOrderStatusResponse\x12[\n" +
+	"\x0eListPortfolios\x12#.portfolio.v1.ListPortfoliosRequest\x1a$.portfolio.v1.ListPortfoliosResponseB7Z5github.com/ianunruh/xray/gen/portfolio/v1;portfoliov1b\x06proto3"
 
 var (
 	file_portfolio_v1_service_proto_rawDescOnce sync.Once
@@ -1519,7 +1604,7 @@ func file_portfolio_v1_service_proto_rawDescGZIP() []byte {
 }
 
 var file_portfolio_v1_service_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_portfolio_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_portfolio_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_portfolio_v1_service_proto_goTypes = []any{
 	(PendingOrderStatus)(0),             // 0: portfolio.v1.PendingOrderStatus
 	(OrderStatus)(0),                    // 1: portfolio.v1.OrderStatus
@@ -1542,30 +1627,32 @@ var file_portfolio_v1_service_proto_goTypes = []any{
 	(*GetPnLResponse)(nil),              // 18: portfolio.v1.GetPnLResponse
 	(*PositionPnL)(nil),                 // 19: portfolio.v1.PositionPnL
 	(*PnLEntry)(nil),                    // 20: portfolio.v1.PnLEntry
-	(v1.Side)(0),                        // 21: orderbook.v1.Side
-	(v1.OrderType)(0),                   // 22: orderbook.v1.OrderType
-	(v1.TimeInForce)(0),                 // 23: orderbook.v1.TimeInForce
-	(*timestamppb.Timestamp)(nil),       // 24: google.protobuf.Timestamp
+	(*ListPortfoliosRequest)(nil),       // 21: portfolio.v1.ListPortfoliosRequest
+	(*ListPortfoliosResponse)(nil),      // 22: portfolio.v1.ListPortfoliosResponse
+	(v1.Side)(0),                        // 23: orderbook.v1.Side
+	(v1.OrderType)(0),                   // 24: orderbook.v1.OrderType
+	(v1.TimeInForce)(0),                 // 25: orderbook.v1.TimeInForce
+	(*timestamppb.Timestamp)(nil),       // 26: google.protobuf.Timestamp
 }
 var file_portfolio_v1_service_proto_depIdxs = []int32{
 	10, // 0: portfolio.v1.GetPortfolioResponse.holdings:type_name -> portfolio.v1.Holding
 	11, // 1: portfolio.v1.GetPortfolioResponse.pending_orders:type_name -> portfolio.v1.PendingOrder
-	21, // 2: portfolio.v1.PendingOrder.side:type_name -> orderbook.v1.Side
-	22, // 3: portfolio.v1.PendingOrder.order_type:type_name -> orderbook.v1.OrderType
-	23, // 4: portfolio.v1.PendingOrder.time_in_force:type_name -> orderbook.v1.TimeInForce
+	23, // 2: portfolio.v1.PendingOrder.side:type_name -> orderbook.v1.Side
+	24, // 3: portfolio.v1.PendingOrder.order_type:type_name -> orderbook.v1.OrderType
+	25, // 4: portfolio.v1.PendingOrder.time_in_force:type_name -> orderbook.v1.TimeInForce
 	0,  // 5: portfolio.v1.PendingOrder.status:type_name -> portfolio.v1.PendingOrderStatus
-	24, // 6: portfolio.v1.PendingOrder.started_at:type_name -> google.protobuf.Timestamp
-	21, // 7: portfolio.v1.PortfolioPlaceOrderRequest.side:type_name -> orderbook.v1.Side
-	22, // 8: portfolio.v1.PortfolioPlaceOrderRequest.order_type:type_name -> orderbook.v1.OrderType
-	23, // 9: portfolio.v1.PortfolioPlaceOrderRequest.time_in_force:type_name -> orderbook.v1.TimeInForce
-	21, // 10: portfolio.v1.GetOrderStatusResponse.side:type_name -> orderbook.v1.Side
-	22, // 11: portfolio.v1.GetOrderStatusResponse.order_type:type_name -> orderbook.v1.OrderType
-	23, // 12: portfolio.v1.GetOrderStatusResponse.time_in_force:type_name -> orderbook.v1.TimeInForce
+	26, // 6: portfolio.v1.PendingOrder.started_at:type_name -> google.protobuf.Timestamp
+	23, // 7: portfolio.v1.PortfolioPlaceOrderRequest.side:type_name -> orderbook.v1.Side
+	24, // 8: portfolio.v1.PortfolioPlaceOrderRequest.order_type:type_name -> orderbook.v1.OrderType
+	25, // 9: portfolio.v1.PortfolioPlaceOrderRequest.time_in_force:type_name -> orderbook.v1.TimeInForce
+	23, // 10: portfolio.v1.GetOrderStatusResponse.side:type_name -> orderbook.v1.Side
+	24, // 11: portfolio.v1.GetOrderStatusResponse.order_type:type_name -> orderbook.v1.OrderType
+	25, // 12: portfolio.v1.GetOrderStatusResponse.time_in_force:type_name -> orderbook.v1.TimeInForce
 	1,  // 13: portfolio.v1.GetOrderStatusResponse.status:type_name -> portfolio.v1.OrderStatus
 	19, // 14: portfolio.v1.GetPnLResponse.positions:type_name -> portfolio.v1.PositionPnL
 	20, // 15: portfolio.v1.GetPnLResponse.history:type_name -> portfolio.v1.PnLEntry
-	21, // 16: portfolio.v1.PnLEntry.side:type_name -> orderbook.v1.Side
-	24, // 17: portfolio.v1.PnLEntry.settled_at:type_name -> google.protobuf.Timestamp
+	23, // 16: portfolio.v1.PnLEntry.side:type_name -> orderbook.v1.Side
+	26, // 17: portfolio.v1.PnLEntry.settled_at:type_name -> google.protobuf.Timestamp
 	2,  // 18: portfolio.v1.PortfolioService.Deposit:input_type -> portfolio.v1.DepositRequest
 	4,  // 19: portfolio.v1.PortfolioService.Withdraw:input_type -> portfolio.v1.WithdrawRequest
 	6,  // 20: portfolio.v1.PortfolioService.CreditShares:input_type -> portfolio.v1.CreditSharesRequest
@@ -1574,16 +1661,18 @@ var file_portfolio_v1_service_proto_depIdxs = []int32{
 	17, // 23: portfolio.v1.PortfolioService.GetPnL:input_type -> portfolio.v1.GetPnLRequest
 	12, // 24: portfolio.v1.PortfolioService.PlaceOrder:input_type -> portfolio.v1.PortfolioPlaceOrderRequest
 	14, // 25: portfolio.v1.PortfolioService.GetOrderStatus:input_type -> portfolio.v1.GetOrderStatusRequest
-	3,  // 26: portfolio.v1.PortfolioService.Deposit:output_type -> portfolio.v1.DepositResponse
-	5,  // 27: portfolio.v1.PortfolioService.Withdraw:output_type -> portfolio.v1.WithdrawResponse
-	7,  // 28: portfolio.v1.PortfolioService.CreditShares:output_type -> portfolio.v1.CreditSharesResponse
-	9,  // 29: portfolio.v1.PortfolioService.GetPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
-	9,  // 30: portfolio.v1.PortfolioService.StreamPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
-	18, // 31: portfolio.v1.PortfolioService.GetPnL:output_type -> portfolio.v1.GetPnLResponse
-	13, // 32: portfolio.v1.PortfolioService.PlaceOrder:output_type -> portfolio.v1.PortfolioPlaceOrderResponse
-	15, // 33: portfolio.v1.PortfolioService.GetOrderStatus:output_type -> portfolio.v1.GetOrderStatusResponse
-	26, // [26:34] is the sub-list for method output_type
-	18, // [18:26] is the sub-list for method input_type
+	21, // 26: portfolio.v1.PortfolioService.ListPortfolios:input_type -> portfolio.v1.ListPortfoliosRequest
+	3,  // 27: portfolio.v1.PortfolioService.Deposit:output_type -> portfolio.v1.DepositResponse
+	5,  // 28: portfolio.v1.PortfolioService.Withdraw:output_type -> portfolio.v1.WithdrawResponse
+	7,  // 29: portfolio.v1.PortfolioService.CreditShares:output_type -> portfolio.v1.CreditSharesResponse
+	9,  // 30: portfolio.v1.PortfolioService.GetPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
+	9,  // 31: portfolio.v1.PortfolioService.StreamPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
+	18, // 32: portfolio.v1.PortfolioService.GetPnL:output_type -> portfolio.v1.GetPnLResponse
+	13, // 33: portfolio.v1.PortfolioService.PlaceOrder:output_type -> portfolio.v1.PortfolioPlaceOrderResponse
+	15, // 34: portfolio.v1.PortfolioService.GetOrderStatus:output_type -> portfolio.v1.GetOrderStatusResponse
+	22, // 35: portfolio.v1.PortfolioService.ListPortfolios:output_type -> portfolio.v1.ListPortfoliosResponse
+	27, // [27:36] is the sub-list for method output_type
+	18, // [18:27] is the sub-list for method input_type
 	18, // [18:18] is the sub-list for extension type_name
 	18, // [18:18] is the sub-list for extension extendee
 	0,  // [0:18] is the sub-list for field type_name
@@ -1600,7 +1689,7 @@ func file_portfolio_v1_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_portfolio_v1_service_proto_rawDesc), len(file_portfolio_v1_service_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   19,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

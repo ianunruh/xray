@@ -149,7 +149,7 @@ func main() {
 	bracketReactor.SetReady(ctx)
 	orderSagaReactor.SetReady(ctx)
 
-	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, depthProjection, candleProjection, broker)
+	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, broker)
 	bracketSrv := bracket.NewServer(bracketHandler, obHandler, log)
 	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, pnlProjection, ordersaga.NewPlaceOrderFunc(orderSagaHandler), ordersaga.NewGetOrderStatusFunc(orderSagaHandler), portfolioBroker, log)
 

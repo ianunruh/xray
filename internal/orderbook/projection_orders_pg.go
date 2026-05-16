@@ -116,6 +116,26 @@ func (p *PgOrderProjection) ListOrders(symbol string) []*orderbookv1.OrderSummar
 	return out
 }
 
+func (p *PgOrderProjection) ListSymbols() []string {
+	rows, err := p.pool.Query(context.Background(),
+		`SELECT DISTINCT symbol FROM projection_orders ORDER BY symbol`,
+	)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var out []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
 type orderScannable interface {
 	Scan(dest ...any) error
 }
