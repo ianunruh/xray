@@ -168,7 +168,10 @@ func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID stri
 	}
 
 	rows, err := p.pool.Query(ctx,
-		`SELECT symbol, quantity, total_cost, shares_held FROM projection_holdings WHERE account_id = $1 AND quantity > 0`,
+		`SELECT h.symbol, h.quantity, h.total_cost, h.shares_held, COALESCE(p.realized_pnl, 0)
+		FROM projection_holdings h
+		LEFT JOIN projection_pnl_positions p ON h.account_id = p.account_id AND h.symbol = p.symbol
+		WHERE h.account_id = $1 AND h.quantity > 0`,
 		accountID,
 	)
 	if err != nil {
@@ -178,7 +181,7 @@ func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID stri
 
 	for rows.Next() {
 		h := &portfoliov1.Holding{}
-		if err := rows.Scan(&h.Symbol, &h.Quantity, &h.TotalCost, &h.SharesHeld); err != nil {
+		if err := rows.Scan(&h.Symbol, &h.Quantity, &h.TotalCost, &h.SharesHeld, &h.RealizedPnl); err != nil {
 			return nil, fmt.Errorf("scan holding: %w", err)
 		}
 		if h.Quantity > 0 {

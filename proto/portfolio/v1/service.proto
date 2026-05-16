@@ -12,6 +12,8 @@ service PortfolioService {
   rpc Withdraw(WithdrawRequest) returns (WithdrawResponse);
   rpc CreditShares(CreditSharesRequest) returns (CreditSharesResponse);
   rpc GetPortfolio(GetPortfolioRequest) returns (GetPortfolioResponse);
+  rpc StreamPortfolio(StreamPortfolioRequest) returns (stream GetPortfolioResponse);
+  rpc GetPnL(GetPnLRequest) returns (GetPnLResponse);
   rpc PlaceOrder(PortfolioPlaceOrderRequest) returns (PortfolioPlaceOrderResponse);
   rpc GetOrderStatus(GetOrderStatusRequest) returns (GetOrderStatusResponse);
 }
@@ -57,6 +59,7 @@ message Holding {
   int64 total_cost = 3;
   int64 average_cost = 4;
   int64 shares_held = 5;
+  int64 realized_pnl = 6;
 }
 
 enum PendingOrderStatus {
@@ -120,4 +123,36 @@ message GetOrderStatusResponse {
   int64 amount_held = 11;
   int64 cash_settled = 12;
   string order_id = 13;
+}
+
+message StreamPortfolioRequest {
+  string account_id = 1;
+}
+
+message GetPnLRequest {
+  string account_id = 1;
+}
+
+message GetPnLResponse {
+  string account_id = 1;
+  repeated PositionPnL positions = 2;
+  int64 total_realized_pnl = 3;
+  repeated PnLEntry history = 4;
+}
+
+message PositionPnL {
+  string symbol = 1;
+  int64 quantity = 2;
+  int64 avg_cost = 3;
+  int64 total_cost = 4;
+  int64 realized_pnl = 5;
+}
+
+message PnLEntry {
+  string symbol = 1;
+  orderbook.v1.Side side = 2;
+  int64 quantity = 3;
+  int64 price = 4;
+  int64 realized_pnl = 5;
+  google.protobuf.Timestamp settled_at = 6;
 }

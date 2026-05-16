@@ -126,9 +126,11 @@ func main() {
 	tradeProjection := orderbook.NewPgTradeProjection(pool)
 	orderProjection := orderbook.NewPgOrderProjection(pool)
 	portfolioProjection := portfolio.NewPgPortfolioProjection(pool)
+	pnlProjection := portfolio.NewPgPnLProjection(pool)
 	depthProjection := orderbook.NewDepthProjection()
 	candleProjection := orderbook.NewCandleProjection()
 	broker := orderbook.NewBroker()
+	portfolioBroker := portfolio.NewPortfolioBroker()
 	bracketReactor := bracket.NewReactor(bracketHandler, obHandler, log)
 	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
 
@@ -136,19 +138,20 @@ func main() {
 	// Ephemeral projections (in-memory) always replay from the beginning.
 	// Persistent projections (Pg-backed) resume from the last checkpoint.
 	consumer := natsstore.NewProjectionConsumer(js, registry, log).
-		WithEphemeral(depthProjection, candleProjection, broker, bracketReactor, orderSagaReactor).
-		WithPersistent(store, tradeProjection, orderProjection, portfolioProjection)
+		WithEphemeral(depthProjection, candleProjection, broker, portfolioBroker, bracketReactor, orderSagaReactor).
+		WithPersistent(store, tradeProjection, orderProjection, portfolioProjection, pnlProjection)
 	if err := consumer.Start(ctx); err != nil {
 		log.Error("failed to start projection consumer", "error", err)
 		os.Exit(1)
 	}
 	broker.SetReady()
+	portfolioBroker.SetReady()
 	bracketReactor.SetReady(ctx)
 	orderSagaReactor.SetReady(ctx)
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, depthProjection, candleProjection, broker)
 	bracketSrv := bracket.NewServer(bracketHandler, obHandler, log)
-	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, ordersaga.NewPlaceOrderFunc(orderSagaHandler), ordersaga.NewGetOrderStatusFunc(orderSagaHandler), log)
+	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, pnlProjection, ordersaga.NewPlaceOrderFunc(orderSagaHandler), ordersaga.NewGetOrderStatusFunc(orderSagaHandler), portfolioBroker, log)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import {
   AppShell,
-  Container,
   Group,
+  SimpleGrid,
   Stack,
   TextInput,
   Title,
@@ -57,12 +57,17 @@ export function App() {
       </AppShell.Header>
 
       <AppShell.Main>
-        <Container size="xl">
+        {account && symbol ? (
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+            <PortfolioPanel accountId={account} />
+            <MarketPanel symbol={symbol} />
+          </SimpleGrid>
+        ) : (
           <Stack gap="md">
             {account && <PortfolioPanel accountId={account} />}
             {symbol && <MarketPanel symbol={symbol} />}
           </Stack>
-        </Container>
+        )}
       </AppShell.Main>
     </AppShell>
   );

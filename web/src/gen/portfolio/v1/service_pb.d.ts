@@ -201,6 +201,11 @@ export declare type Holding = Message<"portfolio.v1.Holding"> & {
    * @generated from field: int64 shares_held = 5;
    */
   sharesHeld: bigint;
+
+  /**
+   * @generated from field: int64 realized_pnl = 6;
+   */
+  realizedPnl: bigint;
 };
 
 /**
@@ -425,6 +430,146 @@ export declare type GetOrderStatusResponse = Message<"portfolio.v1.GetOrderStatu
 export declare const GetOrderStatusResponseSchema: GenMessage<GetOrderStatusResponse>;
 
 /**
+ * @generated from message portfolio.v1.StreamPortfolioRequest
+ */
+export declare type StreamPortfolioRequest = Message<"portfolio.v1.StreamPortfolioRequest"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+};
+
+/**
+ * Describes the message portfolio.v1.StreamPortfolioRequest.
+ * Use `create(StreamPortfolioRequestSchema)` to create a new message.
+ */
+export declare const StreamPortfolioRequestSchema: GenMessage<StreamPortfolioRequest>;
+
+/**
+ * @generated from message portfolio.v1.GetPnLRequest
+ */
+export declare type GetPnLRequest = Message<"portfolio.v1.GetPnLRequest"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+};
+
+/**
+ * Describes the message portfolio.v1.GetPnLRequest.
+ * Use `create(GetPnLRequestSchema)` to create a new message.
+ */
+export declare const GetPnLRequestSchema: GenMessage<GetPnLRequest>;
+
+/**
+ * @generated from message portfolio.v1.GetPnLResponse
+ */
+export declare type GetPnLResponse = Message<"portfolio.v1.GetPnLResponse"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: repeated portfolio.v1.PositionPnL positions = 2;
+   */
+  positions: PositionPnL[];
+
+  /**
+   * @generated from field: int64 total_realized_pnl = 3;
+   */
+  totalRealizedPnl: bigint;
+
+  /**
+   * @generated from field: repeated portfolio.v1.PnLEntry history = 4;
+   */
+  history: PnLEntry[];
+};
+
+/**
+ * Describes the message portfolio.v1.GetPnLResponse.
+ * Use `create(GetPnLResponseSchema)` to create a new message.
+ */
+export declare const GetPnLResponseSchema: GenMessage<GetPnLResponse>;
+
+/**
+ * @generated from message portfolio.v1.PositionPnL
+ */
+export declare type PositionPnL = Message<"portfolio.v1.PositionPnL"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: int64 quantity = 2;
+   */
+  quantity: bigint;
+
+  /**
+   * @generated from field: int64 avg_cost = 3;
+   */
+  avgCost: bigint;
+
+  /**
+   * @generated from field: int64 total_cost = 4;
+   */
+  totalCost: bigint;
+
+  /**
+   * @generated from field: int64 realized_pnl = 5;
+   */
+  realizedPnl: bigint;
+};
+
+/**
+ * Describes the message portfolio.v1.PositionPnL.
+ * Use `create(PositionPnLSchema)` to create a new message.
+ */
+export declare const PositionPnLSchema: GenMessage<PositionPnL>;
+
+/**
+ * @generated from message portfolio.v1.PnLEntry
+ */
+export declare type PnLEntry = Message<"portfolio.v1.PnLEntry"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: orderbook.v1.Side side = 2;
+   */
+  side: Side;
+
+  /**
+   * @generated from field: int64 quantity = 3;
+   */
+  quantity: bigint;
+
+  /**
+   * @generated from field: int64 price = 4;
+   */
+  price: bigint;
+
+  /**
+   * @generated from field: int64 realized_pnl = 5;
+   */
+  realizedPnl: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp settled_at = 6;
+   */
+  settledAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.PnLEntry.
+ * Use `create(PnLEntrySchema)` to create a new message.
+ */
+export declare const PnLEntrySchema: GenMessage<PnLEntry>;
+
+/**
  * @generated from enum portfolio.v1.PendingOrderStatus
  */
 export enum PendingOrderStatus {
@@ -529,6 +674,22 @@ export declare const PortfolioService: GenService<{
     methodKind: "unary";
     input: typeof GetPortfolioRequestSchema;
     output: typeof GetPortfolioResponseSchema;
+  },
+  /**
+   * @generated from rpc portfolio.v1.PortfolioService.StreamPortfolio
+   */
+  streamPortfolio: {
+    methodKind: "server_streaming";
+    input: typeof StreamPortfolioRequestSchema;
+    output: typeof GetPortfolioResponseSchema;
+  },
+  /**
+   * @generated from rpc portfolio.v1.PortfolioService.GetPnL
+   */
+  getPnL: {
+    methodKind: "unary";
+    input: typeof GetPnLRequestSchema;
+    output: typeof GetPnLResponseSchema;
   },
   /**
    * @generated from rpc portfolio.v1.PortfolioService.PlaceOrder

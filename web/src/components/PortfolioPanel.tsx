@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
 import { Card, Group, Stack, Table, Text, Title } from "@mantine/core";
-import { portfolioClient } from "../client";
 import { formatMoney, formatPrice, formatQuantity } from "../format";
-import type { GetPortfolioResponse } from "../gen/portfolio/v1/service_pb";
 import { Side } from "../gen/orderbook/v1/events_pb";
 import { PendingOrderStatus } from "../gen/portfolio/v1/service_pb";
+import { usePortfolio } from "../hooks/usePortfolio";
 
 function sideName(side: Side): string {
   switch (side) {
@@ -31,32 +29,7 @@ function pendingStatusName(status: PendingOrderStatus): string {
 }
 
 export function PortfolioPanel({ accountId }: { accountId: string }) {
-  const [portfolio, setPortfolio] = useState<GetPortfolioResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchPortfolio = useCallback(async () => {
-    try {
-      const resp = await portfolioClient.getPortfolio({ accountId });
-      setPortfolio(resp);
-      setError(null);
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  }, [accountId]);
-
-  useEffect(() => {
-    fetchPortfolio();
-    const id = setInterval(fetchPortfolio, 5000);
-    return () => clearInterval(id);
-  }, [fetchPortfolio]);
-
-  if (error) {
-    return (
-      <Card withBorder>
-        <Text c="red">Portfolio error: {error}</Text>
-      </Card>
-    );
-  }
+  const portfolio = usePortfolio(accountId);
 
   if (!portfolio) {
     return (
@@ -65,6 +38,11 @@ export function PortfolioPanel({ accountId }: { accountId: string }) {
       </Card>
     );
   }
+
+  const totalRealizedPnl = portfolio.holdings.reduce(
+    (sum, h) => sum + h.realizedPnl,
+    0n,
+  );
 
   return (
     <Card withBorder>
@@ -84,6 +62,14 @@ export function PortfolioPanel({ accountId }: { accountId: string }) {
             </Text>
             <Text fw={700}>{formatMoney(portfolio.cashHeld)}</Text>
           </div>
+          <div>
+            <Text size="xs" c="dimmed">
+              Realized P&L
+            </Text>
+            <Text fw={700} c={totalRealizedPnl >= 0n ? "green" : "red"}>
+              {formatMoney(totalRealizedPnl)}
+            </Text>
+          </div>
         </Group>
 
         {portfolio.holdings.length > 0 && (
@@ -97,6 +83,7 @@ export function PortfolioPanel({ accountId }: { accountId: string }) {
                   <Table.Th ta="right">Avg Cost</Table.Th>
                   <Table.Th ta="right">Total Cost</Table.Th>
                   <Table.Th ta="right">Held</Table.Th>
+                  <Table.Th ta="right">Realized P&L</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -108,6 +95,12 @@ export function PortfolioPanel({ accountId }: { accountId: string }) {
                     <Table.Td ta="right">{formatMoney(h.totalCost)}</Table.Td>
                     <Table.Td ta="right">
                       {formatQuantity(h.sharesHeld)}
+                    </Table.Td>
+                    <Table.Td
+                      ta="right"
+                      c={h.realizedPnl >= 0n ? "green" : "red"}
+                    >
+                      {formatMoney(h.realizedPnl)}
                     </Table.Td>
                   </Table.Tr>
                 ))}

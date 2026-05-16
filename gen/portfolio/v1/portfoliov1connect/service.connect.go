@@ -45,6 +45,11 @@ const (
 	// PortfolioServiceGetPortfolioProcedure is the fully-qualified name of the PortfolioService's
 	// GetPortfolio RPC.
 	PortfolioServiceGetPortfolioProcedure = "/portfolio.v1.PortfolioService/GetPortfolio"
+	// PortfolioServiceStreamPortfolioProcedure is the fully-qualified name of the PortfolioService's
+	// StreamPortfolio RPC.
+	PortfolioServiceStreamPortfolioProcedure = "/portfolio.v1.PortfolioService/StreamPortfolio"
+	// PortfolioServiceGetPnLProcedure is the fully-qualified name of the PortfolioService's GetPnL RPC.
+	PortfolioServiceGetPnLProcedure = "/portfolio.v1.PortfolioService/GetPnL"
 	// PortfolioServicePlaceOrderProcedure is the fully-qualified name of the PortfolioService's
 	// PlaceOrder RPC.
 	PortfolioServicePlaceOrderProcedure = "/portfolio.v1.PortfolioService/PlaceOrder"
@@ -59,6 +64,8 @@ type PortfolioServiceClient interface {
 	Withdraw(context.Context, *connect.Request[v1.WithdrawRequest]) (*connect.Response[v1.WithdrawResponse], error)
 	CreditShares(context.Context, *connect.Request[v1.CreditSharesRequest]) (*connect.Response[v1.CreditSharesResponse], error)
 	GetPortfolio(context.Context, *connect.Request[v1.GetPortfolioRequest]) (*connect.Response[v1.GetPortfolioResponse], error)
+	StreamPortfolio(context.Context, *connect.Request[v1.StreamPortfolioRequest]) (*connect.ServerStreamForClient[v1.GetPortfolioResponse], error)
+	GetPnL(context.Context, *connect.Request[v1.GetPnLRequest]) (*connect.Response[v1.GetPnLResponse], error)
 	PlaceOrder(context.Context, *connect.Request[v1.PortfolioPlaceOrderRequest]) (*connect.Response[v1.PortfolioPlaceOrderResponse], error)
 	GetOrderStatus(context.Context, *connect.Request[v1.GetOrderStatusRequest]) (*connect.Response[v1.GetOrderStatusResponse], error)
 }
@@ -98,6 +105,18 @@ func NewPortfolioServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(portfolioServiceMethods.ByName("GetPortfolio")),
 			connect.WithClientOptions(opts...),
 		),
+		streamPortfolio: connect.NewClient[v1.StreamPortfolioRequest, v1.GetPortfolioResponse](
+			httpClient,
+			baseURL+PortfolioServiceStreamPortfolioProcedure,
+			connect.WithSchema(portfolioServiceMethods.ByName("StreamPortfolio")),
+			connect.WithClientOptions(opts...),
+		),
+		getPnL: connect.NewClient[v1.GetPnLRequest, v1.GetPnLResponse](
+			httpClient,
+			baseURL+PortfolioServiceGetPnLProcedure,
+			connect.WithSchema(portfolioServiceMethods.ByName("GetPnL")),
+			connect.WithClientOptions(opts...),
+		),
 		placeOrder: connect.NewClient[v1.PortfolioPlaceOrderRequest, v1.PortfolioPlaceOrderResponse](
 			httpClient,
 			baseURL+PortfolioServicePlaceOrderProcedure,
@@ -115,12 +134,14 @@ func NewPortfolioServiceClient(httpClient connect.HTTPClient, baseURL string, op
 
 // portfolioServiceClient implements PortfolioServiceClient.
 type portfolioServiceClient struct {
-	deposit        *connect.Client[v1.DepositRequest, v1.DepositResponse]
-	withdraw       *connect.Client[v1.WithdrawRequest, v1.WithdrawResponse]
-	creditShares   *connect.Client[v1.CreditSharesRequest, v1.CreditSharesResponse]
-	getPortfolio   *connect.Client[v1.GetPortfolioRequest, v1.GetPortfolioResponse]
-	placeOrder     *connect.Client[v1.PortfolioPlaceOrderRequest, v1.PortfolioPlaceOrderResponse]
-	getOrderStatus *connect.Client[v1.GetOrderStatusRequest, v1.GetOrderStatusResponse]
+	deposit         *connect.Client[v1.DepositRequest, v1.DepositResponse]
+	withdraw        *connect.Client[v1.WithdrawRequest, v1.WithdrawResponse]
+	creditShares    *connect.Client[v1.CreditSharesRequest, v1.CreditSharesResponse]
+	getPortfolio    *connect.Client[v1.GetPortfolioRequest, v1.GetPortfolioResponse]
+	streamPortfolio *connect.Client[v1.StreamPortfolioRequest, v1.GetPortfolioResponse]
+	getPnL          *connect.Client[v1.GetPnLRequest, v1.GetPnLResponse]
+	placeOrder      *connect.Client[v1.PortfolioPlaceOrderRequest, v1.PortfolioPlaceOrderResponse]
+	getOrderStatus  *connect.Client[v1.GetOrderStatusRequest, v1.GetOrderStatusResponse]
 }
 
 // Deposit calls portfolio.v1.PortfolioService.Deposit.
@@ -143,6 +164,16 @@ func (c *portfolioServiceClient) GetPortfolio(ctx context.Context, req *connect.
 	return c.getPortfolio.CallUnary(ctx, req)
 }
 
+// StreamPortfolio calls portfolio.v1.PortfolioService.StreamPortfolio.
+func (c *portfolioServiceClient) StreamPortfolio(ctx context.Context, req *connect.Request[v1.StreamPortfolioRequest]) (*connect.ServerStreamForClient[v1.GetPortfolioResponse], error) {
+	return c.streamPortfolio.CallServerStream(ctx, req)
+}
+
+// GetPnL calls portfolio.v1.PortfolioService.GetPnL.
+func (c *portfolioServiceClient) GetPnL(ctx context.Context, req *connect.Request[v1.GetPnLRequest]) (*connect.Response[v1.GetPnLResponse], error) {
+	return c.getPnL.CallUnary(ctx, req)
+}
+
 // PlaceOrder calls portfolio.v1.PortfolioService.PlaceOrder.
 func (c *portfolioServiceClient) PlaceOrder(ctx context.Context, req *connect.Request[v1.PortfolioPlaceOrderRequest]) (*connect.Response[v1.PortfolioPlaceOrderResponse], error) {
 	return c.placeOrder.CallUnary(ctx, req)
@@ -159,6 +190,8 @@ type PortfolioServiceHandler interface {
 	Withdraw(context.Context, *connect.Request[v1.WithdrawRequest]) (*connect.Response[v1.WithdrawResponse], error)
 	CreditShares(context.Context, *connect.Request[v1.CreditSharesRequest]) (*connect.Response[v1.CreditSharesResponse], error)
 	GetPortfolio(context.Context, *connect.Request[v1.GetPortfolioRequest]) (*connect.Response[v1.GetPortfolioResponse], error)
+	StreamPortfolio(context.Context, *connect.Request[v1.StreamPortfolioRequest], *connect.ServerStream[v1.GetPortfolioResponse]) error
+	GetPnL(context.Context, *connect.Request[v1.GetPnLRequest]) (*connect.Response[v1.GetPnLResponse], error)
 	PlaceOrder(context.Context, *connect.Request[v1.PortfolioPlaceOrderRequest]) (*connect.Response[v1.PortfolioPlaceOrderResponse], error)
 	GetOrderStatus(context.Context, *connect.Request[v1.GetOrderStatusRequest]) (*connect.Response[v1.GetOrderStatusResponse], error)
 }
@@ -194,6 +227,18 @@ func NewPortfolioServiceHandler(svc PortfolioServiceHandler, opts ...connect.Han
 		connect.WithSchema(portfolioServiceMethods.ByName("GetPortfolio")),
 		connect.WithHandlerOptions(opts...),
 	)
+	portfolioServiceStreamPortfolioHandler := connect.NewServerStreamHandler(
+		PortfolioServiceStreamPortfolioProcedure,
+		svc.StreamPortfolio,
+		connect.WithSchema(portfolioServiceMethods.ByName("StreamPortfolio")),
+		connect.WithHandlerOptions(opts...),
+	)
+	portfolioServiceGetPnLHandler := connect.NewUnaryHandler(
+		PortfolioServiceGetPnLProcedure,
+		svc.GetPnL,
+		connect.WithSchema(portfolioServiceMethods.ByName("GetPnL")),
+		connect.WithHandlerOptions(opts...),
+	)
 	portfolioServicePlaceOrderHandler := connect.NewUnaryHandler(
 		PortfolioServicePlaceOrderProcedure,
 		svc.PlaceOrder,
@@ -216,6 +261,10 @@ func NewPortfolioServiceHandler(svc PortfolioServiceHandler, opts ...connect.Han
 			portfolioServiceCreditSharesHandler.ServeHTTP(w, r)
 		case PortfolioServiceGetPortfolioProcedure:
 			portfolioServiceGetPortfolioHandler.ServeHTTP(w, r)
+		case PortfolioServiceStreamPortfolioProcedure:
+			portfolioServiceStreamPortfolioHandler.ServeHTTP(w, r)
+		case PortfolioServiceGetPnLProcedure:
+			portfolioServiceGetPnLHandler.ServeHTTP(w, r)
 		case PortfolioServicePlaceOrderProcedure:
 			portfolioServicePlaceOrderHandler.ServeHTTP(w, r)
 		case PortfolioServiceGetOrderStatusProcedure:
@@ -243,6 +292,14 @@ func (UnimplementedPortfolioServiceHandler) CreditShares(context.Context, *conne
 
 func (UnimplementedPortfolioServiceHandler) GetPortfolio(context.Context, *connect.Request[v1.GetPortfolioRequest]) (*connect.Response[v1.GetPortfolioResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portfolio.v1.PortfolioService.GetPortfolio is not implemented"))
+}
+
+func (UnimplementedPortfolioServiceHandler) StreamPortfolio(context.Context, *connect.Request[v1.StreamPortfolioRequest], *connect.ServerStream[v1.GetPortfolioResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("portfolio.v1.PortfolioService.StreamPortfolio is not implemented"))
+}
+
+func (UnimplementedPortfolioServiceHandler) GetPnL(context.Context, *connect.Request[v1.GetPnLRequest]) (*connect.Response[v1.GetPnLResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portfolio.v1.PortfolioService.GetPnL is not implemented"))
 }
 
 func (UnimplementedPortfolioServiceHandler) PlaceOrder(context.Context, *connect.Request[v1.PortfolioPlaceOrderRequest]) (*connect.Response[v1.PortfolioPlaceOrderResponse], error) {

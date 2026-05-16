@@ -31,17 +31,21 @@ type Server struct {
 
 	portfolioHandler *es.Handler[*Portfolio]
 	reader           PortfolioReader
+	pnlReader        PnLReader
 	placeOrder       PlaceOrderFunc
 	getOrderStatus   GetOrderStatusFunc
+	broker           *PortfolioBroker
 	log              *slog.Logger
 }
 
-func NewServer(portfolioHandler *es.Handler[*Portfolio], reader PortfolioReader, placeOrder PlaceOrderFunc, getOrderStatus GetOrderStatusFunc, log *slog.Logger) *Server {
+func NewServer(portfolioHandler *es.Handler[*Portfolio], reader PortfolioReader, pnlReader PnLReader, placeOrder PlaceOrderFunc, getOrderStatus GetOrderStatusFunc, broker *PortfolioBroker, log *slog.Logger) *Server {
 	return &Server{
 		portfolioHandler: portfolioHandler,
 		reader:           reader,
+		pnlReader:        pnlReader,
 		placeOrder:       placeOrder,
 		getOrderStatus:   getOrderStatus,
+		broker:           broker,
 		log:              log,
 	}
 }
@@ -159,5 +163,48 @@ func (s *Server) GetOrderStatus(ctx context.Context, req *connect.Request[portfo
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
+	return connect.NewResponse(resp), nil
+}
+
+func (s *Server) StreamPortfolio(ctx context.Context, req *connect.Request[portfoliov1.StreamPortfolioRequest], stream *connect.ServerStream[portfoliov1.GetPortfolioResponse]) error {
+	accountID := req.Msg.AccountId
+
+	resp, err := s.reader.GetPortfolio(ctx, accountID)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, err)
+	}
+	if err := stream.Send(resp); err != nil {
+		return err
+	}
+
+	id, ch := s.broker.Subscribe(accountID)
+	defer s.broker.Unsubscribe(id)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case _, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			resp, err := s.reader.GetPortfolio(ctx, accountID)
+			if err != nil {
+				s.log.Error("StreamPortfolio read failed", "account_id", accountID, "error", err)
+				continue
+			}
+			if err := stream.Send(resp); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (s *Server) GetPnL(ctx context.Context, req *connect.Request[portfoliov1.GetPnLRequest]) (*connect.Response[portfoliov1.GetPnLResponse], error) {
+	resp, err := s.pnlReader.GetPnL(ctx, req.Msg.AccountId)
+	if err != nil {
+		s.log.Error("GetPnL failed", "account_id", req.Msg.AccountId, "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
 	return connect.NewResponse(resp), nil
 }
