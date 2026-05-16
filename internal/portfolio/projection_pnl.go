@@ -89,11 +89,11 @@ func (p *PgPnLProjection) handleSell(batch *pgx.Batch, accountID, symbol string,
 	// Update position: reduce quantity and total_cost proportionally, accumulate realized_pnl.
 	batch.Queue(
 		`UPDATE projection_pnl_positions
-		SET realized_pnl = realized_pnl + ($5 - CASE WHEN quantity > 0 THEN total_cost * $3 / quantity ELSE 0 END),
-			total_cost = CASE WHEN quantity > 0 THEN total_cost * (quantity - $3) / quantity ELSE 0 END,
-			quantity = quantity - $3
+		SET realized_pnl = realized_pnl + ($4::BIGINT - CASE WHEN quantity > 0 THEN total_cost * $3::BIGINT / quantity ELSE 0 END),
+			total_cost = CASE WHEN quantity > 0 THEN total_cost * (quantity - $3::BIGINT) / quantity ELSE 0 END,
+			quantity = quantity - $3::BIGINT
 		WHERE account_id = $1 AND symbol = $2`,
-		accountID, symbol, quantity, pricePerShare, proceeds,
+		accountID, symbol, quantity, proceeds,
 	)
 }
 
