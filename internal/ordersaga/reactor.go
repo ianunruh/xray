@@ -90,16 +90,25 @@ func (r *Reactor) SetReady(ctx context.Context) {
 	r.mu.Lock()
 	r.ready = true
 
-	var needsCheck []string
+	symbolSagas := make(map[string][]string)
 	for _, state := range r.sagas {
 		if state.status == OrderPlaced && !state.orderCancelled && state.filledQty < state.quantity {
-			needsCheck = append(needsCheck, state.sagaID)
+			symbolSagas[state.symbol] = append(symbolSagas[state.symbol], state.sagaID)
 		}
 	}
 	r.mu.Unlock()
 
-	for _, sagaID := range needsCheck {
-		r.checkFillsFromOrderbook(ctx, sagaID)
+	for symbol, sagaIDs := range symbolSagas {
+		book, err := r.orderbookHandler.Load(ctx, orderbook.AggregateID(symbol))
+		if err != nil {
+			r.log.Error("recovery: failed to load orderbook", "symbol", symbol, "error", err)
+			continue
+		}
+		r.mu.Lock()
+		for _, sagaID := range sagaIDs {
+			r.reconcileFillsFromBook(sagaID, book)
+		}
+		r.mu.Unlock()
 	}
 
 	r.mu.Lock()
@@ -109,40 +118,21 @@ func (r *Reactor) SetReady(ctx context.Context) {
 	r.executeActions(ctx, actions)
 }
 
-func (r *Reactor) checkFillsFromOrderbook(ctx context.Context, sagaID string) {
-	r.mu.Lock()
+// reconcileFillsFromBook adjusts a saga's filled quantity from the orderbook state. Caller must hold r.mu.
+func (r *Reactor) reconcileFillsFromBook(sagaID string, book *orderbook.OrderBook) {
 	state, ok := r.sagas[sagaID]
-	if !ok {
-		r.mu.Unlock()
-		return
-	}
-	symbol := state.symbol
-	orderID := state.orderID
-	entryQty := state.quantity
-	r.mu.Unlock()
-
-	book, err := r.orderbookHandler.Load(ctx, orderbook.AggregateID(symbol))
-	if err != nil {
-		r.log.Error("recovery: failed to load orderbook", "saga_id", sagaID, "error", err)
-		return
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	state, ok = r.sagas[sagaID]
 	if !ok || state.status != OrderPlaced {
 		return
 	}
 
-	order, ok := book.Orders[orderID]
+	order, ok := book.Orders[state.orderID]
 	if !ok {
 		r.log.Info("recovery: order not found in orderbook", "saga_id", sagaID)
 		state.orderCancelled = true
 		return
 	}
 
-	totalFilled := entryQty - order.RemainingQty
+	totalFilled := state.quantity - order.RemainingQty
 	if totalFilled > state.filledQty {
 		r.log.Info("recovery: adjusted filled qty from orderbook", "saga_id", sagaID, "filled", totalFilled)
 		state.filledQty = totalFilled
