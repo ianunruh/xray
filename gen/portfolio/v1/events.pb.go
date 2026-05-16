@@ -280,14 +280,17 @@ func (x *CashReleased) GetReleasedAt() *timestamppb.Timestamp {
 }
 
 type CashSettled struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AccountId     string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
-	OrderSagaId   string                 `protobuf:"bytes,2,opt,name=order_saga_id,json=orderSagaId,proto3" json:"order_saga_id,omitempty"`
-	Amount        int64                  `protobuf:"varint,3,opt,name=amount,proto3" json:"amount,omitempty"`
-	Symbol        string                 `protobuf:"bytes,4,opt,name=symbol,proto3" json:"symbol,omitempty"`
-	Quantity      int64                  `protobuf:"varint,5,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	CostPerShare  int64                  `protobuf:"varint,6,opt,name=cost_per_share,json=costPerShare,proto3" json:"cost_per_share,omitempty"`
-	SettledAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=settled_at,json=settledAt,proto3" json:"settled_at,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	AccountId    string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	OrderSagaId  string                 `protobuf:"bytes,2,opt,name=order_saga_id,json=orderSagaId,proto3" json:"order_saga_id,omitempty"`
+	Amount       int64                  `protobuf:"varint,3,opt,name=amount,proto3" json:"amount,omitempty"`
+	Symbol       string                 `protobuf:"bytes,4,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Quantity     int64                  `protobuf:"varint,5,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	CostPerShare int64                  `protobuf:"varint,6,opt,name=cost_per_share,json=costPerShare,proto3" json:"cost_per_share,omitempty"`
+	SettledAt    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=settled_at,json=settledAt,proto3" json:"settled_at,omitempty"`
+	// trade_id deduplicates settlement events per saga; legacy events
+	// pre-dating this field have it empty and bypass dedup.
+	TradeId       string `protobuf:"bytes,8,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -369,6 +372,13 @@ func (x *CashSettled) GetSettledAt() *timestamppb.Timestamp {
 		return x.SettledAt
 	}
 	return nil
+}
+
+func (x *CashSettled) GetTradeId() string {
+	if x != nil {
+		return x.TradeId
+	}
+	return ""
 }
 
 type SharesCredited struct {
@@ -684,6 +694,9 @@ type SharesSettled struct {
 	PricePerShare int64                  `protobuf:"varint,5,opt,name=price_per_share,json=pricePerShare,proto3" json:"price_per_share,omitempty"`
 	Proceeds      int64                  `protobuf:"varint,6,opt,name=proceeds,proto3" json:"proceeds,omitempty"`
 	SettledAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=settled_at,json=settledAt,proto3" json:"settled_at,omitempty"`
+	// trade_id deduplicates settlement events per saga; legacy events
+	// pre-dating this field have it empty and bypass dedup.
+	TradeId       string `protobuf:"bytes,8,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -765,6 +778,13 @@ func (x *SharesSettled) GetSettledAt() *timestamppb.Timestamp {
 		return x.SettledAt
 	}
 	return nil
+}
+
+func (x *SharesSettled) GetTradeId() string {
+	if x != nil {
+		return x.TradeId
+	}
+	return ""
 }
 
 type OrderSagaStarted struct {
@@ -1294,7 +1314,7 @@ const file_portfolio_v1_events_proto_rawDesc = "" +
 	"\rorder_saga_id\x18\x02 \x01(\tR\vorderSagaId\x12\x16\n" +
 	"\x06amount\x18\x03 \x01(\x03R\x06amount\x12;\n" +
 	"\vreleased_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"releasedAt\"\xfd\x01\n" +
+	"releasedAt\"\x98\x02\n" +
 	"\vCashSettled\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12\"\n" +
@@ -1304,7 +1324,8 @@ const file_portfolio_v1_events_proto_rawDesc = "" +
 	"\bquantity\x18\x05 \x01(\x03R\bquantity\x12$\n" +
 	"\x0ecost_per_share\x18\x06 \x01(\x03R\fcostPerShare\x129\n" +
 	"\n" +
-	"settled_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tsettledAt\"\xc6\x01\n" +
+	"settled_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tsettledAt\x12\x19\n" +
+	"\btrade_id\x18\b \x01(\tR\atradeId\"\xc6\x01\n" +
 	"\x0eSharesCredited\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12\x16\n" +
@@ -1336,7 +1357,7 @@ const file_portfolio_v1_events_proto_rawDesc = "" +
 	"\x06symbol\x18\x03 \x01(\tR\x06symbol\x12\x1a\n" +
 	"\bquantity\x18\x04 \x01(\x03R\bquantity\x12;\n" +
 	"\vreleased_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"releasedAt\"\x85\x02\n" +
+	"releasedAt\"\xa0\x02\n" +
 	"\rSharesSettled\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12\"\n" +
@@ -1346,7 +1367,8 @@ const file_portfolio_v1_events_proto_rawDesc = "" +
 	"\x0fprice_per_share\x18\x05 \x01(\x03R\rpricePerShare\x12\x1a\n" +
 	"\bproceeds\x18\x06 \x01(\x03R\bproceeds\x129\n" +
 	"\n" +
-	"settled_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tsettledAt\"\x98\x03\n" +
+	"settled_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tsettledAt\x12\x19\n" +
+	"\btrade_id\x18\b \x01(\tR\atradeId\"\x98\x03\n" +
 	"\x10OrderSagaStarted\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x1d\n" +
 	"\n" +

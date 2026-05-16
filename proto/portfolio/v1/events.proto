@@ -43,6 +43,9 @@ message CashSettled {
   int64 quantity = 5;
   int64 cost_per_share = 6;
   google.protobuf.Timestamp settled_at = 7;
+  // trade_id deduplicates settlement events per saga; legacy events
+  // pre-dating this field have it empty and bypass dedup.
+  string trade_id = 8;
 }
 
 message SharesCredited {
@@ -85,6 +88,9 @@ message SharesSettled {
   int64 price_per_share = 5;
   int64 proceeds = 6;
   google.protobuf.Timestamp settled_at = 7;
+  // trade_id deduplicates settlement events per saga; legacy events
+  // pre-dating this field have it empty and bypass dedup.
+  string trade_id = 8;
 }
 
 // Order saga events — stored under aggregate ID "order-saga:{uuid}".

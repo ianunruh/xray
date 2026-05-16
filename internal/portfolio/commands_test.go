@@ -703,6 +703,122 @@ func TestCreditShares_InvalidQuantity(t *testing.T) {
 	assert.ErrorIs(t, err, portfolio.ErrInvalidQuantity)
 }
 
+func TestSettleTrade_IdempotentPerTradeID(t *testing.T) {
+	// A redelivered TradeExecuted must not double-settle. Tests the
+	// dedup path that protects against reactor batch retries after a
+	// mid-batch crash.
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	deposit := portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000}
+	require.NoError(t, handler.Handle(ctx, deposit, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, deposit)
+	}))
+
+	hold := portfolio.HoldCash{AccountID: "acct-1", OrderSagaID: "saga-1", Amount: 9000000}
+	require.NoError(t, handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCash(p, hold)
+	}))
+
+	settle := portfolio.SettleTrade{
+		AccountID:    "acct-1",
+		OrderSagaID:  "saga-1",
+		TradeID:      "trade-A",
+		Amount:       4500000,
+		Symbol:       "AAPL",
+		Quantity:     30,
+		CostPerShare: 150000,
+	}
+	require.NoError(t, handler.Handle(ctx, settle, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteSettleTrade(p, settle)
+	}))
+
+	// Replay the same trade — must be a no-op.
+	require.NoError(t, handler.Handle(ctx, settle, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteSettleTrade(p, settle)
+	}))
+
+	p := mustLoad(t, handler, ctx, "acct-1")
+	assert.Equal(t, int64(4500000), p.CashHeld, "hold only decremented once (9M - 4.5M)")
+	assert.Equal(t, int64(1000000), p.CashBalance, "balance unchanged after the dup")
+	assert.Equal(t, int64(30), p.Holdings["AAPL"].Quantity, "shares credited once")
+	// Deposit + Hold + Settle = 3 events; second Settle was suppressed.
+	assert.Equal(t, 3, p.Version())
+}
+
+func TestSettleSale_IdempotentPerTradeID(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	setupPortfolioWithHolding(t, handler, ctx, "acct-1", "AAPL", 100, 1500000)
+
+	hold := portfolio.HoldShares{AccountID: "acct-1", OrderSagaID: "saga-1", Symbol: "AAPL", Quantity: 100}
+	require.NoError(t, handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShares(p, hold)
+	}))
+
+	settle := portfolio.SettleSale{
+		AccountID:     "acct-1",
+		OrderSagaID:   "saga-1",
+		TradeID:       "trade-X",
+		Symbol:        "AAPL",
+		Quantity:      40,
+		PricePerShare: 1550000,
+		Proceeds:      62000000,
+	}
+	require.NoError(t, handler.Handle(ctx, settle, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteSettleSale(p, settle)
+	}))
+
+	// Replay — no-op.
+	require.NoError(t, handler.Handle(ctx, settle, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteSettleSale(p, settle)
+	}))
+
+	p := mustLoad(t, handler, ctx, "acct-1")
+	assert.Equal(t, int64(60), p.Holdings["AAPL"].Quantity, "only 40 of 100 shares sold")
+	assert.Equal(t, int64(60), p.SharesHeld["AAPL"], "remaining hold unchanged after dup")
+	assert.Equal(t, int64(62000000), p.CashBalance, "credited only once")
+}
+
+func TestSettleSale_DifferentTradeIDsBothApply(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	setupPortfolioWithHolding(t, handler, ctx, "acct-1", "AAPL", 100, 1500000)
+
+	hold := portfolio.HoldShares{AccountID: "acct-1", OrderSagaID: "saga-1", Symbol: "AAPL", Quantity: 100}
+	require.NoError(t, handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShares(p, hold)
+	}))
+
+	for i, tradeID := range []string{"trade-1", "trade-2"} {
+		settle := portfolio.SettleSale{
+			AccountID:     "acct-1",
+			OrderSagaID:   "saga-1",
+			TradeID:       tradeID,
+			Symbol:        "AAPL",
+			Quantity:      50,
+			PricePerShare: 1550000,
+			Proceeds:      77500000,
+		}
+		require.NoError(t, handler.Handle(ctx, settle, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteSettleSale(p, settle)
+		}), "fill %d", i)
+	}
+
+	p := mustLoad(t, handler, ctx, "acct-1")
+	assert.Empty(t, p.Holdings["AAPL"], "all 100 shares sold across two fills")
+	assert.Empty(t, p.SharesHeld)
+	assert.Equal(t, int64(155000000), p.CashBalance)
+}
+
 func TestCreditShares_Accumulation(t *testing.T) {
 	registry := newTestRegistry()
 	store := memstore.New()

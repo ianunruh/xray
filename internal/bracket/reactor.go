@@ -454,6 +454,7 @@ func (r *Reactor) executeSettleExitFills(ctx context.Context, sagaID string) err
 		settleCmd := portfolio.SettleSale{
 			AccountID:     accountID,
 			OrderSagaID:   sagaID,
+			TradeID:       f.tradeID,
 			Symbol:        symbol,
 			Quantity:      f.quantity,
 			PricePerShare: f.price,

@@ -33,6 +33,12 @@ type Portfolio struct {
 	HoldsBySaga      map[string]int64
 	SharesHeld       map[string]int64
 	ShareHoldsBySaga map[string]*ShareHold
+	// SettledTrades tracks per-saga trade IDs already applied to this
+	// portfolio. Used to make SettleSale/SettleTrade idempotent against
+	// a single trade being delivered more than once — for example, when
+	// a reactor batch crashes after settling some fills and is then
+	// redelivered on restart.
+	SettledTrades map[string]map[string]struct{}
 }
 
 func NewPortfolio(id string) *Portfolio {
@@ -41,9 +47,31 @@ func NewPortfolio(id string) *Portfolio {
 		HoldsBySaga:      make(map[string]int64),
 		SharesHeld:       make(map[string]int64),
 		ShareHoldsBySaga: make(map[string]*ShareHold),
+		SettledTrades:    make(map[string]map[string]struct{}),
 	}
 	p.SetID(id)
 	return p
+}
+
+// HasSettled reports whether the (saga, trade) pair has already settled
+// against this portfolio. Empty tradeID returns false — legacy events
+// without trade IDs bypass dedup, so callers always emit.
+func (p *Portfolio) HasSettled(sagaID, tradeID string) bool {
+	if tradeID == "" {
+		return false
+	}
+	_, ok := p.SettledTrades[sagaID][tradeID]
+	return ok
+}
+
+func (p *Portfolio) markSettled(sagaID, tradeID string) {
+	if tradeID == "" {
+		return
+	}
+	if p.SettledTrades[sagaID] == nil {
+		p.SettledTrades[sagaID] = make(map[string]struct{})
+	}
+	p.SettledTrades[sagaID][tradeID] = struct{}{}
 }
 
 func (p *Portfolio) Apply(evt es.Event) error {
@@ -118,6 +146,8 @@ func (p *Portfolio) applyCashSettled(data *portfoliov1.CashSettled) {
 	}
 	h.Quantity += data.Quantity
 	h.TotalCost += data.CostPerShare * data.Quantity
+
+	p.markSettled(data.OrderSagaId, data.TradeId)
 }
 
 func (p *Portfolio) applySharesCredited(data *portfoliov1.SharesCredited) {
@@ -187,4 +217,6 @@ func (p *Portfolio) applySharesSettled(data *portfoliov1.SharesSettled) {
 	}
 
 	p.CashBalance += data.Proceeds
+
+	p.markSettled(data.OrderSagaId, data.TradeId)
 }

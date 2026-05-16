@@ -500,6 +500,7 @@ func (r *Reactor) executeRecordFills(ctx context.Context, sagaID string) error {
 			settleCmd := portfolio.SettleSale{
 				AccountID:     accountID,
 				OrderSagaID:   sagaID,
+				TradeID:       f.tradeID,
 				Symbol:        symbol,
 				Quantity:      f.quantity,
 				PricePerShare: f.price,
@@ -521,6 +522,7 @@ func (r *Reactor) executeRecordFills(ctx context.Context, sagaID string) error {
 			settleCmd := portfolio.SettleTrade{
 				AccountID:    accountID,
 				OrderSagaID:  sagaID,
+				TradeID:      f.tradeID,
 				Amount:       cashAmount,
 				Symbol:       symbol,
 				Quantity:     f.quantity,

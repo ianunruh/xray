@@ -163,6 +163,7 @@ func ExecuteReleaseCash(p *Portfolio, cmd ReleaseCash) ([]es.Event, error) {
 type SettleTrade struct {
 	AccountID    string
 	OrderSagaID  string
+	TradeID      string
 	Amount       int64
 	Symbol       string
 	Quantity     int64
@@ -174,6 +175,9 @@ func (c SettleTrade) AggregateID() string {
 }
 
 func ExecuteSettleTrade(p *Portfolio, cmd SettleTrade) ([]es.Event, error) {
+	if p.HasSettled(cmd.OrderSagaID, cmd.TradeID) {
+		return nil, nil
+	}
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
@@ -182,6 +186,7 @@ func ExecuteSettleTrade(p *Portfolio, cmd SettleTrade) ([]es.Event, error) {
 		Data: &portfoliov1.CashSettled{
 			AccountId:    cmd.AccountID,
 			OrderSagaId:  cmd.OrderSagaID,
+			TradeId:      cmd.TradeID,
 			Amount:       cmd.Amount,
 			Symbol:       cmd.Symbol,
 			Quantity:     cmd.Quantity,
@@ -321,6 +326,7 @@ func ExecuteReleaseShares(p *Portfolio, cmd ReleaseShares) ([]es.Event, error) {
 type SettleSale struct {
 	AccountID     string
 	OrderSagaID   string
+	TradeID       string
 	Symbol        string
 	Quantity      int64
 	PricePerShare int64
@@ -332,6 +338,9 @@ func (c SettleSale) AggregateID() string {
 }
 
 func ExecuteSettleSale(p *Portfolio, cmd SettleSale) ([]es.Event, error) {
+	if p.HasSettled(cmd.OrderSagaID, cmd.TradeID) {
+		return nil, nil
+	}
 	now := time.Now()
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
@@ -340,6 +349,7 @@ func ExecuteSettleSale(p *Portfolio, cmd SettleSale) ([]es.Event, error) {
 		Data: &portfoliov1.SharesSettled{
 			AccountId:     cmd.AccountID,
 			OrderSagaId:   cmd.OrderSagaID,
+			TradeId:       cmd.TradeID,
 			Symbol:        cmd.Symbol,
 			Quantity:      cmd.Quantity,
 			PricePerShare: cmd.PricePerShare,
