@@ -383,14 +383,14 @@ func (r *Reactor) executePlaceExitOrders(ctx context.Context, sagaID string) err
 	tpOrderID, err := r.placeExitOrder(ctx, symbol, exitSide, tpPrice, entryQty, orderbook.Limit, 0)
 	if err != nil {
 		r.log.Error("failed to place take-profit order", "saga_id", sagaID, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "place_exit_orders")
+		return r.emitActionFailed(ctx, sagaID, "place_exit_orders", err.Error())
 	}
 
 	slOrderID, err := r.placeExitOrder(ctx, symbol, exitSide, 0, entryQty, orderbook.StopMarket, slPrice)
 	if err != nil {
 		r.log.Error("failed to place stop-loss order", "saga_id", sagaID, "error", err)
 		r.trackCancelFailure(ctx, sagaID, symbol, tpOrderID)
-		return r.emitActionFailed(ctx, sagaID, "place_exit_orders")
+		return r.emitActionFailed(ctx, sagaID, "place_exit_orders", err.Error())
 	}
 
 	cmd := RecordEntryFilled{
@@ -406,7 +406,7 @@ func (r *Reactor) executePlaceExitOrders(ctx context.Context, sagaID string) err
 		r.log.Error("failed to record entry filled", "saga_id", sagaID, "error", err)
 		r.trackCancelFailure(ctx, sagaID, symbol, tpOrderID)
 		r.trackCancelFailure(ctx, sagaID, symbol, slOrderID)
-		return r.emitActionFailed(ctx, sagaID, "place_exit_orders")
+		return r.emitActionFailed(ctx, sagaID, "place_exit_orders", err.Error())
 	}
 
 	r.log.Info("bracket saga entry filled, exit orders placed",
@@ -443,7 +443,7 @@ func (r *Reactor) executeRecordExit(ctx context.Context, sagaID string) error {
 			r.log.Warn("sibling order already consumed", "saga_id", sagaID, "order_id", cancelOrderID, "error", err)
 		} else {
 			r.log.Error("failed to cancel sibling order", "saga_id", sagaID, "order_id", cancelOrderID, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "record_exit_filled")
+			return r.emitActionFailed(ctx, sagaID, "record_exit_filled", err.Error())
 		}
 	}
 
@@ -457,7 +457,7 @@ func (r *Reactor) executeRecordExit(ctx context.Context, sagaID string) error {
 	})
 	if err != nil {
 		r.log.Error("failed to record exit filled", "saga_id", sagaID, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "record_exit_filled")
+		return r.emitActionFailed(ctx, sagaID, "record_exit_filled", err.Error())
 	}
 
 	r.log.Info("bracket saga completed",
@@ -485,17 +485,18 @@ func (r *Reactor) executeFailEntryCancelled(ctx context.Context, sagaID string) 
 	})
 	if err != nil {
 		r.log.Error("failed to record saga failed", "saga_id", sagaID, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "record_saga_failed")
+		return r.emitActionFailed(ctx, sagaID, "record_saga_failed", err.Error())
 	}
 
 	r.log.Info("bracket saga failed — entry cancelled", "saga_id", sagaID)
 	return nil
 }
 
-func (r *Reactor) emitActionFailed(ctx context.Context, sagaID, action string) error {
+func (r *Reactor) emitActionFailed(ctx context.Context, sagaID, action, reason string) error {
 	cmd := RecordActionFailed{
 		SagaID: sagaID,
 		Action: action,
+		Reason: reason,
 	}
 	err := r.sagaHandler.Handle(ctx, cmd, func(saga *BracketSaga) ([]es.Event, error) {
 		return ExecuteRecordActionFailed(saga, cmd)

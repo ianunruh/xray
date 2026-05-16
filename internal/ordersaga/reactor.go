@@ -430,12 +430,12 @@ func (r *Reactor) executeHoldCash(ctx context.Context, sagaID string) error {
 		book, err := r.orderbookHandler.Load(ctx, orderbook.AggregateID(symbol))
 		if err != nil {
 			r.log.Error("failed to load orderbook for market order hold", "saga_id", sagaID, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "hold_cash")
+			return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
 		}
 		price = book.Asks.BestPrice()
 		if price == 0 {
 			r.log.Error("no ask liquidity for market buy hold", "saga_id", sagaID)
-			return r.emitActionFailed(ctx, sagaID, "hold_cash")
+			return r.emitActionFailed(ctx, sagaID, "hold_cash", "no ask liquidity for market buy")
 		}
 	}
 
@@ -454,7 +454,7 @@ func (r *Reactor) executeHoldCash(ctx context.Context, sagaID string) error {
 		})
 		if err != nil {
 			r.log.Error("failed to hold shares", "saga_id", sagaID, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "hold_cash")
+			return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
 		}
 
 		cmd := RecordCashHeld{SagaID: sagaID, AmountHeld: shareQty}
@@ -463,7 +463,7 @@ func (r *Reactor) executeHoldCash(ctx context.Context, sagaID string) error {
 		})
 		if err != nil {
 			r.log.Error("failed to record shares held", "saga_id", sagaID, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "hold_cash")
+			return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
 		}
 
 		r.log.Info("order saga shares held", "saga_id", sagaID, "quantity", shareQty)
@@ -477,7 +477,7 @@ func (r *Reactor) executeHoldCash(ctx context.Context, sagaID string) error {
 		})
 		if err != nil {
 			r.log.Error("failed to record cash held", "saga_id", sagaID, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "hold_cash")
+			return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
 		}
 		r.log.Info("order saga cash hold skipped (no hold needed)", "saga_id", sagaID)
 		return nil
@@ -493,7 +493,7 @@ func (r *Reactor) executeHoldCash(ctx context.Context, sagaID string) error {
 	})
 	if err != nil {
 		r.log.Error("failed to hold cash", "saga_id", sagaID, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "hold_cash")
+		return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
 	}
 
 	cmd := RecordCashHeld{SagaID: sagaID, AmountHeld: cashAmount}
@@ -502,7 +502,7 @@ func (r *Reactor) executeHoldCash(ctx context.Context, sagaID string) error {
 	})
 	if err != nil {
 		r.log.Error("failed to record cash held", "saga_id", sagaID, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "hold_cash")
+		return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
 	}
 
 	r.log.Info("order saga cash held", "saga_id", sagaID, "amount", cashAmount)
@@ -570,7 +570,7 @@ func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
 		delete(r.orderToSaga, orderID)
 		r.mu.Unlock()
 		r.log.Error("failed to place order", "saga_id", sagaID, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "place_order")
+		return r.emitActionFailed(ctx, sagaID, "place_order", err.Error())
 	}
 
 	cmd := RecordOrderPlaced{SagaID: sagaID, OrderID: orderID}
@@ -579,7 +579,7 @@ func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
 	})
 	if err != nil {
 		r.log.Error("failed to record order placed", "saga_id", sagaID, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "place_order")
+		return r.emitActionFailed(ctx, sagaID, "place_order", err.Error())
 	}
 
 	r.log.Info("order saga order placed", "saga_id", sagaID, "order_id", orderID)
@@ -622,7 +622,7 @@ func (r *Reactor) executeRecordFills(ctx context.Context, sagaID string) error {
 					s.pendingFills = append(s.pendingFills, f)
 				}
 				r.mu.Unlock()
-				return r.emitActionFailed(ctx, sagaID, "record_fills")
+				return r.emitActionFailed(ctx, sagaID, "record_fills", err.Error())
 			}
 		} else {
 			settleCmd := portfolio.SettleTrade{
@@ -643,7 +643,7 @@ func (r *Reactor) executeRecordFills(ctx context.Context, sagaID string) error {
 					s.pendingFills = append(s.pendingFills, f)
 				}
 				r.mu.Unlock()
-				return r.emitActionFailed(ctx, sagaID, "record_fills")
+				return r.emitActionFailed(ctx, sagaID, "record_fills", err.Error())
 			}
 		}
 
@@ -659,7 +659,7 @@ func (r *Reactor) executeRecordFills(ctx context.Context, sagaID string) error {
 		})
 		if err != nil {
 			r.log.Error("failed to record fill", "saga_id", sagaID, "trade_id", f.tradeID, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "record_fills")
+			return r.emitActionFailed(ctx, sagaID, "record_fills", err.Error())
 		}
 
 		r.mu.Lock()
@@ -706,7 +706,7 @@ func (r *Reactor) executeComplete(ctx context.Context, sagaID string) error {
 			})
 			if err != nil {
 				r.log.Error("failed to release remaining shares", "saga_id", sagaID, "error", err)
-				return r.emitActionFailed(ctx, sagaID, "complete")
+				return r.emitActionFailed(ctx, sagaID, "complete", err.Error())
 			}
 		}
 	} else {
@@ -722,7 +722,7 @@ func (r *Reactor) executeComplete(ctx context.Context, sagaID string) error {
 			})
 			if err != nil {
 				r.log.Error("failed to release remaining cash", "saga_id", sagaID, "error", err)
-				return r.emitActionFailed(ctx, sagaID, "complete")
+				return r.emitActionFailed(ctx, sagaID, "complete", err.Error())
 			}
 		}
 	}
@@ -733,7 +733,7 @@ func (r *Reactor) executeComplete(ctx context.Context, sagaID string) error {
 	})
 	if err != nil {
 		r.log.Error("failed to record completed", "saga_id", sagaID, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "complete")
+		return r.emitActionFailed(ctx, sagaID, "complete", err.Error())
 	}
 
 	r.log.Info("order saga completed", "saga_id", sagaID)
@@ -769,7 +769,7 @@ func (r *Reactor) executeReleaseCashAndFail(ctx context.Context, sagaID string) 
 			})
 			if err != nil {
 				r.log.Error("failed to release shares on cancel", "saga_id", sagaID, "error", err)
-				return r.emitActionFailed(ctx, sagaID, "release_cash_and_fail")
+				return r.emitActionFailed(ctx, sagaID, "release_cash_and_fail", err.Error())
 			}
 		}
 		r.mu.Lock()
@@ -790,7 +790,7 @@ func (r *Reactor) executeReleaseCashAndFail(ctx context.Context, sagaID string) 
 			})
 			if err != nil {
 				r.log.Error("failed to release cash on cancel", "saga_id", sagaID, "error", err)
-				return r.emitActionFailed(ctx, sagaID, "release_cash_and_fail")
+				return r.emitActionFailed(ctx, sagaID, "release_cash_and_fail", err.Error())
 			}
 		}
 		r.mu.Lock()
@@ -813,7 +813,7 @@ func (r *Reactor) executeReleaseCashAndFail(ctx context.Context, sagaID string) 
 	})
 	if err != nil {
 		r.log.Error("failed to record saga failed", "saga_id", sagaID, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "release_cash_and_fail")
+		return r.emitActionFailed(ctx, sagaID, "release_cash_and_fail", err.Error())
 	}
 
 	r.log.Info("order saga failed — order cancelled", "saga_id", sagaID)
@@ -876,10 +876,11 @@ func (r *Reactor) executeReleaseResourcesOnFailure(ctx context.Context, sagaID s
 	return nil
 }
 
-func (r *Reactor) emitActionFailed(ctx context.Context, sagaID, action string) error {
+func (r *Reactor) emitActionFailed(ctx context.Context, sagaID, action, reason string) error {
 	cmd := RecordActionFailed{
 		SagaID: sagaID,
 		Action: action,
+		Reason: reason,
 	}
 	err := r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
 		return ExecuteRecordActionFailed(saga, cmd)

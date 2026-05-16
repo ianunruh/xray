@@ -234,6 +234,7 @@ func ExecuteRecordFailed(saga *OrderSaga, cmd RecordFailed) ([]es.Event, error) 
 type RecordActionFailed struct {
 	SagaID string
 	Action string
+	Reason string
 }
 
 func (c RecordActionFailed) AggregateID() string {
@@ -255,7 +256,7 @@ func ExecuteRecordActionFailed(saga *OrderSaga, cmd RecordActionFailed) ([]es.Ev
 			Timestamp:   now,
 			Data: &portfoliov1.OrderSagaFailed{
 				SagaId:   cmd.SagaID,
-				Reason:   fmt.Sprintf("max retries exceeded for action: %s", cmd.Action),
+				Reason:   fmt.Sprintf("max retries exceeded for action: %s: %s", cmd.Action, cmd.Reason),
 				FailedAt: timestamppb.New(now),
 			},
 		}
