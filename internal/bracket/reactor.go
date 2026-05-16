@@ -320,6 +320,21 @@ func (r *Reactor) onBracketFailed(ctx context.Context, sagaID string) error {
 	return nil
 }
 
+// Reconcile drives a bracket's state machine forward from whatever its
+// current durable state is. Exported for the periodic reconciler;
+// equivalent to handling a SagaActionFailed event for this bracket.
+func (r *Reactor) Reconcile(ctx context.Context, sagaID string) error {
+	return r.onBracketActionFailed(ctx, sagaID)
+}
+
+// ReplayExitTrade re-runs the exit-fill handler for a previously-observed
+// TradeExecuted. Used by the reconciler to settle TP/SL fills whose
+// original settle command was lost. Per-trade portfolio dedup and
+// ErrInvalidState guards on the bracket make replays safe.
+func (r *Reactor) ReplayExitTrade(ctx context.Context, data *orderbookv1.TradeExecuted) error {
+	return r.onExitTrade(ctx, data)
+}
+
 // onBracketActionFailed retries whichever phase is appropriate given the
 // bracket's current aggregate state. SagaActionFailed is our trigger to
 // re-derive what should happen next.

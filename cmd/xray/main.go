@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
@@ -23,6 +24,7 @@ import (
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
 	"github.com/ianunruh/xray/internal/portfolio"
+	"github.com/ianunruh/xray/internal/reconciler"
 	"github.com/ianunruh/xray/internal/sagasvc"
 	"github.com/ianunruh/xray/pkg/es"
 	"github.com/ianunruh/xray/pkg/es/natsstore"
@@ -169,6 +171,9 @@ func main() {
 	}
 	broker.SetReady()
 	portfolioBroker.SetReady()
+
+	rec := reconciler.New(30*time.Second, sagaProjection, tradeProjection, portfolioHandler, orderSagaReactor, bracketReactor, log)
+	go rec.Run(ctx)
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, broker)
 	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, pnlProjection, portfolioBroker, log)

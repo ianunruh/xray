@@ -448,6 +448,21 @@ func (r *Reactor) releaseRemainingHoldsForSaga(ctx context.Context, saga *OrderS
 	return nil
 }
 
+// Reconcile drives a saga's state machine forward from whatever its
+// current durable state is. Exported for the periodic reconciler;
+// equivalent to handling an OrderSagaActionFailed event for this saga.
+func (r *Reactor) Reconcile(ctx context.Context, sagaID string) error {
+	return r.retry(ctx, sagaID)
+}
+
+// ReplayTrade re-runs the trade-fill handler for a previously-observed
+// TradeExecuted. Used by the reconciler to settle trades whose original
+// settle command was lost. Idempotent: per-trade dedup on the portfolio
+// and ErrInvalidState guards on the saga make replays safe.
+func (r *Reactor) ReplayTrade(ctx context.Context, data *orderbookv1.TradeExecuted) error {
+	return r.onTrade(ctx, data)
+}
+
 // retry is the universal "previous action failed, look at the current
 // state and re-derive what to do" handler.
 func (r *Reactor) retry(ctx context.Context, sagaID string) error {

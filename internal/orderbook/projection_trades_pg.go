@@ -58,6 +58,40 @@ func (p *PgTradeProjection) HandleEvents(ctx context.Context, events []es.Event)
 	return nil
 }
 
+// TradesByOrderID returns all trades that matched against the given
+// order ID (as either buy or sell side), ordered by execution time.
+// Used by the reconciler to detect trades whose settle commands never
+// landed.
+func (p *PgTradeProjection) TradesByOrderID(ctx context.Context, orderID string) ([]*orderbookv1.TradeExecuted, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT trade_id, symbol, buy_order_id, sell_order_id, price, quantity, executed_at
+		FROM projection_trades WHERE buy_order_id = $1 OR sell_order_id = $1
+		ORDER BY executed_at`,
+		orderID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*orderbookv1.TradeExecuted
+	for rows.Next() {
+		var (
+			t          orderbookv1.TradeExecuted
+			executedAt time.Time
+		)
+		if err := rows.Scan(
+			&t.TradeId, &t.Symbol, &t.BuyOrderId, &t.SellOrderId,
+			&t.Price, &t.Quantity, &executedAt,
+		); err != nil {
+			return nil, err
+		}
+		t.ExecutedAt = timestamppb.New(executedAt)
+		out = append(out, &t)
+	}
+	return out, rows.Err()
+}
+
 func (p *PgTradeProjection) ListTrades(symbol string) []*orderbookv1.Trade {
 	rows, err := p.pool.Query(context.Background(),
 		`SELECT trade_id, symbol, buy_order_id, sell_order_id, price, quantity, executed_at
