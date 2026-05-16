@@ -38,7 +38,7 @@ const MARKET_TIF_OPTIONS = [
   { label: "FOK", value: "FOK" },
 ];
 
-type Mode = "SINGLE" | "BRACKET";
+type Mode = "SINGLE" | "BRACKET" | "OCO";
 
 export function OrderForm({
   accountId,
@@ -58,6 +58,8 @@ export function OrderForm({
   const [loading, setLoading] = useState(false);
 
   const isSingle = mode === "SINGLE";
+  const isBracket = mode === "BRACKET";
+  const isOCO = mode === "OCO";
   const isMarket = orderType === "MARKET";
 
   function handleOrderTypeChange(v: string | null) {
@@ -117,20 +119,71 @@ export function OrderForm({
       return;
     }
 
-    // Bracket mode: entry is always a LIMIT order today.
-    const entry = typeof price === "number" ? price : parseFloat(price);
     const tp = typeof takeProfit === "number" ? takeProfit : parseFloat(takeProfit);
     const sl = typeof stopLoss === "number" ? stopLoss : parseFloat(stopLoss);
-    if (!entry || entry <= 0) {
-      notifications.show({ message: "Enter a valid entry price", color: "red" });
-      return;
-    }
     if (!tp || tp <= 0) {
       notifications.show({ message: "Enter a valid take-profit price", color: "red" });
       return;
     }
     if (!sl || sl <= 0) {
       notifications.show({ message: "Enter a valid stop-loss price", color: "red" });
+      return;
+    }
+
+    if (isOCO) {
+      // OCO has no entry — TP and SL just need to bracket the current position
+      // on opposite sides. SELL exit: TP > SL (profit above, stop below).
+      // BUY exit (covering a short): TP < SL.
+      if (side === "SELL" && tp <= sl) {
+        notifications.show({
+          message: "For a SELL OCO, TP must be above SL",
+          color: "red",
+        });
+        return;
+      }
+      if (side === "BUY" && tp >= sl) {
+        notifications.show({
+          message: "For a BUY OCO, TP must be below SL",
+          color: "red",
+        });
+        return;
+      }
+      setLoading(true);
+      try {
+        await sagaClient.place({
+          accountId,
+          plan: {
+            case: "oco",
+            value: {
+              symbol,
+              exitSide: side === "BUY" ? Side.BUY : Side.SELL,
+              quantity: BigInt(qty),
+              takeProfitPrice: moneyToPrice(tp),
+              stopLossPrice: moneyToPrice(sl),
+            },
+          },
+        });
+        notifications.show({
+          title: "OCO placed",
+          message: `${side} ${qty} ${symbol} (TP ${tp} / SL ${sl})`,
+          color: "green",
+        });
+      } catch (e: unknown) {
+        notifications.show({
+          title: "OCO failed",
+          message: e instanceof Error ? e.message : String(e),
+          color: "red",
+        });
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Bracket mode: entry is always a LIMIT order today.
+    const entry = typeof price === "number" ? price : parseFloat(price);
+    if (!entry || entry <= 0) {
+      notifications.show({ message: "Enter a valid entry price", color: "red" });
       return;
     }
     // Sanity check: TP and SL should be on opposite sides of entry.
@@ -193,6 +246,7 @@ export function OrderForm({
           data={[
             { label: "Single", value: "SINGLE" },
             { label: "Bracket", value: "BRACKET" },
+            { label: "OCO", value: "OCO" },
           ]}
         />
         <SegmentedControl
@@ -228,9 +282,9 @@ export function OrderForm({
             />
           </Group>
         )}
-        {(!isSingle || !isMarket) && (
+        {((isSingle && !isMarket) || isBracket) && (
           <NumberInput
-            label={isSingle ? "Price" : "Entry Price"}
+            label={isBracket ? "Entry Price" : "Price"}
             size="xs"
             placeholder="0.00"
             min={0}
@@ -276,7 +330,9 @@ export function OrderForm({
           loading={loading}
           onClick={handleSubmit}
         >
-          {isSingle ? (side === "BUY" ? "Buy" : "Sell") : `${side} Bracket`} {symbol}
+          {isSingle && (side === "BUY" ? "Buy" : "Sell")}
+          {isBracket && `${side} Bracket`}
+          {isOCO && `${side} OCO`} {symbol}
         </Button>
       </Stack>
     </Card>

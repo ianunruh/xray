@@ -16,6 +16,7 @@ import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { PortfolioPanel } from "./components/PortfolioPanel";
 import { BracketsPanel } from "./components/BracketsPanel";
+import { OcosPanel } from "./components/OcosPanel";
 import { MarketPanel } from "./components/MarketPanel";
 import { OrderForm } from "./components/OrderForm";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
@@ -165,6 +166,7 @@ export function App() {
             <Stack gap="md">
               <PortfolioPanel accountId={account} symbols={symbols} />
               <BracketsPanel accountId={account} />
+              <OcosPanel accountId={account} />
               <OrderForm accountId={account} symbol={symbol} />
             </Stack>
             <MarketPanel symbol={symbol} />
@@ -173,6 +175,7 @@ export function App() {
           <Stack gap="md">
             {account && <PortfolioPanel accountId={account} symbols={symbols} />}
             {account && <BracketsPanel accountId={account} />}
+            {account && <OcosPanel accountId={account} />}
             {symbol && <MarketPanel symbol={symbol} />}
           </Stack>
         )}
