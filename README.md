@@ -225,84 +225,155 @@ Environment variables:
 
 The server exposes RPCs via Connect (gRPC, gRPC-Web, and JSON-over-HTTP on the same port):
 
-**OrderBookService:**
+**`saga.v1.SagaService`** — unified entry point for all order types:
 
-- `PlaceOrder` — Place a limit order, returns order ID and any immediate trades
-- `CancelOrder` — Cancel an existing order by ID
-- `GetOrderBook` — Get full book state (bids and asks) for a symbol
-- `GetOrder` — Look up a single order by symbol and order ID
+- `Place(PlaceSagaRequest{account_id, plan})` — `plan` is a oneof: `single_order`, `bracket`, or `oco`
+- `Get(saga_id)` — returns status, kind, and kind-specific details
+- `Cancel(saga_id)` — fails the saga; releases any holds; cancels resting orderbook orders
+- `List({account_id, symbol, kind, status})` — all filters optional; hides child sagas spawned by brackets
 
-**PortfolioService:**
+**`portfolio.v1.PortfolioService`** — account state:
 
-- `Deposit` — Deposit cash into a portfolio account
-- `Withdraw` — Withdraw cash from a portfolio account
-- `CreditShares` — Credit shares to a portfolio account (for bootstrapping, e.g., market maker inventory)
-- `GetPortfolio` — Get portfolio state (cash balance, holdings, pending orders)
-- `PlaceOrder` — Place an order through the portfolio (holds cash, places order, settles trades)
-- `GetOrderStatus` — Check the status of a portfolio order saga
+- `Deposit` / `Withdraw` / `CreditShares` — manipulate cash and shares directly (bootstrap and admin)
+- `GetPortfolio` / `StreamPortfolio` — cash balance, holdings, pending single-order sagas (point-in-time and server-streamed)
+- `GetPnL` — per-position and total realized P&L
+- `ListPortfolios` — enumerate all known accounts
 
-**SagaService:**
+**`orderbook.v1.OrderBookService`** — direct orderbook access (mostly useful for tests, market-making, and admin):
 
-- `PlaceBracketOrder` — Place an entry order with automatic take-profit and stop-loss exits
-- `GetSaga` — Look up a saga by ID (status, order IDs, prices)
+- `PlaceOrder` / `CancelOrder` / `ReplaceOrder` — direct order placement, bypasses portfolio
+- `GetOrderBook` / `GetMarketDepth` / `StreamMarketDepth` — book state (full and aggregated)
+- `GetOrder` / `ListOrders` — single-order and per-symbol order queries
+- `ListTrades` / `StreamTrades` — trade history and live stream
+- `GetCandles` / `StreamCandles` — OHLC bars
+- `ListSymbols` / `CloseMarket` — symbol catalog and end-of-day mass-cancel
 
 ### Example usage with buf curl
 
+All examples assume the server is running at `localhost:8080` and use the `--schema proto` flag so `buf curl` can reflect on the local proto files. Run from the repo root.
+
 ```sh
-# Place a sell order
-buf curl --protocol grpc --http2-prior-knowledge \
-  --schema proto http://localhost:8080/orderbook.v1.OrderBookService/PlaceOrder \
-  -d '{"symbol":"AAPL","side":"SIDE_SELL","price":"1505000","quantity":"100"}'
+# --- Setup: open an account and fund it -----------------------------------
 
-# Place a buy order
-buf curl --protocol grpc --http2-prior-knowledge \
-  --schema proto http://localhost:8080/orderbook.v1.OrderBookService/PlaceOrder \
-  -d '{"symbol":"AAPL","side":"SIDE_BUY","price":"1490000","quantity":"50"}'
-
-# Get the order book
-buf curl --protocol grpc --http2-prior-knowledge \
-  --schema proto http://localhost:8080/orderbook.v1.OrderBookService/GetOrderBook \
-  -d '{"symbol":"AAPL"}'
-
-# Get the market depth
-buf curl --protocol grpc --http2-prior-knowledge \
-  --schema proto http://localhost:8080/orderbook.v1.OrderBookService/GetMarketDepth \
-  -d '{"symbol":"AAPL"}'
-
-# Place a bracket order (entry buy at $150, take-profit at $155, stop-loss at $145)
-buf curl --protocol grpc --http2-prior-knowledge \
-  --schema proto http://localhost:8080/orderbook.v1.SagaService/PlaceBracketOrder \
-  -d '{"symbol":"AAPL","side":"SIDE_BUY","price":"1500000","quantity":"100","take_profit_price":"1550000","stop_loss_price":"1450000"}'
-
-# Check saga status
-buf curl --protocol grpc --http2-prior-knowledge \
-  --schema proto http://localhost:8080/orderbook.v1.SagaService/GetSaga \
-  -d '{"saga_id":"<saga_id from above>"}'
-
-# Deposit cash into a portfolio
+# Deposit $50,000 cash (price units: $1.00 = 10000)
 buf curl --protocol grpc --http2-prior-knowledge \
   --schema proto http://localhost:8080/portfolio.v1.PortfolioService/Deposit \
   -d '{"account_id":"acct-1","amount":"500000000"}'
 
-# Place an order through the portfolio (holds cash, places in order book, settles fills)
+# Credit 1000 shares of AAPL at $150 cost basis (for testing sells without buying first)
 buf curl --protocol grpc --http2-prior-knowledge \
-  --schema proto http://localhost:8080/portfolio.v1.PortfolioService/PlaceOrder \
-  -d '{"account_id":"acct-1","symbol":"AAPL","side":"SIDE_BUY","price":"1500000","quantity":"100","order_type":"ORDER_TYPE_LIMIT","time_in_force":"TIME_IN_FORCE_GTC"}'
+  --schema proto http://localhost:8080/portfolio.v1.PortfolioService/CreditShares \
+  -d '{"account_id":"acct-1","symbol":"AAPL","quantity":"1000","cost_per_share":"1500000"}'
 
-# Check order status (use saga_id from PlaceOrder response)
-buf curl --protocol grpc --http2-prior-knowledge \
-  --schema proto http://localhost:8080/portfolio.v1.PortfolioService/GetOrderStatus \
-  -d '{"saga_id":"<saga_id from above>"}'
-
-# Get portfolio (balance, holdings, pending orders)
+# Read it back
 buf curl --protocol grpc --http2-prior-knowledge \
   --schema proto http://localhost:8080/portfolio.v1.PortfolioService/GetPortfolio \
   -d '{"account_id":"acct-1"}'
 
-# Withdraw cash
+# --- Single orders via SagaService ----------------------------------------
+
+# Limit BUY 100 @ $150 (GTC)
 buf curl --protocol grpc --http2-prior-knowledge \
-  --schema proto http://localhost:8080/portfolio.v1.PortfolioService/Withdraw \
-  -d '{"account_id":"acct-1","amount":"1000000"}'
+  --schema proto http://localhost:8080/saga.v1.SagaService/Place \
+  -d '{
+    "account_id":"acct-1",
+    "single_order":{
+      "symbol":"AAPL",
+      "side":"SIDE_BUY",
+      "price":"1500000",
+      "quantity":"100",
+      "order_type":"ORDER_TYPE_LIMIT",
+      "time_in_force":"TIME_IN_FORCE_GTC"
+    }
+  }'
+
+# Market BUY 50 (IOC) — needs ask-side liquidity; the hold uses a walked-book estimate + slippage buffer
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/saga.v1.SagaService/Place \
+  -d '{
+    "account_id":"acct-1",
+    "single_order":{
+      "symbol":"AAPL",
+      "side":"SIDE_BUY",
+      "quantity":"50",
+      "order_type":"ORDER_TYPE_MARKET",
+      "time_in_force":"TIME_IN_FORCE_IOC"
+    }
+  }'
+
+# --- Bracket: BUY 100 @ $150, TP $155, SL $145 ----------------------------
+# Spawns an entry ordersaga and an exit OCO saga; both are hidden from List
+# but visible via Get if you have their derived saga IDs.
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/saga.v1.SagaService/Place \
+  -d '{
+    "account_id":"acct-1",
+    "bracket":{
+      "symbol":"AAPL",
+      "entry_side":"SIDE_BUY",
+      "entry_price":"1500000",
+      "entry_quantity":"100",
+      "take_profit_price":"1550000",
+      "stop_loss_price":"1450000"
+    }
+  }'
+
+# --- OCO: exit existing 100 AAPL at $155 TP or $145 SL --------------------
+# Standalone OCO — no entry order; assumes you already own the shares.
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/saga.v1.SagaService/Place \
+  -d '{
+    "account_id":"acct-1",
+    "oco":{
+      "symbol":"AAPL",
+      "exit_side":"SIDE_SELL",
+      "quantity":"100",
+      "take_profit_price":"1550000",
+      "stop_loss_price":"1450000"
+    }
+  }'
+
+# --- Inspect ---------------------------------------------------------------
+
+# Get a saga's current state + details (works for any kind)
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/saga.v1.SagaService/Get \
+  -d '{"saga_id":"<saga_id from Place>"}'
+
+# List active sagas for an account (filters all optional)
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/saga.v1.SagaService/List \
+  -d '{"account_id":"acct-1","status":"SAGA_STATUS_ACTIVE"}'
+
+# Just the brackets
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/saga.v1.SagaService/List \
+  -d '{"account_id":"acct-1","kind":"SAGA_KIND_BRACKET","status":"SAGA_STATUS_ACTIVE"}'
+
+# --- Cancel ----------------------------------------------------------------
+
+# Cancel a saga (kind-aware — handles single, bracket, OCO appropriately)
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/saga.v1.SagaService/Cancel \
+  -d '{"saga_id":"<saga_id>"}'
+
+# --- Direct orderbook (no portfolio coordination) -------------------------
+# Useful for seeding liquidity in tests or filling someone else's bracket.
+
+# Resting sell at $150 so a BUY bracket has something to match
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/orderbook.v1.OrderBookService/PlaceOrder \
+  -d '{"symbol":"AAPL","side":"SIDE_SELL","price":"1500000","quantity":"100"}'
+
+# Inspect the book
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/orderbook.v1.OrderBookService/GetMarketDepth \
+  -d '{"symbol":"AAPL"}'
+
+# Recent trades
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/orderbook.v1.OrderBookService/ListTrades \
+  -d '{"symbol":"AAPL"}'
 ```
 
 ## Market Maker
