@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sync"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
@@ -14,58 +13,17 @@ import (
 	"github.com/ianunruh/xray/pkg/es"
 )
 
-type actionKind int
-
-const (
-	actionHoldCash actionKind = iota
-	actionPlaceOrder
-	actionRecordFills
-	actionComplete
-	actionReleaseCashAndFail
-	actionReleaseResourcesOnFailure
-)
-
-type action struct {
-	sagaID string
-	kind   actionKind
-}
-
-type fill struct {
-	tradeID  string
-	quantity int64
-	price    int64
-}
-
-type reactorState struct {
-	sagaID         string
-	accountID      string
-	symbol         string
-	side           orderbookv1.Side
-	price          int64
-	quantity       int64
-	orderType      orderbook.OrderType
-	timeInForce    orderbook.TimeInForce
-	replaceOrderID string
-	orderID        string
-	amountHeld     int64
-	filledQty      int64
-	cashSettled    int64
-	status         Status
-
-	pendingFills   []fill
-	orderCancelled bool
-	cancelReason   string
-	actionPending  bool
-}
-
+// Reactor drives the order-saga lifecycle by reacting to events from
+// the saga, portfolio, and orderbook streams. It holds no in-memory
+// state — every decision is made by loading the relevant aggregates
+// at event time. Replays are safe because every command we issue is
+// either per-key idempotent (holds, releases, per-trade settlements)
+// or status-guarded (saga lifecycle transitions).
 type Reactor struct {
 	sagaHandler      *es.Handler[*OrderSaga]
 	portfolioHandler *es.Handler[*portfolio.Portfolio]
 	orderbookHandler *es.Handler[*orderbook.OrderBook]
 	log              *slog.Logger
-
-	mu    sync.Mutex
-	sagas map[string]*reactorState
 }
 
 func NewReactor(
@@ -79,382 +37,156 @@ func NewReactor(
 		portfolioHandler: portfolioHandler,
 		orderbookHandler: orderbookHandler,
 		log:              log,
-		sagas:            make(map[string]*reactorState),
 	}
 }
 
 func (r *Reactor) HandleEvents(ctx context.Context, events []es.Event) error {
-	r.mu.Lock()
-
-	for i := range events {
-		r.applySagaEvent(events[i])
-	}
-
-	for i := range events {
-		r.applyOrderbookEvent(events[i])
-	}
-
-	actions := r.collectActions()
-	r.mu.Unlock()
-
-	return r.executeActions(ctx, actions)
-}
-
-func (r *Reactor) applySagaEvent(evt es.Event) {
-	switch data := evt.Data.(type) {
-	case *portfoliov1.OrderSagaStarted:
-		r.onSagaStarted(data)
-	case *portfoliov1.OrderSagaCashHeld:
-		r.onCashHeld(data)
-	case *portfoliov1.OrderSagaOrderPlaced:
-		r.onOrderPlaced(data)
-	case *portfoliov1.OrderSagaFillRecorded:
-		r.onFillRecorded(data)
-	case *portfoliov1.OrderSagaCompleted:
-		r.onSagaCompleted(data)
-	case *portfoliov1.OrderSagaFailed:
-		r.onSagaFailed(data)
-	case *portfoliov1.OrderSagaActionFailed:
-		r.onActionFailed(data)
-	}
-}
-
-func (r *Reactor) applyOrderbookEvent(evt es.Event) {
-	switch data := evt.Data.(type) {
-	case *orderbookv1.TradeExecuted:
-		r.applyTrade(evt, data)
-	case *orderbookv1.OrderCancelled:
-		r.applyCancel(evt, data)
-	}
-}
-
-func (r *Reactor) onSagaStarted(data *portfoliov1.OrderSagaStarted) {
-	state := &reactorState{
-		sagaID:      data.SagaId,
-		accountID:   data.AccountId,
-		symbol:      data.Symbol,
-		side:        data.Side,
-		price:       data.Price,
-		quantity:    data.Quantity,
-		orderType:      orderbook.OrderTypeFromProto(data.OrderType),
-		timeInForce:    orderbook.TimeInForceFromProto(data.TimeInForce),
-		replaceOrderID: data.ReplaceOrderId,
-		status:         Started,
-	}
-	r.sagas[data.SagaId] = state
-}
-
-func (r *Reactor) onCashHeld(data *portfoliov1.OrderSagaCashHeld) {
-	state, ok := r.sagas[data.SagaId]
-	if !ok {
-		return
-	}
-	state.amountHeld = data.AmountHeld
-	state.status = CashHeld
-	state.actionPending = false
-}
-
-func (r *Reactor) onOrderPlaced(data *portfoliov1.OrderSagaOrderPlaced) {
-	state, ok := r.sagas[data.SagaId]
-	if !ok {
-		return
-	}
-	state.orderID = data.OrderId
-	state.status = OrderPlaced
-	state.actionPending = false
-}
-
-func (r *Reactor) onFillRecorded(data *portfoliov1.OrderSagaFillRecorded) {
-	state, ok := r.sagas[data.SagaId]
-	if !ok {
-		return
-	}
-	state.actionPending = false
-	state.cashSettled += data.CashSettled
-}
-
-func (r *Reactor) onSagaCompleted(data *portfoliov1.OrderSagaCompleted) {
-	state, ok := r.sagas[data.SagaId]
-	if !ok {
-		return
-	}
-	state.status = Completed
-	r.cleanupSaga(state)
-}
-
-func (r *Reactor) onSagaFailed(data *portfoliov1.OrderSagaFailed) {
-	state, ok := r.sagas[data.SagaId]
-	if !ok {
-		return
-	}
-	state.status = Failed
-	state.actionPending = false
-
-	needsRelease := false
-	if state.side == orderbookv1.Side_SIDE_SELL {
-		needsRelease = state.amountHeld > state.filledQty
-	} else {
-		needsRelease = state.amountHeld > state.cashSettled
-	}
-	if !needsRelease {
-		r.cleanupSaga(state)
-	}
-}
-
-func (r *Reactor) onActionFailed(data *portfoliov1.OrderSagaActionFailed) {
-	state, ok := r.sagas[data.SagaId]
-	if !ok {
-		return
-	}
-	state.actionPending = false
-}
-
-func (r *Reactor) applyTrade(_ es.Event, data *orderbookv1.TradeExecuted) {
-	for _, orderID := range []string{data.BuyOrderId, data.SellOrderId} {
-		sagaID, ok := sagaIDFromOrderID(orderID)
-		if !ok {
-			continue
-		}
-		state, ok := r.sagas[sagaID]
-		if !ok || state.status != OrderPlaced {
-			continue
-		}
-		state.filledQty += data.Quantity
-		state.pendingFills = append(state.pendingFills, fill{
-			tradeID:  data.TradeId,
-			quantity: data.Quantity,
-			price:    data.Price,
-		})
-	}
-}
-
-func (r *Reactor) applyCancel(_ es.Event, data *orderbookv1.OrderCancelled) {
-	sagaID, ok := sagaIDFromOrderID(data.OrderId)
-	if !ok {
-		return
-	}
-	state, ok := r.sagas[sagaID]
-	if !ok || state.status != OrderPlaced {
-		return
-	}
-	state.orderCancelled = true
-	if data.Reason != "" {
-		state.cancelReason = data.Reason
-	}
-}
-
-func (r *Reactor) cleanupSaga(state *reactorState) {
-	delete(r.sagas, state.sagaID)
-}
-
-func (r *Reactor) collectActions() []action {
-	var actions []action
-	for _, state := range r.sagas {
-		if state.actionPending {
-			continue
-		}
-		a, ok := r.actionForState(state)
-		if !ok {
-			continue
-		}
-		state.actionPending = true
-		actions = append(actions, a)
-	}
-	return actions
-}
-
-func (r *Reactor) actionForState(state *reactorState) (action, bool) {
-	switch {
-	case state.status == Started:
-		return action{sagaID: state.sagaID, kind: actionHoldCash}, true
-	case state.status == CashHeld:
-		return action{sagaID: state.sagaID, kind: actionPlaceOrder}, true
-	case state.status == OrderPlaced && state.orderCancelled:
-		return action{sagaID: state.sagaID, kind: actionReleaseCashAndFail}, true
-	case state.status == OrderPlaced && len(state.pendingFills) > 0 && state.filledQty >= state.quantity:
-		return action{sagaID: state.sagaID, kind: actionComplete}, true
-	case state.status == OrderPlaced && len(state.pendingFills) > 0:
-		return action{sagaID: state.sagaID, kind: actionRecordFills}, true
-	case state.status == Failed:
-		return action{sagaID: state.sagaID, kind: actionReleaseResourcesOnFailure}, true
-	}
-	return action{}, false
-}
-
-func (r *Reactor) executeActions(ctx context.Context, actions []action) error {
 	var errs []error
-	for _, a := range actions {
-		var err error
-		switch a.kind {
-		case actionHoldCash:
-			err = r.executeHoldCash(ctx, a.sagaID)
-		case actionPlaceOrder:
-			err = r.executePlaceOrder(ctx, a.sagaID)
-		case actionRecordFills:
-			err = r.executeRecordFills(ctx, a.sagaID)
-		case actionComplete:
-			err = r.executeComplete(ctx, a.sagaID)
-		case actionReleaseCashAndFail:
-			err = r.executeReleaseCashAndFail(ctx, a.sagaID)
-		case actionReleaseResourcesOnFailure:
-			err = r.executeReleaseResourcesOnFailure(ctx, a.sagaID)
-		}
-		if err != nil {
+	for _, evt := range events {
+		if err := r.handleOne(ctx, evt); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
 }
 
-func (r *Reactor) executeHoldCash(ctx context.Context, sagaID string) error {
-	r.mu.Lock()
-	state, ok := r.sagas[sagaID]
-	if !ok || state.status != Started {
-		r.mu.Unlock()
+func (r *Reactor) handleOne(ctx context.Context, evt es.Event) error {
+	switch data := evt.Data.(type) {
+	case *portfoliov1.OrderSagaStarted:
+		return r.holdResources(ctx, data.SagaId)
+	case *portfoliov1.OrderSagaCashHeld:
+		return r.placeOrder(ctx, data.SagaId)
+	case *portfoliov1.OrderSagaFillRecorded:
+		return r.maybeComplete(ctx, data.SagaId)
+	case *portfoliov1.OrderSagaFailed:
+		return r.releaseRemainingHolds(ctx, data.SagaId)
+	case *portfoliov1.OrderSagaActionFailed:
+		return r.retry(ctx, data.SagaId)
+	case *orderbookv1.TradeExecuted:
+		return r.onTrade(ctx, data)
+	case *orderbookv1.OrderCancelled:
+		return r.onCancel(ctx, data)
+	}
+	return nil
+}
+
+// holdResources runs the initial Hold step for a freshly-started saga:
+// cash hold for buys (walking the book + slippage buffer for market
+// orders), share hold for sells, or a zero-amount placeholder when no
+// hold is needed.
+func (r *Reactor) holdResources(ctx context.Context, sagaID string) error {
+	saga, err := r.sagaHandler.Load(ctx, AggregateID(sagaID))
+	if err != nil {
+		return fmt.Errorf("load saga: %w", err)
+	}
+	if saga.Status != Started {
 		return nil
 	}
-	accountID := state.accountID
-	symbol := state.symbol
-	side := state.side
-	oType := state.orderType
-	price := state.price
-	quantity := state.quantity
-	r.mu.Unlock()
+
+	side := orderbook.SideToProto(saga.Side)
+	if saga.Side == orderbook.Sell {
+		shareQty := saga.Quantity
+		holdCmd := portfolio.HoldShares{
+			AccountID:   saga.AccountID,
+			OrderSagaID: sagaID,
+			Symbol:      saga.Symbol,
+			Quantity:    shareQty,
+		}
+		if err := r.portfolioHandler.Handle(ctx, holdCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteHoldShares(p, holdCmd)
+		}); err != nil {
+			r.log.Error("failed to hold shares", "saga_id", sagaID, "error", err)
+			return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
+		}
+		return r.recordCashHeld(ctx, sagaID, shareQty)
+	}
 
 	var cashAmount int64
-	if oType == orderbook.Market && side == orderbookv1.Side_SIDE_BUY {
-		book, err := r.orderbookHandler.Load(ctx, orderbook.AggregateID(symbol))
+	if saga.OrderType == orderbook.Market && side == orderbookv1.Side_SIDE_BUY {
+		book, err := r.orderbookHandler.Load(ctx, orderbook.AggregateID(saga.Symbol))
 		if err != nil {
 			r.log.Error("failed to load orderbook for market order hold", "saga_id", sagaID, "error", err)
 			return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
 		}
-		swept, ok := book.EstimateMarketBuyCost(quantity)
+		swept, ok := book.EstimateMarketBuyCost(saga.Quantity)
 		if !ok {
 			r.log.Error("no ask liquidity for market buy hold", "saga_id", sagaID)
 			return r.emitActionFailed(ctx, sagaID, "hold_cash", "no ask liquidity for market buy")
 		}
-		// Pad the swept-book estimate for slippage between hold and execution.
-		// Rounding up ensures a 1¢ estimate still gets a buffer.
+		// Pad for slippage between hold time and execution time. Round up
+		// so even a 1-unit estimate gets a buffer.
 		cashAmount = (swept*marketBuySlippageBps + slippageBpsScale - 1) / slippageBpsScale
 	} else {
-		cashAmount = computeHoldAmount(oType, side, price, quantity)
+		cashAmount = computeHoldAmount(saga.OrderType, side, saga.Price, saga.Quantity)
 	}
-	shareQty := computeShareHoldQuantity(oType, side, quantity)
 
-	if side == orderbookv1.Side_SIDE_SELL && shareQty > 0 {
-		holdCmd := portfolio.HoldShares{
-			AccountID:   accountID,
+	if cashAmount > 0 {
+		holdCmd := portfolio.HoldCash{
+			AccountID:   saga.AccountID,
 			OrderSagaID: sagaID,
-			Symbol:      symbol,
-			Quantity:    shareQty,
+			Amount:      cashAmount,
 		}
-		err := r.portfolioHandler.Handle(ctx, holdCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-			return portfolio.ExecuteHoldShares(p, holdCmd)
-		})
-		if err != nil {
-			r.log.Error("failed to hold shares", "saga_id", sagaID, "error", err)
+		if err := r.portfolioHandler.Handle(ctx, holdCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteHoldCash(p, holdCmd)
+		}); err != nil {
+			r.log.Error("failed to hold cash", "saga_id", sagaID, "error", err)
 			return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
 		}
-
-		cmd := RecordCashHeld{SagaID: sagaID, AmountHeld: shareQty}
-		err = r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
-			return ExecuteRecordCashHeld(saga, cmd)
-		})
-		if err != nil {
-			r.log.Error("failed to record shares held", "saga_id", sagaID, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
-		}
-
-		r.log.Info("order saga shares held", "saga_id", sagaID, "quantity", shareQty)
-		return nil
 	}
+	return r.recordCashHeld(ctx, sagaID, cashAmount)
+}
 
-	if cashAmount == 0 {
-		cmd := RecordCashHeld{SagaID: sagaID, AmountHeld: 0}
-		err := r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
-			return ExecuteRecordCashHeld(saga, cmd)
-		})
-		if err != nil {
-			r.log.Error("failed to record cash held", "saga_id", sagaID, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
-		}
-		r.log.Info("order saga cash hold skipped (no hold needed)", "saga_id", sagaID)
-		return nil
-	}
-
-	holdCmd := portfolio.HoldCash{
-		AccountID:   accountID,
-		OrderSagaID: sagaID,
-		Amount:      cashAmount,
-	}
-	err := r.portfolioHandler.Handle(ctx, holdCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-		return portfolio.ExecuteHoldCash(p, holdCmd)
-	})
-	if err != nil {
-		r.log.Error("failed to hold cash", "saga_id", sagaID, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
-	}
-
-	cmd := RecordCashHeld{SagaID: sagaID, AmountHeld: cashAmount}
-	err = r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
+func (r *Reactor) recordCashHeld(ctx context.Context, sagaID string, amount int64) error {
+	cmd := RecordCashHeld{SagaID: sagaID, AmountHeld: amount}
+	if err := r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
 		return ExecuteRecordCashHeld(saga, cmd)
-	})
-	if err != nil {
+	}); err != nil {
+		if errors.Is(err, ErrInvalidState) {
+			return nil
+		}
 		r.log.Error("failed to record cash held", "saga_id", sagaID, "error", err)
 		return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
 	}
-
-	r.log.Info("order saga cash held", "saga_id", sagaID, "amount", cashAmount)
+	r.log.Info("order saga cash held", "saga_id", sagaID, "amount", amount)
 	return nil
 }
 
-func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
-	r.mu.Lock()
-	state, ok := r.sagas[sagaID]
-	if !ok || state.status != CashHeld {
-		r.mu.Unlock()
+// placeOrder runs the Place step once the saga has its hold. Order IDs
+// are deterministic, so retries are no-ops at the orderbook layer.
+func (r *Reactor) placeOrder(ctx context.Context, sagaID string) error {
+	saga, err := r.sagaHandler.Load(ctx, AggregateID(sagaID))
+	if err != nil {
+		return fmt.Errorf("load saga: %w", err)
+	}
+	if saga.Status != CashHeld {
 		return nil
 	}
-	symbol := state.symbol
-	side := state.side
-	price := state.price
-	quantity := state.quantity
-	orderType := state.orderType
-	timeInForce := state.timeInForce
-	accountID := state.accountID
-	replaceOrderID := state.replaceOrderID
-	r.mu.Unlock()
 
-	// Derive orderID from sagaID so that re-running this action after a
-	// crash between PlaceOrder and RecordOrderPlaced computes the same ID,
-	// and the orderbook's duplicate-OrderID check makes the retry a no-op.
 	orderID := OrderID(sagaID)
-
-	var err error
-	if replaceOrderID != "" {
+	if saga.ReplaceOrderID != "" {
 		replaceCmd := orderbook.ReplaceOrder{
-			Symbol:      symbol,
-			OldOrderID:  replaceOrderID,
+			Symbol:      saga.Symbol,
+			OldOrderID:  saga.ReplaceOrderID,
 			NewOrderID:  orderID,
-			Side:        orderbook.SideFromProto(side),
-			Price:       price,
-			Quantity:    quantity,
-			OrderType:   orderType,
-			TimeInForce: timeInForce,
-			AccountID:   accountID,
+			Side:        saga.Side,
+			Price:       saga.Price,
+			Quantity:    saga.Quantity,
+			OrderType:   saga.OrderType,
+			TimeInForce: saga.TimeInForce,
+			AccountID:   saga.AccountID,
 		}
 		err = r.orderbookHandler.Handle(ctx, replaceCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
 			return orderbook.ExecuteReplaceOrder(book, replaceCmd)
 		})
 	} else {
 		placeCmd := orderbook.PlaceOrder{
-			Symbol:      symbol,
-			Side:        orderbook.SideFromProto(side),
-			Price:       price,
-			Quantity:    quantity,
-			OrderType:   orderType,
-			TimeInForce: timeInForce,
-			AccountID:   accountID,
+			Symbol:      saga.Symbol,
+			Side:        saga.Side,
+			Price:       saga.Price,
+			Quantity:    saga.Quantity,
+			OrderType:   saga.OrderType,
+			TimeInForce: saga.TimeInForce,
+			AccountID:   saga.AccountID,
 			OrderID:     orderID,
 		}
 		err = r.orderbookHandler.Handle(ctx, placeCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
@@ -467,307 +199,276 @@ func (r *Reactor) executePlaceOrder(ctx context.Context, sagaID string) error {
 	}
 
 	cmd := RecordOrderPlaced{SagaID: sagaID, OrderID: orderID}
-	err = r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
+	if err := r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
 		return ExecuteRecordOrderPlaced(saga, cmd)
-	})
-	if err != nil {
+	}); err != nil {
+		if errors.Is(err, ErrInvalidState) {
+			return nil
+		}
 		r.log.Error("failed to record order placed", "saga_id", sagaID, "error", err)
 		return r.emitActionFailed(ctx, sagaID, "place_order", err.Error())
 	}
-
 	r.log.Info("order saga order placed", "saga_id", sagaID, "order_id", orderID)
 	return nil
 }
 
-func (r *Reactor) executeRecordFills(ctx context.Context, sagaID string) error {
-	r.mu.Lock()
-	state, ok := r.sagas[sagaID]
-	if !ok || state.status != OrderPlaced {
-		r.mu.Unlock()
+// onTrade settles a single matched trade against the portfolio and
+// records the fill on the saga. Both commands are per-trade idempotent
+// so replays are safe.
+func (r *Reactor) onTrade(ctx context.Context, data *orderbookv1.TradeExecuted) error {
+	var firstErr error
+	for _, orderID := range []string{data.BuyOrderId, data.SellOrderId} {
+		sagaID, ok := sagaIDFromOrderID(orderID)
+		if !ok {
+			continue
+		}
+		if err := r.settleTrade(ctx, sagaID, data); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (r *Reactor) settleTrade(ctx context.Context, sagaID string, data *orderbookv1.TradeExecuted) error {
+	saga, err := r.sagaHandler.Load(ctx, AggregateID(sagaID))
+	if err != nil {
+		return fmt.Errorf("load saga: %w", err)
+	}
+	if saga.Status != OrderPlaced {
 		return nil
 	}
-	fills := state.pendingFills
-	state.pendingFills = nil
-	accountID := state.accountID
-	symbol := state.symbol
-	side := state.side
-	r.mu.Unlock()
+	cashAmount := data.Price * data.Quantity
 
-	for _, f := range fills {
-		cashAmount := f.price * f.quantity
-
-		if side == orderbookv1.Side_SIDE_SELL {
-			settleCmd := portfolio.SettleSale{
-				AccountID:     accountID,
-				OrderSagaID:   sagaID,
-				TradeID:       f.tradeID,
-				Symbol:        symbol,
-				Quantity:      f.quantity,
-				PricePerShare: f.price,
-				Proceeds:      cashAmount,
-			}
-			err := r.portfolioHandler.Handle(ctx, settleCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-				return portfolio.ExecuteSettleSale(p, settleCmd)
-			})
-			if err != nil {
-				r.log.Error("failed to settle sale on portfolio", "saga_id", sagaID, "trade_id", f.tradeID, "error", err)
-				r.mu.Lock()
-				if s, ok := r.sagas[sagaID]; ok {
-					s.pendingFills = append(s.pendingFills, f)
-				}
-				r.mu.Unlock()
-				return r.emitActionFailed(ctx, sagaID, "record_fills", err.Error())
-			}
-		} else {
-			settleCmd := portfolio.SettleTrade{
-				AccountID:    accountID,
-				OrderSagaID:  sagaID,
-				TradeID:      f.tradeID,
-				Amount:       cashAmount,
-				Symbol:       symbol,
-				Quantity:     f.quantity,
-				CostPerShare: f.price,
-			}
-			err := r.portfolioHandler.Handle(ctx, settleCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-				return portfolio.ExecuteSettleTrade(p, settleCmd)
-			})
-			if err != nil {
-				r.log.Error("failed to settle trade on portfolio", "saga_id", sagaID, "trade_id", f.tradeID, "error", err)
-				r.mu.Lock()
-				if s, ok := r.sagas[sagaID]; ok {
-					s.pendingFills = append(s.pendingFills, f)
-				}
-				r.mu.Unlock()
-				return r.emitActionFailed(ctx, sagaID, "record_fills", err.Error())
-			}
+	if saga.Side == orderbook.Sell {
+		settleCmd := portfolio.SettleSale{
+			AccountID:     saga.AccountID,
+			OrderSagaID:   sagaID,
+			TradeID:       data.TradeId,
+			Symbol:        saga.Symbol,
+			Quantity:      data.Quantity,
+			PricePerShare: data.Price,
+			Proceeds:      cashAmount,
 		}
-
-		fillCmd := RecordFill{
-			SagaID:       sagaID,
-			TradeID:      f.tradeID,
-			FillQuantity: f.quantity,
-			FillPrice:    f.price,
-			CashSettled:  cashAmount,
-		}
-		err := r.sagaHandler.Handle(ctx, fillCmd, func(saga *OrderSaga) ([]es.Event, error) {
-			return ExecuteRecordFill(saga, fillCmd)
-		})
-		if err != nil {
-			r.log.Error("failed to record fill", "saga_id", sagaID, "trade_id", f.tradeID, "error", err)
+		if err := r.portfolioHandler.Handle(ctx, settleCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteSettleSale(p, settleCmd)
+		}); err != nil {
+			r.log.Error("failed to settle sale on portfolio", "saga_id", sagaID, "trade_id", data.TradeId, "error", err)
 			return r.emitActionFailed(ctx, sagaID, "record_fills", err.Error())
 		}
-
-		r.mu.Lock()
-		if s, ok := r.sagas[sagaID]; ok {
-			s.cashSettled += cashAmount
+	} else {
+		settleCmd := portfolio.SettleTrade{
+			AccountID:    saga.AccountID,
+			OrderSagaID:  sagaID,
+			TradeID:      data.TradeId,
+			Amount:       cashAmount,
+			Symbol:       saga.Symbol,
+			Quantity:     data.Quantity,
+			CostPerShare: data.Price,
 		}
-		r.mu.Unlock()
+		if err := r.portfolioHandler.Handle(ctx, settleCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteSettleTrade(p, settleCmd)
+		}); err != nil {
+			r.log.Error("failed to settle trade on portfolio", "saga_id", sagaID, "trade_id", data.TradeId, "error", err)
+			return r.emitActionFailed(ctx, sagaID, "record_fills", err.Error())
+		}
 	}
 
-	r.log.Info("order saga fills recorded", "saga_id", sagaID, "count", len(fills))
+	fillCmd := RecordFill{
+		SagaID:       sagaID,
+		TradeID:      data.TradeId,
+		FillQuantity: data.Quantity,
+		FillPrice:    data.Price,
+		CashSettled:  cashAmount,
+	}
+	if err := r.sagaHandler.Handle(ctx, fillCmd, func(saga *OrderSaga) ([]es.Event, error) {
+		return ExecuteRecordFill(saga, fillCmd)
+	}); err != nil {
+		if errors.Is(err, ErrInvalidState) {
+			return nil
+		}
+		r.log.Error("failed to record fill", "saga_id", sagaID, "trade_id", data.TradeId, "error", err)
+		return r.emitActionFailed(ctx, sagaID, "record_fills", err.Error())
+	}
 	return nil
 }
 
-func (r *Reactor) executeComplete(ctx context.Context, sagaID string) error {
-	if err := r.executeRecordFills(ctx, sagaID); err != nil {
+// maybeComplete fires when a fill record arrives. If FilledQty has
+// caught up to Quantity, release the unused hold and complete the saga.
+func (r *Reactor) maybeComplete(ctx context.Context, sagaID string) error {
+	saga, err := r.sagaHandler.Load(ctx, AggregateID(sagaID))
+	if err != nil {
+		return fmt.Errorf("load saga: %w", err)
+	}
+	if saga.Status != OrderPlaced || saga.FilledQty < saga.Quantity {
+		return nil
+	}
+	return r.completeSaga(ctx, saga)
+}
+
+func (r *Reactor) completeSaga(ctx context.Context, saga *OrderSaga) error {
+	if saga.Side == orderbook.Sell {
+		remainingShares := saga.AmountHeld - saga.FilledQty
+		if remainingShares > 0 {
+			releaseCmd := portfolio.ReleaseShares{
+				AccountID:   saga.AccountID,
+				OrderSagaID: saga.SagaID,
+				Symbol:      saga.Symbol,
+				Quantity:    remainingShares,
+			}
+			if err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteReleaseShares(p, releaseCmd)
+			}); err != nil {
+				r.log.Error("failed to release remaining shares", "saga_id", saga.SagaID, "error", err)
+				return r.emitActionFailed(ctx, saga.SagaID, "complete", err.Error())
+			}
+		}
+	} else {
+		remaining := saga.AmountHeld - saga.CashSettled
+		if remaining > 0 {
+			releaseCmd := portfolio.ReleaseCash{
+				AccountID:   saga.AccountID,
+				OrderSagaID: saga.SagaID,
+				Amount:      remaining,
+			}
+			if err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteReleaseCash(p, releaseCmd)
+			}); err != nil {
+				r.log.Error("failed to release remaining cash", "saga_id", saga.SagaID, "error", err)
+				return r.emitActionFailed(ctx, saga.SagaID, "complete", err.Error())
+			}
+		}
+	}
+
+	cmd := RecordCompleted{SagaID: saga.SagaID}
+	if err := r.sagaHandler.Handle(ctx, cmd, func(s *OrderSaga) ([]es.Event, error) {
+		return ExecuteRecordCompleted(s, cmd)
+	}); err != nil {
+		if errors.Is(err, ErrInvalidState) {
+			return nil
+		}
+		r.log.Error("failed to record completed", "saga_id", saga.SagaID, "error", err)
+		return r.emitActionFailed(ctx, saga.SagaID, "complete", err.Error())
+	}
+	r.log.Info("order saga completed", "saga_id", saga.SagaID)
+	return nil
+}
+
+// onCancel handles an OrderCancelled event for one of our orders: release
+// the remaining hold and mark the saga failed.
+func (r *Reactor) onCancel(ctx context.Context, data *orderbookv1.OrderCancelled) error {
+	sagaID, ok := sagaIDFromOrderID(data.OrderId)
+	if !ok {
+		return nil
+	}
+	saga, err := r.sagaHandler.Load(ctx, AggregateID(sagaID))
+	if err != nil {
+		return fmt.Errorf("load saga: %w", err)
+	}
+	if saga.Status != OrderPlaced {
+		return nil
+	}
+
+	if err := r.releaseRemainingHoldsForSaga(ctx, saga); err != nil {
 		return err
 	}
 
-	r.mu.Lock()
-	state, ok := r.sagas[sagaID]
-	if !ok || state.status != OrderPlaced {
-		r.mu.Unlock()
-		return nil
+	reason := data.Reason
+	if reason == "" {
+		reason = "order cancelled"
 	}
-	accountID := state.accountID
-	symbol := state.symbol
-	side := state.side
-	amountHeld := state.amountHeld
-	filledQty := state.filledQty
-	cashSettled := state.cashSettled
-	r.mu.Unlock()
-
-	if side == orderbookv1.Side_SIDE_SELL {
-		remainingShares := amountHeld - filledQty
-		if remainingShares > 0 {
-			releaseCmd := portfolio.ReleaseShares{
-				AccountID:   accountID,
-				OrderSagaID: sagaID,
-				Symbol:      symbol,
-				Quantity:    remainingShares,
-			}
-			err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-				return portfolio.ExecuteReleaseShares(p, releaseCmd)
-			})
-			if err != nil {
-				r.log.Error("failed to release remaining shares", "saga_id", sagaID, "error", err)
-				return r.emitActionFailed(ctx, sagaID, "complete", err.Error())
-			}
+	failCmd := RecordFailed{SagaID: sagaID, Reason: reason}
+	if err := r.sagaHandler.Handle(ctx, failCmd, func(s *OrderSaga) ([]es.Event, error) {
+		return ExecuteRecordFailed(s, failCmd)
+	}); err != nil {
+		if errors.Is(err, ErrInvalidState) {
+			return nil
 		}
-	} else {
-		remaining := amountHeld - cashSettled
-		if remaining > 0 {
-			releaseCmd := portfolio.ReleaseCash{
-				AccountID:   accountID,
-				OrderSagaID: sagaID,
-				Amount:      remaining,
-			}
-			err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-				return portfolio.ExecuteReleaseCash(p, releaseCmd)
-			})
-			if err != nil {
-				r.log.Error("failed to release remaining cash", "saga_id", sagaID, "error", err)
-				return r.emitActionFailed(ctx, sagaID, "complete", err.Error())
-			}
-		}
-	}
-
-	cmd := RecordCompleted{SagaID: sagaID}
-	err := r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
-		return ExecuteRecordCompleted(saga, cmd)
-	})
-	if err != nil {
-		r.log.Error("failed to record completed", "saga_id", sagaID, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "complete", err.Error())
-	}
-
-	r.log.Info("order saga completed", "saga_id", sagaID)
-	return nil
-}
-
-func (r *Reactor) executeReleaseCashAndFail(ctx context.Context, sagaID string) error {
-	r.mu.Lock()
-	state, ok := r.sagas[sagaID]
-	if !ok || state.status != OrderPlaced {
-		r.mu.Unlock()
-		return nil
-	}
-	accountID := state.accountID
-	symbol := state.symbol
-	side := state.side
-	amountHeld := state.amountHeld
-	filledQty := state.filledQty
-	cashSettled := state.cashSettled
-	r.mu.Unlock()
-
-	if side == orderbookv1.Side_SIDE_SELL {
-		remainingShares := amountHeld - filledQty
-		if remainingShares > 0 {
-			releaseCmd := portfolio.ReleaseShares{
-				AccountID:   accountID,
-				OrderSagaID: sagaID,
-				Symbol:      symbol,
-				Quantity:    remainingShares,
-			}
-			err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-				return portfolio.ExecuteReleaseShares(p, releaseCmd)
-			})
-			if err != nil {
-				r.log.Error("failed to release shares on cancel", "saga_id", sagaID, "error", err)
-				return r.emitActionFailed(ctx, sagaID, "release_cash_and_fail", err.Error())
-			}
-		}
-		r.mu.Lock()
-		if s, ok := r.sagas[sagaID]; ok {
-			s.filledQty = s.amountHeld
-		}
-		r.mu.Unlock()
-	} else {
-		remaining := amountHeld - cashSettled
-		if remaining > 0 {
-			releaseCmd := portfolio.ReleaseCash{
-				AccountID:   accountID,
-				OrderSagaID: sagaID,
-				Amount:      remaining,
-			}
-			err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-				return portfolio.ExecuteReleaseCash(p, releaseCmd)
-			})
-			if err != nil {
-				r.log.Error("failed to release cash on cancel", "saga_id", sagaID, "error", err)
-				return r.emitActionFailed(ctx, sagaID, "release_cash_and_fail", err.Error())
-			}
-		}
-		r.mu.Lock()
-		if s, ok := r.sagas[sagaID]; ok {
-			s.cashSettled = s.amountHeld
-		}
-		r.mu.Unlock()
-	}
-
-	reason := "order cancelled"
-	r.mu.Lock()
-	if s, ok := r.sagas[sagaID]; ok && s.cancelReason != "" {
-		reason = s.cancelReason
-	}
-	r.mu.Unlock()
-
-	cmd := RecordFailed{SagaID: sagaID, Reason: reason}
-	err := r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
-		return ExecuteRecordFailed(saga, cmd)
-	})
-	if err != nil {
 		r.log.Error("failed to record saga failed", "saga_id", sagaID, "error", err)
 		return r.emitActionFailed(ctx, sagaID, "release_cash_and_fail", err.Error())
 	}
-
 	r.log.Info("order saga failed — order cancelled", "saga_id", sagaID)
 	return nil
 }
 
-func (r *Reactor) executeReleaseResourcesOnFailure(ctx context.Context, sagaID string) error {
-	r.mu.Lock()
-	state, ok := r.sagas[sagaID]
-	if !ok || state.status != Failed {
-		r.mu.Unlock()
+// releaseRemainingHolds runs in response to OrderSagaFailed events.
+// If the failure path left a hold behind (e.g., place-order failed
+// after a hold was placed), release it.
+func (r *Reactor) releaseRemainingHolds(ctx context.Context, sagaID string) error {
+	saga, err := r.sagaHandler.Load(ctx, AggregateID(sagaID))
+	if err != nil {
+		return fmt.Errorf("load saga: %w", err)
+	}
+	if saga.Status != Failed {
 		return nil
 	}
-	accountID := state.accountID
-	symbol := state.symbol
-	side := state.side
-	amountHeld := state.amountHeld
-	filledQty := state.filledQty
-	cashSettled := state.cashSettled
-	r.mu.Unlock()
+	return r.releaseRemainingHoldsForSaga(ctx, saga)
+}
 
-	if side == orderbookv1.Side_SIDE_SELL {
-		remainingShares := amountHeld - filledQty
-		if remainingShares > 0 {
-			releaseCmd := portfolio.ReleaseShares{
-				AccountID:   accountID,
-				OrderSagaID: sagaID,
-				Symbol:      symbol,
-				Quantity:    remainingShares,
-			}
-			if err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-				return portfolio.ExecuteReleaseShares(p, releaseCmd)
-			}); err != nil {
-				r.log.Error("failed to release shares on failure", "saga_id", sagaID, "error", err)
-				return err
-			}
-		}
-	} else {
-		remaining := amountHeld - cashSettled
-		if remaining > 0 {
-			releaseCmd := portfolio.ReleaseCash{
-				AccountID:   accountID,
-				OrderSagaID: sagaID,
-				Amount:      remaining,
-			}
-			if err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-				return portfolio.ExecuteReleaseCash(p, releaseCmd)
-			}); err != nil {
-				r.log.Error("failed to release cash on failure", "saga_id", sagaID, "error", err)
-				return err
-			}
-		}
+func (r *Reactor) releaseRemainingHoldsForSaga(ctx context.Context, saga *OrderSaga) error {
+	p, err := r.portfolioHandler.Load(ctx, portfolio.AggregateID(saga.AccountID))
+	if err != nil {
+		return fmt.Errorf("load portfolio: %w", err)
 	}
 
-	r.mu.Lock()
-	r.cleanupSaga(state)
-	r.mu.Unlock()
+	if saga.Side == orderbook.Sell {
+		hold, ok := p.ShareHoldsBySaga[saga.SagaID]
+		if !ok || hold.Quantity <= 0 {
+			return nil
+		}
+		releaseCmd := portfolio.ReleaseShares{
+			AccountID:   saga.AccountID,
+			OrderSagaID: saga.SagaID,
+			Symbol:      hold.Symbol,
+			Quantity:    hold.Quantity,
+		}
+		if err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteReleaseShares(p, releaseCmd)
+		}); err != nil {
+			r.log.Error("failed to release shares on failure", "saga_id", saga.SagaID, "error", err)
+			return r.emitActionFailed(ctx, saga.SagaID, "release_resources_on_failure", err.Error())
+		}
+		return nil
+	}
 
-	r.log.Info("order saga cleanup after failure", "saga_id", sagaID)
+	remaining, ok := p.HoldsBySaga[saga.SagaID]
+	if !ok || remaining <= 0 {
+		return nil
+	}
+	releaseCmd := portfolio.ReleaseCash{
+		AccountID:   saga.AccountID,
+		OrderSagaID: saga.SagaID,
+		Amount:      remaining,
+	}
+	if err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteReleaseCash(p, releaseCmd)
+	}); err != nil {
+		r.log.Error("failed to release cash on failure", "saga_id", saga.SagaID, "error", err)
+		return r.emitActionFailed(ctx, saga.SagaID, "release_resources_on_failure", err.Error())
+	}
+	return nil
+}
+
+// retry is the universal "previous action failed, look at the current
+// state and re-derive what to do" handler.
+func (r *Reactor) retry(ctx context.Context, sagaID string) error {
+	saga, err := r.sagaHandler.Load(ctx, AggregateID(sagaID))
+	if err != nil {
+		return fmt.Errorf("load saga: %w", err)
+	}
+	switch saga.Status {
+	case Started:
+		return r.holdResources(ctx, sagaID)
+	case CashHeld:
+		return r.placeOrder(ctx, sagaID)
+	case OrderPlaced:
+		// Check if the saga is past completion; otherwise just wait for
+		// the next trade or cancel event to drive things forward.
+		if saga.FilledQty >= saga.Quantity {
+			return r.completeSaga(ctx, saga)
+		}
+	case Failed:
+		return r.releaseRemainingHoldsForSaga(ctx, saga)
+	}
 	return nil
 }
 
@@ -777,33 +478,26 @@ func (r *Reactor) emitActionFailed(ctx context.Context, sagaID, action, reason s
 		Action: action,
 		Reason: reason,
 	}
-	err := r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
+	if err := r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
 		return ExecuteRecordActionFailed(saga, cmd)
-	})
-	if err != nil {
+	}); err != nil {
 		r.log.Error("failed to emit action failed event", "saga_id", sagaID, "action", action, "error", err)
 		return fmt.Errorf("saga %s: failed to emit action failed for %s: %w", sagaID, action, err)
 	}
 	return nil
 }
 
-// marketBuySlippageBps pads the hold computed from walking the ask book to
-// cover slippage between hold time and execution time. 10500 bps = 1.05×.
+// marketBuySlippageBps pads the hold computed from walking the ask book
+// to cover slippage between hold time and execution time. 10500 bps =
+// 1.05×.
 const (
 	marketBuySlippageBps = 10500
 	slippageBpsScale     = 10000
 )
 
-func computeHoldAmount(orderType orderbook.OrderType, side orderbookv1.Side, price, quantity int64) int64 {
+func computeHoldAmount(_ orderbook.OrderType, side orderbookv1.Side, price, quantity int64) int64 {
 	if side == orderbookv1.Side_SIDE_SELL {
 		return 0
 	}
 	return price * quantity
-}
-
-func computeShareHoldQuantity(orderType orderbook.OrderType, side orderbookv1.Side, quantity int64) int64 {
-	if side == orderbookv1.Side_SIDE_BUY {
-		return 0
-	}
-	return quantity
 }

@@ -205,6 +205,40 @@ func TestReactor_FullLifecycle(t *testing.T) {
 	assert.Equal(t, int64(150000000), p.Holdings["AAPL"].TotalCost)
 }
 
+func TestReactor_StatelessReactor_FreshInstanceHandlesMidLifecycleEvents(t *testing.T) {
+	// Simulates a process restart: a fresh ordersaga reactor (with no
+	// state inherited from the previous run) should still correctly
+	// settle trades and complete the saga when it observes
+	// TradeExecuted events for an in-flight order.
+	env := setupReactorTest(t)
+	depositCash(t, env, "acct-1", 150000000)
+
+	// Resting liquidity for 60 of the 100 — saga will be partially
+	// filled and remain OrderPlaced after the first flush.
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1500000, 60)
+	env.pub.events = nil
+	startOrderSaga(t, env, "saga-1", "acct-1", "AAPL", orderbookv1.Side_SIDE_BUY, 1500000, 100)
+	env.flush()
+
+	require.Equal(t, ordersaga.OrderPlaced, loadSaga(t, env, "saga-1").Status)
+
+	// "Restart" the reactor — fresh instance with no in-memory state.
+	env.reactor = ordersaga.NewReactor(env.sagaHandler, env.portfolioHandler, env.obHandler, slog.Default())
+
+	// Fill the remaining 40; the fresh reactor must settle and complete.
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1500000, 40)
+	env.flush()
+
+	s := loadSaga(t, env, "saga-1")
+	assert.Equal(t, ordersaga.Completed, s.Status, "fresh reactor completed the in-flight saga")
+	assert.Equal(t, int64(100), s.FilledQty)
+
+	p := loadPortfolio(t, env, "acct-1")
+	assert.Equal(t, int64(0), p.CashBalance)
+	assert.Equal(t, int64(0), p.CashHeld)
+	assert.Equal(t, int64(100), p.Holdings["AAPL"].Quantity)
+}
+
 func TestReactor_PartialFills(t *testing.T) {
 	env := setupReactorTest(t)
 
