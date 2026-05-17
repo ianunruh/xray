@@ -137,6 +137,21 @@ func (e *Engine) placeRandomOrder(ctx context.Context) {
 		}
 	}
 
+	if !canAfford(portfolio, e.cfg.Symbol, side, orderType, price, qty, snap.Price) {
+		flipped := flipSide(side)
+		overLimit := (flipped == orderbookv1.Side_SIDE_BUY && position >= e.cfg.MaxPosition) ||
+			(flipped == orderbookv1.Side_SIDE_SELL && position <= -e.cfg.MaxPosition)
+		if overLimit || !canAfford(portfolio, e.cfg.Symbol, flipped, orderType, price, qty, snap.Price) {
+			e.log.Debug("skipping order: insufficient resources on both sides",
+				"side", side, "price", price, "quantity", qty, "order_type", orderType,
+				"cash_available", portfolio.CashBalance)
+			return
+		}
+		e.log.Debug("flipping side for affordability",
+			"from", side, "to", flipped, "order_type", orderType)
+		side = flipped
+	}
+
 	if e.wouldSelfTrade(portfolio.PendingOrders, side, price, orderType) {
 		e.log.Debug("skipping order to avoid self-trade",
 			"side", side, "price", price, "order_type", orderType)
@@ -168,7 +183,46 @@ func (e *Engine) placeRandomOrder(ctx context.Context) {
 		"quantity", qty,
 		"order_type", orderType,
 		"position", position,
-		"cash_available", portfolio.CashBalance-portfolio.CashHeld)
+		"cash_available", portfolio.CashBalance)
+}
+
+// marketBuyAffordabilityPadBps pads the reference-price estimate of a market
+// buy's cash requirement. The saga reactor walks the actual ask book and pads
+// 1.05×; the noise trader has no book visibility, so it uses a larger 1.10×
+// pad to absorb both the depth-walk shortfall and slippage.
+const marketBuyAffordabilityPadBps = 11000
+
+func flipSide(s orderbookv1.Side) orderbookv1.Side {
+	if s == orderbookv1.Side_SIDE_BUY {
+		return orderbookv1.Side_SIDE_SELL
+	}
+	return orderbookv1.Side_SIDE_BUY
+}
+
+func canAfford(
+	portfolio *portfoliov1.GetPortfolioResponse,
+	symbol string,
+	side orderbookv1.Side,
+	orderType orderbookv1.OrderType,
+	price, qty, refPrice int64,
+) bool {
+	if side == orderbookv1.Side_SIDE_SELL {
+		var available int64
+		for _, h := range portfolio.Holdings {
+			if h.Symbol == symbol {
+				available = h.Quantity - h.SharesHeld
+				break
+			}
+		}
+		return available >= qty
+	}
+	var required int64
+	if orderType == orderbookv1.OrderType_ORDER_TYPE_MARKET {
+		required = (refPrice * qty * marketBuyAffordabilityPadBps) / 10000
+	} else {
+		required = price * qty
+	}
+	return portfolio.CashBalance >= required
 }
 
 func (e *Engine) wouldSelfTrade(
