@@ -65,28 +65,23 @@ function estimateBuyingPowerReduction(args: {
   quantity: number | string;
   marginBps: bigint | null;
 }): bigint | null {
-  const { mode, isMarket, side, positionSide, price, quantity, marginBps } =
-    args;
-  if (mode === "OCO") return 0n; // exits an existing position
-  const qty = typeof quantity === "number" ? quantity : parseInt(quantity, 10);
-  if (!qty || qty <= 0) return null;
-  const prc = typeof price === "number" ? price : parseFloat(price);
-  if (isMarket && mode === "SINGLE" && side === "BUY" && positionSide === "LONG") {
-    // Without book depth, fall back to typed price (often blank for
-    // market) — return null so we don't lie about the hold.
-    if (!prc || prc <= 0) return null;
-  }
-  if (!prc || prc <= 0) {
-    // Bracket entry and limit orders always require a price.
-    if (mode === "BRACKET" || !isMarket) return null;
-  }
-  const notional = moneyToPrice(prc) * BigInt(qty);
+  const { mode, side, positionSide, price, quantity, marginBps } = args;
 
-  // Long sell and short cover hold shares/capacity, not cash.
+  // Cash-neutral cases first — these don't need a price.
+  if (mode === "OCO") return 0n;
   if (side === "SELL" && positionSide === "LONG") return 0n;
   if (side === "BUY" && positionSide === "SHORT") return 0n;
 
-  // Long buy: cash hold = notional (limit) or estimated cost (market).
+  const qty = typeof quantity === "number" ? quantity : parseInt(quantity, 10);
+  if (!qty || qty <= 0) return null;
+
+  const prc = typeof price === "number" ? price : parseFloat(price);
+  if (!Number.isFinite(prc) || prc <= 0) return null;
+
+  const notional = moneyToPrice(prc) * BigInt(qty);
+
+  // Long buy: cash hold = notional. Market BUY without a typed price
+  // returns null above; once the user types one the estimate sticks.
   if (side === "BUY" && positionSide === "LONG") return notional;
 
   // Short open: collateral = initial_margin_bps * notional / 10000.
@@ -134,6 +129,8 @@ export function OrderForm({
     isMarket,
     side,
     positionSide,
+    // Bracket entry uses the entry price field; OCO and single
+    // orders use the same `price` state field.
     price,
     quantity,
     marginBps: margin?.initialMarginBps ?? null,
