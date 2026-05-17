@@ -56,6 +56,9 @@ func (s *Server) Place(ctx context.Context, req *connect.Request[sagav1.PlaceSag
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("account_id required"))
 	}
 
+	ctx, correlationID := es.NewCorrelation(ctx)
+	s.log.Info("Place", "account_id", msg.AccountId, "correlation_id", correlationID)
+
 	switch plan := msg.Plan.(type) {
 	case *sagav1.PlaceSagaRequest_SingleOrder:
 		sagaID, err := s.placeSingleOrder(ctx, msg.AccountId, plan.SingleOrder)
@@ -206,6 +209,9 @@ func (s *Server) Cancel(ctx context.Context, req *connect.Request[sagav1.CancelS
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("saga %s is %s, cannot cancel", row.SagaID, row.Status))
 	}
+
+	ctx, correlationID := es.NewCorrelation(ctx)
+	s.log.Info("Cancel", "saga_id", row.SagaID, "kind", row.Kind, "correlation_id", correlationID)
 
 	switch row.Kind {
 	case sagav1.SagaKind_SAGA_KIND_SINGLE_ORDER:

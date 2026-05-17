@@ -49,6 +49,7 @@ func (r *Reactor) HandleEvents(ctx context.Context, events []es.Event) error {
 }
 
 func (r *Reactor) handleOne(ctx context.Context, evt es.Event) error {
+	ctx = es.WithCausation(ctx, evt)
 	switch data := evt.Data.(type) {
 	case *orderbookv1.OCOSagaStarted:
 		return r.holdShares(ctx, data.SagaId)

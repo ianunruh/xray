@@ -1,6 +1,10 @@
 package es
 
-import "context"
+import (
+	"context"
+
+	"github.com/google/uuid"
+)
 
 type causationKey struct{}
 
@@ -35,4 +39,13 @@ func WithCorrelation(ctx context.Context, correlationID string) context.Context 
 func CausationFrom(ctx context.Context) (Causation, bool) {
 	c, ok := ctx.Value(causationKey{}).(Causation)
 	return c, ok
+}
+
+// NewCorrelation mints a fresh correlation ID, attaches it to ctx, and
+// returns both. Use at origin sites (RPC handlers, the reconciler) so the
+// correlation ID is available for log lines and downstream Handle calls
+// inherit it via ctx instead of each one auto-minting independently.
+func NewCorrelation(ctx context.Context) (context.Context, string) {
+	id := uuid.NewString()
+	return WithCorrelation(ctx, id), id
 }

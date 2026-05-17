@@ -111,6 +111,12 @@ func (r *Reconciler) ReconcileOnce(ctx context.Context) error {
 }
 
 func (r *Reconciler) reconcileSaga(ctx context.Context, s *sagasvc.SagaRow) error {
+	// Fresh correlation per reconciliation pass. The original chain that
+	// kicked off this saga is lost (we don't persist correlations on
+	// saga rows yet), so any events the reconciler emits start a new chain
+	// tagged by saga ID in logs.
+	ctx, correlationID := es.NewCorrelation(ctx)
+	r.log.Info("reconcile saga", "saga_id", s.SagaID, "kind", s.Kind, "correlation_id", correlationID)
 	switch s.Kind {
 	case sagav1.SagaKind_SAGA_KIND_SINGLE_ORDER:
 		return r.reconcileOrderSaga(ctx, s)

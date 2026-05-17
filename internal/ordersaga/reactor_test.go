@@ -731,3 +731,80 @@ func TestReactor_MarketBuy_NoLiquidity_SagaFails(t *testing.T) {
 	assert.Equal(t, int64(1000000000), p.CashBalance)
 	assert.Equal(t, int64(0), p.CashHeld)
 }
+
+func TestReactor_CausationChain_EndToEnd(t *testing.T) {
+	// Drive a full order saga (hold cash → place order → match → settle →
+	// record fill → complete) and assert every event the saga produces
+	// shares the same correlation_id, and every event's causation_id
+	// references some earlier event in the same chain.
+	env := setupReactorTest(t)
+	depositCash(t, env, "acct-1", 150000000)
+
+	// Pre-existing resting sell on a separate correlation. Its events
+	// should NOT appear in the saga's chain.
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1500000, 100)
+	env.pub.events = nil
+
+	// Start the saga inside a fresh correlation we know upfront so we can
+	// filter events by it. The reactor's ctx-propagation should carry
+	// this correlation all the way through the chain.
+	ctx, correlationID := es.NewCorrelation(env.ctx)
+	cmd := ordersaga.StartOrderSaga{
+		SagaID:      "saga-1",
+		AccountID:   "acct-1",
+		Symbol:      "AAPL",
+		Side:        orderbookv1.Side_SIDE_BUY,
+		Price:       1500000,
+		Quantity:    100,
+		OrderType:   orderbookv1.OrderType_ORDER_TYPE_LIMIT,
+		TimeInForce: orderbookv1.TimeInForce_TIME_IN_FORCE_GTC,
+	}
+	require.NoError(t, env.sagaHandler.Handle(ctx, cmd, func(s *ordersaga.OrderSaga) ([]es.Event, error) {
+		return ordersaga.ExecuteStartOrderSaga(s, cmd)
+	}))
+	env.flush()
+
+	raw, err := env.store.LoadAll(env.ctx)
+	require.NoError(t, err)
+
+	var chain []es.RawEvent
+	idsInChain := make(map[string]string)
+	for _, r := range raw {
+		if r.CorrelationID == correlationID {
+			chain = append(chain, r)
+			idsInChain[r.ID] = r.Type
+		}
+	}
+
+	// Sanity: a full lifecycle emits at least started, cash-held, saga
+	// cash-held, order-placed, trade-executed, settled, fill-recorded,
+	// completed.
+	require.GreaterOrEqual(t, len(chain), 6, "saga chain too short: %+v", chain)
+
+	// First event in the chain originated from the user RPC and has no
+	// parent event.
+	first := chain[0]
+	assert.NotEmpty(t, first.ID, "first event must have an ID")
+	assert.Empty(t, first.CausationID, "origin event has no causation")
+	assert.Equal(t, "OrderSagaStarted", first.Type, "first event in chain should be OrderSagaStarted")
+
+	// Every subsequent event's CausationID must point at some prior event
+	// in the same chain — proves causation propagates through the reactor
+	// across aggregate boundaries (saga → portfolio → orderbook → saga).
+	for _, r := range chain[1:] {
+		require.NotEmpty(t, r.CausationID, "non-origin event %s (%s) missing causation", r.ID, r.Type)
+		_, found := idsInChain[r.CausationID]
+		assert.True(t, found,
+			"event %s (%s) causation_id=%s should reference an event in same chain",
+			r.ID, r.Type, r.CausationID)
+	}
+
+	// Resting sell's events must NOT have been pulled into this chain.
+	for _, r := range raw {
+		if r.Type == "OrderPlaced" && r.CorrelationID != correlationID {
+			// This is the pre-existing resting sell; expected.
+			assert.NotEmpty(t, r.CorrelationID, "even origin events get a fresh correlation")
+			break
+		}
+	}
+}

@@ -51,6 +51,7 @@ func (r *Reactor) HandleEvents(ctx context.Context, events []es.Event) error {
 }
 
 func (r *Reactor) handleOne(ctx context.Context, evt es.Event) error {
+	ctx = es.WithCausation(ctx, evt)
 	switch data := evt.Data.(type) {
 	case *portfoliov1.OrderSagaStarted:
 		return r.holdResources(ctx, data.SagaId)
