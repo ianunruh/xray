@@ -65,6 +65,13 @@ export function App() {
     portfolioClient.listPortfolios({}).then((r) => setAccounts(r.accountIds));
   }
 
+  function jumpToAggregate(aggregateId: string) {
+    setAggregate(aggregateId);
+    setParam("aggregate", aggregateId);
+    setView("diagnostics");
+    setParam("view", "diagnostics");
+  }
+
   useEffect(() => {
     refreshAccounts();
     orderBookClient.listSymbols({}).then((r) => setSymbols(r.symbols));
@@ -184,18 +191,18 @@ export function App() {
         ) : account && symbol ? (
           <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
             <Stack gap="md">
-              <PortfolioPanel accountId={account} symbols={symbols} />
-              <BracketsPanel accountId={account} />
-              <OcosPanel accountId={account} />
+              <PortfolioPanel accountId={account} symbols={symbols} onJumpToAggregate={jumpToAggregate} />
+              <BracketsPanel accountId={account} onJumpToAggregate={jumpToAggregate} />
+              <OcosPanel accountId={account} onJumpToAggregate={jumpToAggregate} />
               <OrderForm accountId={account} symbol={symbol} />
             </Stack>
             <MarketPanel symbol={symbol} />
           </SimpleGrid>
         ) : (
           <Stack gap="md">
-            {account && <PortfolioPanel accountId={account} symbols={symbols} />}
-            {account && <BracketsPanel accountId={account} />}
-            {account && <OcosPanel accountId={account} />}
+            {account && <PortfolioPanel accountId={account} symbols={symbols} onJumpToAggregate={jumpToAggregate} />}
+            {account && <BracketsPanel accountId={account} onJumpToAggregate={jumpToAggregate} />}
+            {account && <OcosPanel accountId={account} onJumpToAggregate={jumpToAggregate} />}
             {symbol && <MarketPanel symbol={symbol} />}
           </Stack>
         )}

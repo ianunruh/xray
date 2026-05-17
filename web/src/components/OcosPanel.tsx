@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActionIcon, Card, Stack, Table, Text, Title } from "@mantine/core";
+import { ActionIcon, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Side } from "../gen/orderbook/v1/events_pb";
 import { OCOPhase } from "../gen/saga/v1/saga_pb";
@@ -24,7 +24,13 @@ function sideName(s: Side): string {
   return s === Side.BUY ? "BUY" : s === Side.SELL ? "SELL" : "—";
 }
 
-export function OcosPanel({ accountId }: { accountId: string }) {
+export function OcosPanel({
+  accountId,
+  onJumpToAggregate,
+}: {
+  accountId: string;
+  onJumpToAggregate?: (aggregateId: string) => void;
+}) {
   const ocos = useOcos(accountId);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
@@ -95,16 +101,29 @@ export function OcosPanel({ accountId }: { accountId: string }) {
                   <Table.Td ta="right">{formatQuantity(d.settledQuantity)}</Table.Td>
                   <Table.Td>{phaseName(d.phase)}</Table.Td>
                   <Table.Td>
-                    <ActionIcon
-                      size="xs"
-                      variant="subtle"
-                      color="red"
-                      loading={cancellingId === o.sagaId}
-                      onClick={() => handleCancel(o.sagaId, o.symbol)}
-                      title="Cancel OCO"
-                    >
-                      X
-                    </ActionIcon>
+                    <Group gap={4} wrap="nowrap" justify="flex-end">
+                      {onJumpToAggregate && (
+                        <ActionIcon
+                          size="xs"
+                          variant="subtle"
+                          color="grape"
+                          onClick={() => onJumpToAggregate(`oco-saga:${o.sagaId}`)}
+                          title="View saga in Diagnostics"
+                        >
+                          ⇢
+                        </ActionIcon>
+                      )}
+                      <ActionIcon
+                        size="xs"
+                        variant="subtle"
+                        color="red"
+                        loading={cancellingId === o.sagaId}
+                        onClick={() => handleCancel(o.sagaId, o.symbol)}
+                        title="Cancel OCO"
+                      >
+                        X
+                      </ActionIcon>
+                    </Group>
                   </Table.Td>
                 </Table.Tr>
               );

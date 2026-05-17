@@ -278,9 +278,11 @@ function CreditSharesModal({
 export function PortfolioPanel({
   accountId,
   symbols,
+  onJumpToAggregate,
 }: {
   accountId: string;
   symbols?: string[];
+  onJumpToAggregate?: (aggregateId: string) => void;
 }) {
   const portfolio = usePortfolio(accountId);
   const [depositOpened, depositHandlers] = useDisclosure(false);
@@ -451,16 +453,29 @@ export function PortfolioPanel({
                       </Table.Td>
                       <Table.Td>{orderStatusName(o.status)}</Table.Td>
                       <Table.Td>
-                        <ActionIcon
-                          size="xs"
-                          variant="subtle"
-                          color="red"
-                          loading={cancellingId === o.sagaId}
-                          onClick={() => handleCancel(o.sagaId, o.symbol)}
-                          title="Cancel order"
-                        >
-                          X
-                        </ActionIcon>
+                        <Group gap={4} wrap="nowrap" justify="flex-end">
+                          {onJumpToAggregate && (
+                            <ActionIcon
+                              size="xs"
+                              variant="subtle"
+                              color="grape"
+                              onClick={() => onJumpToAggregate(`order-saga:${o.sagaId}`)}
+                              title="View saga in Diagnostics"
+                            >
+                              ⇢
+                            </ActionIcon>
+                          )}
+                          <ActionIcon
+                            size="xs"
+                            variant="subtle"
+                            color="red"
+                            loading={cancellingId === o.sagaId}
+                            onClick={() => handleCancel(o.sagaId, o.symbol)}
+                            title="Cancel order"
+                          >
+                            X
+                          </ActionIcon>
+                        </Group>
                       </Table.Td>
                     </Table.Tr>
                   ))}
@@ -482,6 +497,7 @@ export function PortfolioPanel({
                   <Table.Th ta="right">Filled</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th>Reason</Table.Th>
+                  <Table.Th />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -505,6 +521,19 @@ export function PortfolioPanel({
                       <Text size="xs" c="dimmed">
                         {o.failReason}
                       </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      {onJumpToAggregate && (
+                        <ActionIcon
+                          size="xs"
+                          variant="subtle"
+                          color="grape"
+                          onClick={() => onJumpToAggregate(`order-saga:${o.sagaId}`)}
+                          title="View saga in Diagnostics"
+                        >
+                          ⇢
+                        </ActionIcon>
+                      )}
                     </Table.Td>
                   </Table.Tr>
                 ))}
