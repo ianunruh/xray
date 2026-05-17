@@ -7,12 +7,14 @@ import {
   SegmentedControl,
   Select,
   Stack,
+  Text,
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Side, OrderType, PositionSide, TimeInForce } from "../gen/orderbook/v1/events_pb";
 import { sagaClient } from "../client";
-import { moneyToPrice } from "../format";
+import { formatMoney, moneyToPrice } from "../format";
+import { useMarginSnapshot } from "../hooks/useMarginSnapshot";
 
 const ORDER_TYPES: Record<string, OrderType> = {
   LIMIT: OrderType.LIMIT,
@@ -46,6 +48,55 @@ const MARKET_TIF_OPTIONS = [
 
 type Mode = "SINGLE" | "BRACKET" | "OCO";
 
+// estimateBuyingPowerReduction mirrors the server-side hold the
+// matching saga would create. Returns the bigint reduction, 0n when
+// the order doesn't touch cash (long sell, short cover, OCO), or
+// null when the inputs aren't ready to estimate (no price for a
+// limit order, missing margin rate). Market orders are estimated
+// from the typed price as a placeholder; the server walks the book
+// for the real hold, so the displayed number will be conservative
+// for market BUYs that sweep up.
+function estimateBuyingPowerReduction(args: {
+  mode: Mode;
+  isMarket: boolean;
+  side: string;
+  positionSide: string;
+  price: number | string;
+  quantity: number | string;
+  marginBps: bigint | null;
+}): bigint | null {
+  const { mode, isMarket, side, positionSide, price, quantity, marginBps } =
+    args;
+  if (mode === "OCO") return 0n; // exits an existing position
+  const qty = typeof quantity === "number" ? quantity : parseInt(quantity, 10);
+  if (!qty || qty <= 0) return null;
+  const prc = typeof price === "number" ? price : parseFloat(price);
+  if (isMarket && mode === "SINGLE" && side === "BUY" && positionSide === "LONG") {
+    // Without book depth, fall back to typed price (often blank for
+    // market) — return null so we don't lie about the hold.
+    if (!prc || prc <= 0) return null;
+  }
+  if (!prc || prc <= 0) {
+    // Bracket entry and limit orders always require a price.
+    if (mode === "BRACKET" || !isMarket) return null;
+  }
+  const notional = moneyToPrice(prc) * BigInt(qty);
+
+  // Long sell and short cover hold shares/capacity, not cash.
+  if (side === "SELL" && positionSide === "LONG") return 0n;
+  if (side === "BUY" && positionSide === "SHORT") return 0n;
+
+  // Long buy: cash hold = notional (limit) or estimated cost (market).
+  if (side === "BUY" && positionSide === "LONG") return notional;
+
+  // Short open: collateral = initial_margin_bps * notional / 10000.
+  if (side === "SELL" && positionSide === "SHORT") {
+    if (marginBps === null) return null;
+    return (notional * marginBps) / 10_000n;
+  }
+  return null;
+}
+
 export function OrderForm({
   accountId,
   symbol,
@@ -64,6 +115,8 @@ export function OrderForm({
   const [stopLoss, setStopLoss] = useState<number | string>("");
   const [loading, setLoading] = useState(false);
 
+  const margin = useMarginSnapshot(accountId);
+
   const isSingle = mode === "SINGLE";
   const isBracket = mode === "BRACKET";
   const isOCO = mode === "OCO";
@@ -71,6 +124,24 @@ export function OrderForm({
   const ps = positionSide === "SHORT"
     ? PositionSide.SHORT
     : PositionSide.LONG;
+
+  // Estimated buying-power impact for the order being typed.
+  // Returns null if it can't be computed (missing price for a limit,
+  // unknown margin rate, etc.). Bracket entry uses the same hold as
+  // a single order; OCO doesn't take cash (exits an existing position).
+  const estImpact = estimateBuyingPowerReduction({
+    mode,
+    isMarket,
+    side,
+    positionSide,
+    price,
+    quantity,
+    marginBps: margin?.initialMarginBps ?? null,
+  });
+  const insufficient =
+    estImpact !== null &&
+    margin !== null &&
+    estImpact > margin.buyingPower;
 
   function handleOrderTypeChange(v: string | null) {
     const next = v ?? "MARKET";
@@ -348,11 +419,34 @@ export function OrderForm({
             />
           </Group>
         )}
+        {estImpact !== null && (
+          <Group justify="space-between" gap="xs">
+            <Text size="xs" c="dimmed">
+              Buying power impact
+            </Text>
+            <Text size="xs" c={insufficient ? "red" : undefined} fw={600}>
+              {estImpact === 0n
+                ? "—"
+                : `-${formatMoney(estImpact)}`}
+              {margin && (
+                <Text component="span" size="xs" c="dimmed" ml={6}>
+                  (avail {formatMoney(margin.buyingPower)})
+                </Text>
+              )}
+            </Text>
+          </Group>
+        )}
+        {insufficient && (
+          <Text size="xs" c="red">
+            Insufficient buying power.
+          </Text>
+        )}
         <Button
           fullWidth
           color={side === "BUY" ? "green" : "red"}
           loading={loading}
           onClick={handleSubmit}
+          disabled={insufficient}
         >
           {isSingle && (side === "BUY" ? "Buy" : "Sell")}
           {isBracket && `${side} Bracket`}

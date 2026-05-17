@@ -182,6 +182,10 @@ message GetMarginSnapshotResponse {
   // and pool allocation. Distinct from equity: equity counts locked
   // cash too (it's still yours, just earmarked).
   int64 buying_power = 15;
+  // initial_margin_bps echoes the server's collateral policy so the
+  // client can estimate buying-power impact of a pending order
+  // without hard-coding the rate.
+  int64 initial_margin_bps = 16;
 }
 
 message PositionMarginInfo {

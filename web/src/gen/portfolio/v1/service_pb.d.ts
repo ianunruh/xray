@@ -592,6 +592,15 @@ export declare type GetMarginSnapshotResponse = Message<"portfolio.v1.GetMarginS
    * @generated from field: int64 buying_power = 15;
    */
   buyingPower: bigint;
+
+  /**
+   * initial_margin_bps echoes the server's collateral policy so the
+   * client can estimate buying-power impact of a pending order
+   * without hard-coding the rate.
+   *
+   * @generated from field: int64 initial_margin_bps = 16;
+   */
+  initialMarginBps: bigint;
 };
 
 /**

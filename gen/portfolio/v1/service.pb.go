@@ -1198,9 +1198,13 @@ type GetMarginSnapshotResponse struct {
 	// CashBalance after every long-buy hold, short collateral hold,
 	// and pool allocation. Distinct from equity: equity counts locked
 	// cash too (it's still yours, just earmarked).
-	BuyingPower   int64 `protobuf:"varint,15,opt,name=buying_power,json=buyingPower,proto3" json:"buying_power,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	BuyingPower int64 `protobuf:"varint,15,opt,name=buying_power,json=buyingPower,proto3" json:"buying_power,omitempty"`
+	// initial_margin_bps echoes the server's collateral policy so the
+	// client can estimate buying-power impact of a pending order
+	// without hard-coding the rate.
+	InitialMarginBps int64 `protobuf:"varint,16,opt,name=initial_margin_bps,json=initialMarginBps,proto3" json:"initial_margin_bps,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *GetMarginSnapshotResponse) Reset() {
@@ -1334,6 +1338,13 @@ func (x *GetMarginSnapshotResponse) GetPositions() []*PositionMarginInfo {
 func (x *GetMarginSnapshotResponse) GetBuyingPower() int64 {
 	if x != nil {
 		return x.BuyingPower
+	}
+	return 0
+}
+
+func (x *GetMarginSnapshotResponse) GetInitialMarginBps() int64 {
+	if x != nil {
+		return x.InitialMarginBps
 	}
 	return 0
 }
@@ -1536,7 +1547,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"accountIds\"9\n" +
 	"\x18GetMarginSnapshotRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\"\xf5\x04\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\"\xa3\x05\n" +
 	"\x19GetMarginSnapshotResponse\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12!\n" +
@@ -1555,7 +1566,8 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"marginCall\x12#\n" +
 	"\rmissing_marks\x18\r \x03(\tR\fmissingMarks\x12>\n" +
 	"\tpositions\x18\x0e \x03(\v2 .portfolio.v1.PositionMarginInfoR\tpositions\x12!\n" +
-	"\fbuying_power\x18\x0f \x01(\x03R\vbuyingPower\"\xa1\x02\n" +
+	"\fbuying_power\x18\x0f \x01(\x03R\vbuyingPower\x12,\n" +
+	"\x12initial_margin_bps\x18\x10 \x01(\x03R\x10initialMarginBps\"\xa1\x02\n" +
 	"\x12PositionMarginInfo\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12.\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x1a.orderbook.v1.PositionSideR\x04side\x12\x1a\n" +
