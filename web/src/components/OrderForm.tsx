@@ -13,7 +13,8 @@ import {
 import { notifications } from "@mantine/notifications";
 import { Side, OrderType, PositionSide, TimeInForce } from "../gen/orderbook/v1/events_pb";
 import { sagaClient } from "../client";
-import { formatMoney, moneyToPrice } from "../format";
+import { formatMoney, formatPrice, moneyToPrice, priceToNumber } from "../format";
+import { useMarketDepth } from "../hooks/useMarketDepth";
 import { useMarginSnapshot } from "../hooks/useMarginSnapshot";
 import { usePreviewOrderImpact } from "../hooks/usePreviewOrderImpact";
 
@@ -121,6 +122,13 @@ export function OrderForm({
   }, [prefill?.nonce]);
 
   const margin = useMarginSnapshot(accountId);
+  const { bids, asks } = useMarketDepth(symbol);
+  const bestBid = bids[0]?.price;
+  const bestAsk = asks[0]?.price;
+  const midpoint =
+    bestBid !== undefined && bestAsk !== undefined
+      ? (bestBid + bestAsk) / 2n
+      : undefined;
 
   const isSingle = mode === "SINGLE";
   const isBracket = mode === "BRACKET";
@@ -416,15 +424,54 @@ export function OrderForm({
           </Group>
         )}
         {((isSingle && !isMarket) || isBracket) && (
-          <NumberInput
-            label={isBracket ? "Entry Price" : "Price"}
-            size="xs"
-            placeholder="0.00"
-            min={0}
-            decimalScale={4}
-            value={price}
-            onChange={setPrice}
-          />
+          <Stack gap={4}>
+            <NumberInput
+              label={isBracket ? "Entry Price" : "Price"}
+              size="xs"
+              placeholder="0.00"
+              min={0}
+              decimalScale={4}
+              value={price}
+              onChange={setPrice}
+            />
+            {isSingle && !isMarket && (
+              <Button.Group>
+                <Button
+                  size="compact-xs"
+                  variant="default"
+                  fullWidth
+                  disabled={bestBid === undefined}
+                  onClick={() =>
+                    bestBid !== undefined && setPrice(priceToNumber(bestBid))
+                  }
+                >
+                  Bid {bestBid === undefined ? "—" : formatPrice(bestBid)}
+                </Button>
+                <Button
+                  size="compact-xs"
+                  variant="default"
+                  fullWidth
+                  disabled={midpoint === undefined}
+                  onClick={() =>
+                    midpoint !== undefined && setPrice(priceToNumber(midpoint))
+                  }
+                >
+                  Mid {midpoint === undefined ? "—" : formatPrice(midpoint)}
+                </Button>
+                <Button
+                  size="compact-xs"
+                  variant="default"
+                  fullWidth
+                  disabled={bestAsk === undefined}
+                  onClick={() =>
+                    bestAsk !== undefined && setPrice(priceToNumber(bestAsk))
+                  }
+                >
+                  Ask {bestAsk === undefined ? "—" : formatPrice(bestAsk)}
+                </Button>
+              </Button.Group>
+            )}
+          </Stack>
         )}
         <NumberInput
           label="Quantity"

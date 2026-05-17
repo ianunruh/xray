@@ -2,19 +2,25 @@ import { useEffect, useState } from "react";
 import {
   AppShell,
   Button,
+  Grid,
   Group,
   Modal,
   NumberInput,
   SegmentedControl,
   Select,
-  SimpleGrid,
   Stack,
+  Tabs,
+  Text,
   TextInput,
   Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import { PortfolioPanel } from "./components/PortfolioPanel";
+import {
+  PortfolioOrders,
+  PortfolioPositions,
+  PortfolioSummary,
+} from "./components/PortfolioPanel";
 import { BracketsPanel } from "./components/BracketsPanel";
 import { OcosPanel } from "./components/OcosPanel";
 import { MarketPanel } from "./components/MarketPanel";
@@ -40,6 +46,7 @@ function setParam(key: string, value: string) {
 }
 
 type View = "trading" | "diagnostics" | "chain";
+type Tab = "trade" | "orders" | "positions";
 
 function getViewParam(): View {
   const v = getParam("view");
@@ -48,8 +55,16 @@ function getViewParam(): View {
   return "trading";
 }
 
+function getTabParam(): Tab {
+  const t = getParam("tab");
+  if (t === "orders") return "orders";
+  if (t === "positions") return "positions";
+  return "trade";
+}
+
 export function App() {
   const [view, setView] = useState<View>(getViewParam());
+  const [tab, setTab] = useState<Tab>(getTabParam());
   const [account, setAccount] = useState(getParam("account"));
   const [symbol, setSymbol] = useState(getParam("symbol"));
   const [aggregate, setAggregate] = useState(getParam("aggregate"));
@@ -63,11 +78,13 @@ export function App() {
   const [orderPrefill, setOrderPrefill] = useState<OrderPrefill | null>(null);
 
   // Receive a prefill from a portfolio table menu. Switches the
-  // active symbol (so MarketPanel + OrderForm focus on it) and pushes
+  // active symbol and tab so the OrderForm is in view, then pushes
   // the prefill down to OrderForm via prop.
   function applyOrderPrefill(p: OrderPrefill) {
     setSymbol(p.symbol);
     setParam("symbol", p.symbol);
+    setTab("trade");
+    setParam("tab", "");
     setOrderPrefill(p);
   }
 
@@ -118,6 +135,78 @@ export function App() {
     } finally {
       setNewAccLoading(false);
     }
+  }
+
+  function renderTradingBody() {
+    if (!account) {
+      return (
+        <Text c="dimmed">Select or create an account to start trading.</Text>
+      );
+    }
+    return (
+      <Stack gap="md">
+        <PortfolioSummary accountId={account} symbols={symbols} />
+        <Tabs
+          value={tab}
+          onChange={(v) => {
+            const next = (v as Tab) ?? "trade";
+            setTab(next);
+            setParam("tab", next === "trade" ? "" : next);
+          }}
+          keepMounted={false}
+        >
+          <Tabs.List>
+            <Tabs.Tab value="trade">Trade</Tabs.Tab>
+            <Tabs.Tab value="orders">Orders</Tabs.Tab>
+            <Tabs.Tab value="positions">Positions</Tabs.Tab>
+          </Tabs.List>
+
+          <Tabs.Panel value="trade" pt="md">
+            {symbol ? (
+              <Grid gutter="md">
+                <Grid.Col span={{ base: 12, md: 8 }}>
+                  <MarketPanel symbol={symbol} />
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 4 }}>
+                  <OrderForm
+                    accountId={account}
+                    symbol={symbol}
+                    prefill={orderPrefill}
+                  />
+                </Grid.Col>
+              </Grid>
+            ) : (
+              <Text c="dimmed">Select a symbol to view the market.</Text>
+            )}
+          </Tabs.Panel>
+
+          <Tabs.Panel value="orders" pt="md">
+            <Stack gap="md">
+              <PortfolioOrders
+                accountId={account}
+                onJumpToAggregate={jumpToAggregate}
+              />
+              <BracketsPanel
+                accountId={account}
+                onJumpToAggregate={jumpToAggregate}
+              />
+              <OcosPanel
+                accountId={account}
+                onJumpToAggregate={jumpToAggregate}
+              />
+            </Stack>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="positions" pt="md">
+            <PortfolioPositions
+              accountId={account}
+              onJumpToAggregate={jumpToAggregate}
+              onPrefillOrder={applyOrderPrefill}
+            />
+          </Tabs.Panel>
+        </Tabs>
+      </Stack>
+    );
   }
 
   return (
@@ -198,23 +287,8 @@ export function App() {
               setParam("view", "chain");
             }}
           />
-        ) : account && symbol ? (
-          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-            <Stack gap="md">
-              <PortfolioPanel accountId={account} symbols={symbols} onJumpToAggregate={jumpToAggregate} onPrefillOrder={applyOrderPrefill} />
-              <BracketsPanel accountId={account} onJumpToAggregate={jumpToAggregate} />
-              <OcosPanel accountId={account} onJumpToAggregate={jumpToAggregate} />
-              <OrderForm accountId={account} symbol={symbol} prefill={orderPrefill} />
-            </Stack>
-            <MarketPanel symbol={symbol} />
-          </SimpleGrid>
         ) : (
-          <Stack gap="md">
-            {account && <PortfolioPanel accountId={account} symbols={symbols} onJumpToAggregate={jumpToAggregate} onPrefillOrder={applyOrderPrefill} />}
-            {account && <BracketsPanel accountId={account} onJumpToAggregate={jumpToAggregate} />}
-            {account && <OcosPanel accountId={account} onJumpToAggregate={jumpToAggregate} />}
-            {symbol && <MarketPanel symbol={symbol} />}
-          </Stack>
+          renderTradingBody()
         )}
       </AppShell.Main>
 

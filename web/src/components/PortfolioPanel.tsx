@@ -21,7 +21,7 @@ import type { OrderPrefill } from "./OrderForm";
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { formatMoney, formatPrice, formatQuantity, moneyToPrice, priceToNumber } from "../format";
-import { PositionSide, Side } from "../gen/orderbook/v1/events_pb";
+import { OrderType, PositionSide, Side, TimeInForce } from "../gen/orderbook/v1/events_pb";
 import { OrderStatus } from "../gen/portfolio/v1/service_pb";
 import { usePortfolio } from "../hooks/usePortfolio";
 import { useMarginCalls } from "../hooks/useMarginCalls";
@@ -33,8 +33,6 @@ function timestampToMillis(ts: Timestamp | undefined): number | null {
   return Number(ts.seconds) * 1000 + Math.floor(ts.nanos / 1_000_000);
 }
 
-// formatRemaining renders a coarse "in 27s" / "in 3m12s" / "expired"
-// string for a future or past instant.
 function formatRemaining(deadlineMs: number, nowMs: number): string {
   const diffSec = Math.round((deadlineMs - nowMs) / 1000);
   if (diffSec <= 0) return "expired";
@@ -44,8 +42,6 @@ function formatRemaining(deadlineMs: number, nowMs: number): string {
   return `in ${mins}m${secs.toString().padStart(2, "0")}s`;
 }
 
-// GraceCountdown self-ticks every second to refresh the rendered
-// remaining time. Renders nothing when deadline is null.
 function GraceCountdown({ deadline }: { deadline: Timestamp | undefined }) {
   const deadlineMs = timestampToMillis(deadline);
   const [now, setNow] = useState(() => Date.now());
@@ -84,6 +80,55 @@ function orderStatusName(status: OrderStatus): string {
     default:
       return "?";
   }
+}
+
+function tifAbbrev(tif: TimeInForce): string {
+  switch (tif) {
+    case TimeInForce.GTC:
+      return "GTC";
+    case TimeInForce.IOC:
+      return "IOC";
+    case TimeInForce.FOK:
+      return "FOK";
+    case TimeInForce.DAY:
+      return "DAY";
+    case TimeInForce.AT_OPEN:
+      return "OPG";
+    case TimeInForce.AT_CLOSE:
+      return "CLS";
+    default:
+      return "?";
+  }
+}
+
+// orderTypeLabel collapses common (type, tif) pairs to broker-standard
+// abbreviations (MOO/MOC/LOO/LOC) and falls back to "TYPE · TIF".
+function orderTypeLabel(type: OrderType, tif: TimeInForce): string {
+  if (type === OrderType.MARKET && tif === TimeInForce.AT_OPEN) return "MOO";
+  if (type === OrderType.MARKET && tif === TimeInForce.AT_CLOSE) return "MOC";
+  if (type === OrderType.LIMIT && tif === TimeInForce.AT_OPEN) return "LOO";
+  if (type === OrderType.LIMIT && tif === TimeInForce.AT_CLOSE) return "LOC";
+  const typeName =
+    type === OrderType.LIMIT
+      ? "LIMIT"
+      : type === OrderType.MARKET
+        ? "MARKET"
+        : type === OrderType.STOP_LIMIT
+          ? "STOP LIMIT"
+          : type === OrderType.STOP_MARKET
+            ? "STOP"
+            : "?";
+  return `${typeName} · ${tifAbbrev(tif)}`;
+}
+
+function formatPlacedAt(ts: Timestamp | undefined): {
+  short: string;
+  full: string;
+} {
+  const ms = timestampToMillis(ts);
+  if (ms === null) return { short: "—", full: "" };
+  const d = new Date(ms);
+  return { short: d.toLocaleTimeString(), full: d.toLocaleString() };
 }
 
 function orderStatusColor(status: OrderStatus): string | undefined {
@@ -313,52 +358,43 @@ function CreditSharesModal({
   );
 }
 
-export function PortfolioPanel({
+function Stat({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color?: string;
+}) {
+  return (
+    <div>
+      <Text size="xs" c="dimmed">
+        {label}
+      </Text>
+      <Text fw={700} c={color}>
+        {value}
+      </Text>
+    </div>
+  );
+}
+
+// PortfolioSummary renders the account header, cash/margin top-line
+// stats, and the active margin-call alert. Designed to sit at the top
+// of the page across every tab.
+export function PortfolioSummary({
   accountId,
   symbols,
-  onJumpToAggregate,
-  onPrefillOrder,
 }: {
   accountId: string;
   symbols?: string[];
-  onJumpToAggregate?: (aggregateId: string) => void;
-  onPrefillOrder?: (p: OrderPrefill) => void;
 }) {
   const portfolio = usePortfolio(accountId);
   const margin = useMarginSnapshot(accountId);
-  const marginCalls = useMarginCalls(accountId);
   const [depositOpened, depositHandlers] = useDisclosure(false);
   const [withdrawOpened, withdrawHandlers] = useDisclosure(false);
   const [creditOpened, creditHandlers] = useDisclosure(false);
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const [expandedCalls, setExpandedCalls] = useState<Set<string>>(new Set());
-  const toggleCallExpanded = (callId: string) => {
-    setExpandedCalls((prev) => {
-      const next = new Set(prev);
-      next.has(callId) ? next.delete(callId) : next.add(callId);
-      return next;
-    });
-  };
-
-  async function handleCancel(sagaId: string, symbol: string) {
-    setCancellingId(sagaId);
-    try {
-      await sagaClient.cancel({ sagaId });
-      notifications.show({
-        title: "Order cancelled",
-        message: `Cancelled order for ${symbol}`,
-        color: "green",
-      });
-    } catch (e: unknown) {
-      notifications.show({
-        title: "Cancel failed",
-        message: e instanceof Error ? e.message : String(e),
-        color: "red",
-      });
-    } finally {
-      setCancellingId(null);
-    }
-  }
+  const [detailsOpen, detailsHandlers] = useDisclosure(false);
 
   if (!portfolio) {
     return (
@@ -368,18 +404,7 @@ export function PortfolioPanel({
     );
   }
 
-  // Use the server's aggregate field — summing holdings.realizedPnl
-  // misses short-side P&L since closed shorts have no holdings row.
   const totalRealizedPnl = portfolio.totalRealizedPnl;
-
-  const activeOrders = portfolio.pendingOrders.filter(
-    (o) =>
-      o.status !== OrderStatus.COMPLETED && o.status !== OrderStatus.FAILED,
-  );
-  const recentOrders = portfolio.pendingOrders.filter(
-    (o) =>
-      o.status === OrderStatus.COMPLETED || o.status === OrderStatus.FAILED,
-  );
 
   return (
     <Card withBorder>
@@ -425,72 +450,50 @@ export function PortfolioPanel({
         )}
 
         <Group gap="xl">
-          <div>
-            <Text size="xs" c="dimmed">
-              Cash Available
-            </Text>
-            <Text fw={700}>{formatMoney(portfolio.cashBalance)}</Text>
-          </div>
-          <div>
-            <Text size="xs" c="dimmed">
-              Cash Held
-            </Text>
-            <Text fw={700}>{formatMoney(portfolio.cashHeld)}</Text>
-          </div>
-          <div>
-            <Text size="xs" c="dimmed">
-              Realized P&L
-            </Text>
-            <Text fw={700} c={totalRealizedPnl >= 0n ? "green" : "red"}>
-              {formatMoney(totalRealizedPnl)}
-            </Text>
-          </div>
+          <Stat label="Cash Available" value={formatMoney(portfolio.cashBalance)} />
+          <Stat
+            label="Realized P&L"
+            value={formatMoney(totalRealizedPnl)}
+            color={totalRealizedPnl >= 0n ? "green" : "red"}
+          />
           {margin && (
-            <>
-              <div>
-                <Text size="xs" c="dimmed">
-                  Buying Power
-                </Text>
-                <Text fw={700}>{formatMoney(margin.buyingPower)}</Text>
-              </div>
-              <div>
-                <Text size="xs" c="dimmed">
-                  Equity
-                </Text>
-                <Text fw={700}>{formatMoney(margin.equity)}</Text>
-              </div>
-              <div>
-                <Text size="xs" c="dimmed">
-                  Maint. Req.
-                </Text>
-                <Text fw={700}>
-                  {formatMoney(margin.maintenanceRequirement)}
-                </Text>
-              </div>
-              <div>
-                <Text size="xs" c="dimmed">
-                  Margin Excess
-                </Text>
-                <Text
-                  fw={700}
-                  c={margin.marginExcess >= 0n ? "green" : "red"}
-                >
-                  {formatMoney(margin.marginExcess)}
-                </Text>
-              </div>
-              {margin.marginLoan > 0n && (
-                <div>
-                  <Text size="xs" c="dimmed">
-                    Margin Loan
-                  </Text>
-                  <Text fw={700} c="orange">
-                    {formatMoney(margin.marginLoan)}
-                  </Text>
-                </div>
-              )}
-            </>
+            <Stat label="Buying Power" value={formatMoney(margin.buyingPower)} />
           )}
+          {margin && margin.marginLoan > 0n && (
+            <Stat
+              label="Margin Loan"
+              value={formatMoney(margin.marginLoan)}
+              color="orange"
+            />
+          )}
+          <Button
+            size="compact-xs"
+            variant="subtle"
+            color="gray"
+            onClick={detailsHandlers.toggle}
+          >
+            {detailsOpen ? "Less ▾" : "More ▸"}
+          </Button>
         </Group>
+        <Collapse in={detailsOpen}>
+          <Group gap="xl">
+            <Stat label="Cash Held" value={formatMoney(portfolio.cashHeld)} />
+            {margin && (
+              <>
+                <Stat label="Equity" value={formatMoney(margin.equity)} />
+                <Stat
+                  label="Maint. Req."
+                  value={formatMoney(margin.maintenanceRequirement)}
+                />
+                <Stat
+                  label="Margin Excess"
+                  value={formatMoney(margin.marginExcess)}
+                  color={margin.marginExcess >= 0n ? "green" : "red"}
+                />
+              </>
+            )}
+          </Group>
+        </Collapse>
 
         {margin && margin.missingMarks.length > 0 && (
           <Text size="xs" c="orange">
@@ -498,10 +501,78 @@ export function PortfolioPanel({
             understated for these symbols.
           </Text>
         )}
+      </Stack>
 
-        {margin && margin.positions.some(
-          (p) => p.side === PositionSide.SHORT,
-        ) && (
+      <DepositModal
+        accountId={accountId}
+        opened={depositOpened}
+        onClose={depositHandlers.close}
+      />
+      <WithdrawModal
+        accountId={accountId}
+        opened={withdrawOpened}
+        onClose={withdrawHandlers.close}
+      />
+      <CreditSharesModal
+        accountId={accountId}
+        opened={creditOpened}
+        onClose={creditHandlers.close}
+        symbols={symbols ?? []}
+      />
+    </Card>
+  );
+}
+
+// PortfolioPositions renders short positions, long holdings, and the
+// margin-call audit log for the account.
+export function PortfolioPositions({
+  accountId,
+  onJumpToAggregate,
+  onPrefillOrder,
+}: {
+  accountId: string;
+  onJumpToAggregate?: (aggregateId: string) => void;
+  onPrefillOrder?: (p: OrderPrefill) => void;
+}) {
+  const portfolio = usePortfolio(accountId);
+  const margin = useMarginSnapshot(accountId);
+  const marginCalls = useMarginCalls(accountId);
+  const [expandedCalls, setExpandedCalls] = useState<Set<string>>(new Set());
+  const toggleCallExpanded = (callId: string) => {
+    setExpandedCalls((prev) => {
+      const next = new Set(prev);
+      next.has(callId) ? next.delete(callId) : next.add(callId);
+      return next;
+    });
+  };
+
+  if (!portfolio) {
+    return (
+      <Card withBorder>
+        <Text c="dimmed">Loading positions...</Text>
+      </Card>
+    );
+  }
+
+  const shortPositions =
+    margin?.positions.filter((p) => p.side === PositionSide.SHORT) ?? [];
+  const hasContent =
+    shortPositions.length > 0 ||
+    portfolio.holdings.length > 0 ||
+    marginCalls.length > 0;
+
+  if (!hasContent) {
+    return (
+      <Card withBorder>
+        <Text c="dimmed">No positions yet.</Text>
+      </Card>
+    );
+  }
+
+  return (
+    <Card withBorder>
+      <Stack gap="sm">
+        {shortPositions.length > 0 && (
           <>
             <Title order={6}>Short Positions</Title>
             <Table striped highlightOnHover>
@@ -517,86 +588,82 @@ export function PortfolioPanel({
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {margin.positions
-                  .filter((p) => p.side === PositionSide.SHORT)
-                  .map((p) => (
-                    <Table.Tr key={p.symbol}>
-                      <Table.Td>
-                        <Group gap={4}>
-                          {p.symbol}
-                          <Badge size="xs" color="red" variant="light">
-                            SHORT
-                          </Badge>
-                        </Group>
-                      </Table.Td>
-                      <Table.Td ta="right">
-                        {formatQuantity(p.quantity)}
-                      </Table.Td>
-                      <Table.Td ta="right">{formatMoney(p.avgPrice)}</Table.Td>
-                      <Table.Td ta="right">
-                        {p.markMissing ? (
-                          <Text size="xs" c="dimmed">
-                            —
-                          </Text>
-                        ) : (
-                          formatMoney(p.markPrice)
+                {shortPositions.map((p) => (
+                  <Table.Tr key={p.symbol}>
+                    <Table.Td>
+                      <Group gap={4}>
+                        {p.symbol}
+                        <Badge size="xs" color="red" variant="light">
+                          SHORT
+                        </Badge>
+                      </Group>
+                    </Table.Td>
+                    <Table.Td ta="right">
+                      {formatQuantity(p.quantity)}
+                    </Table.Td>
+                    <Table.Td ta="right">{formatMoney(p.avgPrice)}</Table.Td>
+                    <Table.Td ta="right">
+                      {p.markMissing ? (
+                        <Text size="xs" c="dimmed">
+                          —
+                        </Text>
+                      ) : (
+                        formatMoney(p.markPrice)
+                      )}
+                    </Table.Td>
+                    <Table.Td ta="right">
+                      {p.markMissing ? "—" : formatMoney(p.marketValue)}
+                    </Table.Td>
+                    <Table.Td
+                      ta="right"
+                      c={p.unrealizedPnl >= 0n ? "green" : "red"}
+                    >
+                      {p.markMissing ? "—" : formatMoney(p.unrealizedPnl)}
+                    </Table.Td>
+                    <Table.Td>
+                      <Group justify="flex-end">
+                        {onPrefillOrder && p.quantity > 0n && (
+                          <Menu shadow="md" position="bottom-end" withinPortal>
+                            <Menu.Target>
+                              <ActionIcon size="xs" variant="subtle" color="gray" title="Position actions">
+                                ⋯
+                              </ActionIcon>
+                            </Menu.Target>
+                            <Menu.Dropdown>
+                              <Menu.Item
+                                onClick={() =>
+                                  onPrefillOrder({
+                                    symbol: p.symbol,
+                                    action: "COVER",
+                                    quantity: Number(p.quantity),
+                                    orderType: "MARKET",
+                                    nonce: Date.now(),
+                                  })
+                                }
+                              >
+                                Close Position
+                              </Menu.Item>
+                              <Menu.Item
+                                onClick={() =>
+                                  onPrefillOrder({
+                                    symbol: p.symbol,
+                                    action: "COVER",
+                                    quantity: Number(p.quantity),
+                                    orderType: "LIMIT",
+                                    price: priceToNumber(p.avgPrice) * 0.5,
+                                    nonce: Date.now(),
+                                  })
+                                }
+                              >
+                                Close at 50% profit
+                              </Menu.Item>
+                            </Menu.Dropdown>
+                          </Menu>
                         )}
-                      </Table.Td>
-                      <Table.Td ta="right">
-                        {p.markMissing ? "—" : formatMoney(p.marketValue)}
-                      </Table.Td>
-                      <Table.Td
-                        ta="right"
-                        c={p.unrealizedPnl >= 0n ? "green" : "red"}
-                      >
-                        {p.markMissing ? "—" : formatMoney(p.unrealizedPnl)}
-                      </Table.Td>
-                      <Table.Td>
-                        <Group justify="flex-end">
-                          {onPrefillOrder && p.quantity > 0n && (
-                            <Menu shadow="md" position="bottom-end" withinPortal>
-                              <Menu.Target>
-                                <ActionIcon size="xs" variant="subtle" color="gray" title="Position actions">
-                                  ⋯
-                                </ActionIcon>
-                              </Menu.Target>
-                              <Menu.Dropdown>
-                                <Menu.Item
-                                  onClick={() =>
-                                    onPrefillOrder({
-                                      symbol: p.symbol,
-                                      action: "COVER",
-                                      quantity: Number(p.quantity),
-                                      orderType: "MARKET",
-                                      nonce: Date.now(),
-                                    })
-                                  }
-                                >
-                                  Close Position
-                                </Menu.Item>
-                                <Menu.Item
-                                  // Short profits when price drops. 50% gain on
-                                  // avg-open notional ⇒ cover at avg * 0.5.
-                                  onClick={() =>
-                                    onPrefillOrder({
-                                      symbol: p.symbol,
-                                      action: "COVER",
-                                      quantity: Number(p.quantity),
-                                      orderType: "LIMIT",
-                                      price: priceToNumber(p.avgPrice) * 0.5,
-                                      nonce: Date.now(),
-                                    })
-                                  }
-                                >
-                                  Close at 50% profit
-                                </Menu.Item>
-                              </Menu.Dropdown>
-                            </Menu>
-                          )}
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
               </Table.Tbody>
             </Table>
           </>
@@ -657,8 +724,6 @@ export function PortfolioPanel({
                                 Close Position
                               </Menu.Item>
                               <Menu.Item
-                                // Long profits when price climbs. 50% gain on
-                                // avg cost ⇒ sell at avgCost * 1.5.
                                 onClick={() =>
                                   onPrefillOrder({
                                     symbol: h.symbol,
@@ -671,137 +736,6 @@ export function PortfolioPanel({
                                 }
                               >
                                 Close at 50% profit
-                              </Menu.Item>
-                            </Menu.Dropdown>
-                          </Menu>
-                        )}
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </>
-        )}
-
-        {activeOrders.length > 0 && (
-          <>
-            <Title order={6}>Pending Orders</Title>
-            <Table striped highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Symbol</Table.Th>
-                  <Table.Th>Side</Table.Th>
-                  <Table.Th ta="right">Price</Table.Th>
-                  <Table.Th ta="right">Qty</Table.Th>
-                  <Table.Th ta="right">Filled</Table.Th>
-                  <Table.Th>Status</Table.Th>
-                  <Table.Th />
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {activeOrders
-                  .sort((a, b) => Number(a.price - b.price))
-                  .map((o) => (
-                    <Table.Tr key={o.sagaId}>
-                      <Table.Td>{o.symbol}</Table.Td>
-                      <Table.Td c={o.side === Side.BUY ? "green" : "red"}>
-                        {sideName(o.side)}
-                      </Table.Td>
-                      <Table.Td ta="right">{formatPrice(o.price)}</Table.Td>
-                      <Table.Td ta="right">
-                        {formatQuantity(o.quantity)}
-                      </Table.Td>
-                      <Table.Td ta="right">
-                        {formatQuantity(o.filledQuantity)}
-                      </Table.Td>
-                      <Table.Td>{orderStatusName(o.status)}</Table.Td>
-                      <Table.Td>
-                        <Group justify="flex-end">
-                          <Menu shadow="md" position="bottom-end" withinPortal>
-                            <Menu.Target>
-                              <ActionIcon size="xs" variant="subtle" color="gray" title="Order actions">
-                                ⋯
-                              </ActionIcon>
-                            </Menu.Target>
-                            <Menu.Dropdown>
-                              <Menu.Item
-                                color="red"
-                                disabled={cancellingId === o.sagaId}
-                                onClick={() => handleCancel(o.sagaId, o.symbol)}
-                              >
-                                Cancel
-                              </Menu.Item>
-                              {onJumpToAggregate && (
-                                <Menu.Item
-                                  onClick={() => onJumpToAggregate(`order-saga:${o.sagaId}`)}
-                                >
-                                  View Event Log
-                                </Menu.Item>
-                              )}
-                            </Menu.Dropdown>
-                          </Menu>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-              </Table.Tbody>
-            </Table>
-          </>
-        )}
-
-        {recentOrders.length > 0 && (
-          <>
-            <Title order={6}>Recent Orders</Title>
-            <Table striped highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Symbol</Table.Th>
-                  <Table.Th>Side</Table.Th>
-                  <Table.Th ta="right">Price</Table.Th>
-                  <Table.Th ta="right">Qty</Table.Th>
-                  <Table.Th ta="right">Filled</Table.Th>
-                  <Table.Th>Status</Table.Th>
-                  <Table.Th>Reason</Table.Th>
-                  <Table.Th />
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {recentOrders.map((o) => (
-                  <Table.Tr key={o.sagaId}>
-                    <Table.Td>{o.symbol}</Table.Td>
-                    <Table.Td c={o.side === Side.BUY ? "green" : "red"}>
-                      {sideName(o.side)}
-                    </Table.Td>
-                    <Table.Td ta="right">{formatPrice(o.price)}</Table.Td>
-                    <Table.Td ta="right">
-                      {formatQuantity(o.quantity)}
-                    </Table.Td>
-                    <Table.Td ta="right">
-                      {formatQuantity(o.filledQuantity)}
-                    </Table.Td>
-                    <Table.Td c={orderStatusColor(o.status)}>
-                      {orderStatusName(o.status)}
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="xs" c="dimmed">
-                        {o.failReason}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Group justify="flex-end">
-                        {onJumpToAggregate && (
-                          <Menu shadow="md" position="bottom-end" withinPortal>
-                            <Menu.Target>
-                              <ActionIcon size="xs" variant="subtle" color="gray" title="Order actions">
-                                ⋯
-                              </ActionIcon>
-                            </Menu.Target>
-                            <Menu.Dropdown>
-                              <Menu.Item
-                                onClick={() => onJumpToAggregate(`order-saga:${o.sagaId}`)}
-                              >
-                                View Event Log
                               </Menu.Item>
                             </Menu.Dropdown>
                           </Menu>
@@ -948,23 +882,231 @@ export function PortfolioPanel({
           </>
         )}
       </Stack>
+    </Card>
+  );
+}
 
-      <DepositModal
-        accountId={accountId}
-        opened={depositOpened}
-        onClose={depositHandlers.close}
-      />
-      <WithdrawModal
-        accountId={accountId}
-        opened={withdrawOpened}
-        onClose={withdrawHandlers.close}
-      />
-      <CreditSharesModal
-        accountId={accountId}
-        opened={creditOpened}
-        onClose={creditHandlers.close}
-        symbols={symbols ?? []}
-      />
+// PortfolioOrders renders the pending and recent orders tables for the
+// account. Cancel actions hang off the saga client.
+export function PortfolioOrders({
+  accountId,
+  onJumpToAggregate,
+}: {
+  accountId: string;
+  onJumpToAggregate?: (aggregateId: string) => void;
+}) {
+  const portfolio = usePortfolio(accountId);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  async function handleCancel(sagaId: string, symbol: string) {
+    setCancellingId(sagaId);
+    try {
+      await sagaClient.cancel({ sagaId });
+      notifications.show({
+        title: "Order cancelled",
+        message: `Cancelled order for ${symbol}`,
+        color: "green",
+      });
+    } catch (e: unknown) {
+      notifications.show({
+        title: "Cancel failed",
+        message: e instanceof Error ? e.message : String(e),
+        color: "red",
+      });
+    } finally {
+      setCancellingId(null);
+    }
+  }
+
+  if (!portfolio) {
+    return (
+      <Card withBorder>
+        <Text c="dimmed">Loading orders...</Text>
+      </Card>
+    );
+  }
+
+  const activeOrders = portfolio.pendingOrders.filter(
+    (o) =>
+      o.status !== OrderStatus.COMPLETED && o.status !== OrderStatus.FAILED,
+  );
+  const recentOrders = portfolio.pendingOrders.filter(
+    (o) =>
+      o.status === OrderStatus.COMPLETED || o.status === OrderStatus.FAILED,
+  );
+
+  if (activeOrders.length === 0 && recentOrders.length === 0) {
+    return (
+      <Card withBorder>
+        <Text c="dimmed">No orders yet.</Text>
+      </Card>
+    );
+  }
+
+  return (
+    <Card withBorder>
+      <Stack gap="sm">
+        {activeOrders.length > 0 && (
+          <>
+            <Title order={6}>Pending Orders</Title>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Placed</Table.Th>
+                  <Table.Th>Symbol</Table.Th>
+                  <Table.Th>Side</Table.Th>
+                  <Table.Th>Type</Table.Th>
+                  <Table.Th ta="right">Price</Table.Th>
+                  <Table.Th ta="right">Qty</Table.Th>
+                  <Table.Th ta="right">Filled</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th />
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {activeOrders
+                  .sort((a, b) => Number(a.price - b.price))
+                  .map((o) => {
+                    const placed = formatPlacedAt(o.startedAt);
+                    return (
+                    <Table.Tr key={o.sagaId}>
+                      <Table.Td>
+                        <Text size="xs" ff="monospace" title={placed.full}>
+                          {placed.short}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>{o.symbol}</Table.Td>
+                      <Table.Td c={o.side === Side.BUY ? "green" : "red"}>
+                        {sideName(o.side)}
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="xs">
+                          {orderTypeLabel(o.orderType, o.timeInForce)}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td ta="right">{formatPrice(o.price)}</Table.Td>
+                      <Table.Td ta="right">
+                        {formatQuantity(o.quantity)}
+                      </Table.Td>
+                      <Table.Td ta="right">
+                        {formatQuantity(o.filledQuantity)}
+                      </Table.Td>
+                      <Table.Td>{orderStatusName(o.status)}</Table.Td>
+                      <Table.Td>
+                        <Group justify="flex-end">
+                          <Menu shadow="md" position="bottom-end" withinPortal>
+                            <Menu.Target>
+                              <ActionIcon size="xs" variant="subtle" color="gray" title="Order actions">
+                                ⋯
+                              </ActionIcon>
+                            </Menu.Target>
+                            <Menu.Dropdown>
+                              <Menu.Item
+                                color="red"
+                                disabled={cancellingId === o.sagaId}
+                                onClick={() => handleCancel(o.sagaId, o.symbol)}
+                              >
+                                Cancel
+                              </Menu.Item>
+                              {onJumpToAggregate && (
+                                <Menu.Item
+                                  onClick={() => onJumpToAggregate(`order-saga:${o.sagaId}`)}
+                                >
+                                  View Event Log
+                                </Menu.Item>
+                              )}
+                            </Menu.Dropdown>
+                          </Menu>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                    );
+                  })}
+              </Table.Tbody>
+            </Table>
+          </>
+        )}
+
+        {recentOrders.length > 0 && (
+          <>
+            <Title order={6}>Recent Orders</Title>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Placed</Table.Th>
+                  <Table.Th>Symbol</Table.Th>
+                  <Table.Th>Side</Table.Th>
+                  <Table.Th>Type</Table.Th>
+                  <Table.Th ta="right">Price</Table.Th>
+                  <Table.Th ta="right">Qty</Table.Th>
+                  <Table.Th ta="right">Filled</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>Reason</Table.Th>
+                  <Table.Th />
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {recentOrders.map((o) => {
+                  const placed = formatPlacedAt(o.startedAt);
+                  return (
+                  <Table.Tr key={o.sagaId}>
+                    <Table.Td>
+                      <Text size="xs" ff="monospace" title={placed.full}>
+                        {placed.short}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>{o.symbol}</Table.Td>
+                    <Table.Td c={o.side === Side.BUY ? "green" : "red"}>
+                      {sideName(o.side)}
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="xs">
+                        {orderTypeLabel(o.orderType, o.timeInForce)}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td ta="right">{formatPrice(o.price)}</Table.Td>
+                    <Table.Td ta="right">
+                      {formatQuantity(o.quantity)}
+                    </Table.Td>
+                    <Table.Td ta="right">
+                      {formatQuantity(o.filledQuantity)}
+                    </Table.Td>
+                    <Table.Td c={orderStatusColor(o.status)}>
+                      {orderStatusName(o.status)}
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="xs" c="dimmed">
+                        {o.failReason}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Group justify="flex-end">
+                        {onJumpToAggregate && (
+                          <Menu shadow="md" position="bottom-end" withinPortal>
+                            <Menu.Target>
+                              <ActionIcon size="xs" variant="subtle" color="gray" title="Order actions">
+                                ⋯
+                              </ActionIcon>
+                            </Menu.Target>
+                            <Menu.Dropdown>
+                              <Menu.Item
+                                onClick={() => onJumpToAggregate(`order-saga:${o.sagaId}`)}
+                              >
+                                View Event Log
+                              </Menu.Item>
+                            </Menu.Dropdown>
+                          </Menu>
+                        )}
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                  );
+                })}
+              </Table.Tbody>
+            </Table>
+          </>
+        )}
+      </Stack>
     </Card>
   );
 }

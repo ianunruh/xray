@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   Badge,
   Card,
+  Divider,
   Grid,
   Group,
   SegmentedControl,
@@ -9,6 +10,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
+import { orderBookClient } from "../client";
 import { useMarketDepth } from "../hooks/useMarketDepth";
 import {
   phaseColor,
@@ -21,12 +23,13 @@ import {
   useReplayOrderBook,
   type ReplayTarget,
 } from "../hooks/useReplayOrderBook";
+import { useStream } from "../hooks/useStream";
 import { formatPrice, formatQuantity } from "../format";
 import { DepthSide } from "./MarketDepth";
-import { TradeList } from "./TradeList";
 import { TradeTable } from "./TradeTable";
 import { CandleChart } from "./CandleChart";
 import { ReplayControls } from "./ReplayControls";
+import type { PriceLevel, Trade } from "../gen/orderbook/v1/service_pb";
 
 type Mode = "live" | "replay";
 
@@ -88,13 +91,100 @@ function LivePhaseBadge({ symbol }: { symbol: string }) {
   );
 }
 
+// MarketTicker renders the compact best-bid / best-ask / last-trade
+// summary bar that sits above the chart and depth tables.
+function MarketTicker({
+  bid,
+  ask,
+  lastTrade,
+}: {
+  bid: PriceLevel | undefined;
+  ask: PriceLevel | undefined;
+  lastTrade: Trade | undefined;
+}) {
+  const spread =
+    bid && ask && ask.price > bid.price ? ask.price - bid.price : null;
+  return (
+    <Group gap="xl" wrap="wrap">
+      <TickerCell
+        label="Best Bid"
+        color="green"
+        price={bid?.price}
+        quantity={bid?.quantity}
+      />
+      <TickerCell
+        label="Best Ask"
+        color="red"
+        price={ask?.price}
+        quantity={ask?.quantity}
+      />
+      <div>
+        <Text size="xs" c="dimmed">
+          Spread
+        </Text>
+        <Text fw={700} ff="monospace">
+          {spread === null ? "—" : formatPrice(spread)}
+        </Text>
+      </div>
+      <Divider orientation="vertical" />
+      <TickerCell
+        label="Last Trade"
+        color="bright"
+        price={lastTrade?.price}
+        quantity={lastTrade?.quantity}
+      />
+    </Group>
+  );
+}
+
+function TickerCell({
+  label,
+  color,
+  price,
+  quantity,
+}: {
+  label: string;
+  color: string;
+  price: bigint | undefined;
+  quantity: bigint | undefined;
+}) {
+  return (
+    <div>
+      <Text size="xs" c="dimmed">
+        {label}
+      </Text>
+      <Group gap={6} align="baseline">
+        <Text fw={700} c={color} ff="monospace">
+          {price === undefined ? "—" : formatPrice(price)}
+        </Text>
+        <Text size="xs" c="dimmed" ff="monospace">
+          {quantity === undefined ? "" : `× ${formatQuantity(quantity)}`}
+        </Text>
+      </Group>
+    </div>
+  );
+}
+
+function useLastTrade(symbol: string): Trade | undefined {
+  const [trade, setTrade] = useState<Trade | undefined>(undefined);
+  const onTrade = useCallback((t: Trade) => setTrade(t), []);
+  useStream(
+    (signal) => orderBookClient.streamTrades({ symbol }, { signal }),
+    onTrade,
+    [symbol],
+  );
+  return trade;
+}
+
 function LiveBody({ symbol }: { symbol: string }) {
   const { bids, asks, maxQuantity } = useMarketDepth(symbol);
+  const lastTrade = useLastTrade(symbol);
   return (
     <>
+      <MarketTicker bid={bids[0]} ask={asks[0]} lastTrade={lastTrade} />
       <CandleChart symbol={symbol} />
       <Grid>
-        <Grid.Col span={4}>
+        <Grid.Col span={6}>
           <DepthSide
             title="Bids"
             levels={bids}
@@ -102,16 +192,13 @@ function LiveBody({ symbol }: { symbol: string }) {
             maxQuantity={maxQuantity}
           />
         </Grid.Col>
-        <Grid.Col span={4}>
+        <Grid.Col span={6}>
           <DepthSide
             title="Asks"
             levels={asks}
             side="ask"
             maxQuantity={maxQuantity}
           />
-        </Grid.Col>
-        <Grid.Col span={4}>
-          <TradeList symbol={symbol} />
         </Grid.Col>
       </Grid>
     </>
@@ -148,6 +235,7 @@ function ReplayBody({ symbol }: { symbol: string }) {
   // recent_trades comes oldest-first from the server; TradeTable expects
   // newest-first.
   const tradesNewestFirst = [...(snapshot?.recentTrades ?? [])].reverse();
+  const lastTrade = tradesNewestFirst[0];
 
   return (
     <>
@@ -177,6 +265,11 @@ function ReplayBody({ symbol }: { symbol: string }) {
           </Text>
         )}
       </Group>
+      <MarketTicker
+        bid={snapshot?.bids?.[0]}
+        ask={snapshot?.asks?.[0]}
+        lastTrade={lastTrade}
+      />
       <Grid>
         <Grid.Col span={4}>
           <DepthSide
