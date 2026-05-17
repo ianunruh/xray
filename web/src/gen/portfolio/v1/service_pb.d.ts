@@ -165,6 +165,15 @@ export declare type GetPortfolioResponse = Message<"portfolio.v1.GetPortfolioRes
    * @generated from field: repeated portfolio.v1.PendingOrder pending_orders = 5;
    */
   pendingOrders: PendingOrder[];
+
+  /**
+   * Cumulative realized P&L across every closed position, long and
+   * short, summed from projection_pnl_positions. Holdings.realized_pnl
+   * covers only long positions and won't include short-cover P&L.
+   *
+   * @generated from field: int64 total_realized_pnl = 6;
+   */
+  totalRealizedPnl: bigint;
 };
 
 /**
@@ -592,15 +601,6 @@ export declare type GetMarginSnapshotResponse = Message<"portfolio.v1.GetMarginS
    * @generated from field: int64 buying_power = 15;
    */
   buyingPower: bigint;
-
-  /**
-   * initial_margin_bps echoes the server's collateral policy so the
-   * client can estimate buying-power impact of a pending order
-   * without hard-coding the rate.
-   *
-   * @generated from field: int64 initial_margin_bps = 16;
-   */
-  initialMarginBps: bigint;
 };
 
 /**

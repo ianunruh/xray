@@ -415,8 +415,12 @@ type GetPortfolioResponse struct {
 	CashHeld      int64                  `protobuf:"varint,3,opt,name=cash_held,json=cashHeld,proto3" json:"cash_held,omitempty"`
 	Holdings      []*Holding             `protobuf:"bytes,4,rep,name=holdings,proto3" json:"holdings,omitempty"`
 	PendingOrders []*PendingOrder        `protobuf:"bytes,5,rep,name=pending_orders,json=pendingOrders,proto3" json:"pending_orders,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Cumulative realized P&L across every closed position, long and
+	// short, summed from projection_pnl_positions. Holdings.realized_pnl
+	// covers only long positions and won't include short-cover P&L.
+	TotalRealizedPnl int64 `protobuf:"varint,6,opt,name=total_realized_pnl,json=totalRealizedPnl,proto3" json:"total_realized_pnl,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *GetPortfolioResponse) Reset() {
@@ -482,6 +486,13 @@ func (x *GetPortfolioResponse) GetPendingOrders() []*PendingOrder {
 		return x.PendingOrders
 	}
 	return nil
+}
+
+func (x *GetPortfolioResponse) GetTotalRealizedPnl() int64 {
+	if x != nil {
+		return x.TotalRealizedPnl
+	}
+	return 0
 }
 
 type Holding struct {
@@ -1198,13 +1209,9 @@ type GetMarginSnapshotResponse struct {
 	// CashBalance after every long-buy hold, short collateral hold,
 	// and pool allocation. Distinct from equity: equity counts locked
 	// cash too (it's still yours, just earmarked).
-	BuyingPower int64 `protobuf:"varint,15,opt,name=buying_power,json=buyingPower,proto3" json:"buying_power,omitempty"`
-	// initial_margin_bps echoes the server's collateral policy so the
-	// client can estimate buying-power impact of a pending order
-	// without hard-coding the rate.
-	InitialMarginBps int64 `protobuf:"varint,16,opt,name=initial_margin_bps,json=initialMarginBps,proto3" json:"initial_margin_bps,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	BuyingPower   int64 `protobuf:"varint,15,opt,name=buying_power,json=buyingPower,proto3" json:"buying_power,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetMarginSnapshotResponse) Reset() {
@@ -1338,13 +1345,6 @@ func (x *GetMarginSnapshotResponse) GetPositions() []*PositionMarginInfo {
 func (x *GetMarginSnapshotResponse) GetBuyingPower() int64 {
 	if x != nil {
 		return x.BuyingPower
-	}
-	return 0
-}
-
-func (x *GetMarginSnapshotResponse) GetInitialMarginBps() int64 {
-	if x != nil {
-		return x.InitialMarginBps
 	}
 	return 0
 }
@@ -1684,14 +1684,15 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\x14CreditSharesResponse\"4\n" +
 	"\x13GetPortfolioRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\"\xeb\x01\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\"\x99\x02\n" +
 	"\x14GetPortfolioResponse\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12!\n" +
 	"\fcash_balance\x18\x02 \x01(\x03R\vcashBalance\x12\x1b\n" +
 	"\tcash_held\x18\x03 \x01(\x03R\bcashHeld\x121\n" +
 	"\bholdings\x18\x04 \x03(\v2\x15.portfolio.v1.HoldingR\bholdings\x12A\n" +
-	"\x0epending_orders\x18\x05 \x03(\v2\x1a.portfolio.v1.PendingOrderR\rpendingOrders\"\xc3\x01\n" +
+	"\x0epending_orders\x18\x05 \x03(\v2\x1a.portfolio.v1.PendingOrderR\rpendingOrders\x12,\n" +
+	"\x12total_realized_pnl\x18\x06 \x01(\x03R\x10totalRealizedPnl\"\xc3\x01\n" +
 	"\aHolding\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x1a\n" +
 	"\bquantity\x18\x02 \x01(\x03R\bquantity\x12\x1d\n" +
@@ -1753,7 +1754,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"accountIds\"9\n" +
 	"\x18GetMarginSnapshotRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\"\xa3\x05\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\"\xf5\x04\n" +
 	"\x19GetMarginSnapshotResponse\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12!\n" +
@@ -1772,8 +1773,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"marginCall\x12#\n" +
 	"\rmissing_marks\x18\r \x03(\tR\fmissingMarks\x12>\n" +
 	"\tpositions\x18\x0e \x03(\v2 .portfolio.v1.PositionMarginInfoR\tpositions\x12!\n" +
-	"\fbuying_power\x18\x0f \x01(\x03R\vbuyingPower\x12,\n" +
-	"\x12initial_margin_bps\x18\x10 \x01(\x03R\x10initialMarginBps\"\xa5\x02\n" +
+	"\fbuying_power\x18\x0f \x01(\x03R\vbuyingPower\"\xa5\x02\n" +
 	"\x19PreviewOrderImpactRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12\x16\n" +

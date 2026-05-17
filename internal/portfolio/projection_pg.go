@@ -223,12 +223,18 @@ func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID stri
 		return nil, fmt.Errorf("query portfolio: %w", err)
 	}
 
+	// Constrain the JOIN to LONG rows in projection_pnl_positions —
+	// holdings is long-inventory only, so picking a SHORT row by
+	// accident would surface short-side realized P&L against the
+	// wrong holding (or against none at all).
 	rows, err := p.pool.Query(ctx,
 		`SELECT h.symbol, h.quantity, h.total_cost, h.shares_held, COALESCE(p.realized_pnl, 0)
 		FROM projection_holdings h
-		LEFT JOIN projection_pnl_positions p ON h.account_id = p.account_id AND h.symbol = p.symbol
+		LEFT JOIN projection_pnl_positions p ON h.account_id = p.account_id
+			AND h.symbol = p.symbol
+			AND p.position_side = $2
 		WHERE h.account_id = $1 AND h.quantity > 0`,
-		accountID,
+		accountID, posSideLong,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query holdings: %w", err)
@@ -244,6 +250,17 @@ func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID stri
 			h.AverageCost = h.TotalCost / h.Quantity
 		}
 		resp.Holdings = append(resp.Holdings, h)
+	}
+
+	// Total realized P&L across long AND short positions. Holdings only
+	// surfaces long-side per-symbol P&L; this top-level field gives
+	// the UI a single number that captures both.
+	if err := p.pool.QueryRow(ctx,
+		`SELECT COALESCE(SUM(realized_pnl), 0)
+		FROM projection_pnl_positions WHERE account_id = $1`,
+		accountID,
+	).Scan(&resp.TotalRealizedPnl); err != nil {
+		return nil, fmt.Errorf("query total realized pnl: %w", err)
 	}
 
 	terminalCutoff := time.Now().Add(-5 * time.Minute)

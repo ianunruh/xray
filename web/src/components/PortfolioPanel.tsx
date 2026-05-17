@@ -322,10 +322,9 @@ export function PortfolioPanel({
     );
   }
 
-  const totalRealizedPnl = portfolio.holdings.reduce(
-    (sum, h) => sum + h.realizedPnl,
-    0n,
-  );
+  // Use the server's aggregate field — summing holdings.realizedPnl
+  // misses short-side P&L since closed shorts have no holdings row.
+  const totalRealizedPnl = portfolio.totalRealizedPnl;
 
   const activeOrders = portfolio.pendingOrders.filter(
     (o) =>

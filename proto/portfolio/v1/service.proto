@@ -52,6 +52,10 @@ message GetPortfolioResponse {
   int64 cash_held = 3;
   repeated Holding holdings = 4;
   repeated PendingOrder pending_orders = 5;
+  // Cumulative realized P&L across every closed position, long and
+  // short, summed from projection_pnl_positions. Holdings.realized_pnl
+  // covers only long positions and won't include short-cover P&L.
+  int64 total_realized_pnl = 6;
 }
 
 message Holding {
