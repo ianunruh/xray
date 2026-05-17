@@ -2,6 +2,7 @@ package portfolio
 
 import (
 	"fmt"
+	"time"
 
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
 	"github.com/ianunruh/xray/pkg/es"
@@ -43,6 +44,19 @@ type CollateralHold struct {
 	Amount   int64
 }
 
+// MarginCall records an active margin breach. At most one is active
+// per account — the reactor only emits MarginCallIssued when none is
+// open, and emits MarginCallCovered to clear it.
+type MarginCall struct {
+	CallID                  string
+	TriggerTradeID          string
+	TriggerSymbol           string
+	MarkPrice               int64
+	EquityAtIssue           int64
+	RequirementAtIssue      int64
+	IssuedAt                time.Time
+}
+
 type Portfolio struct {
 	es.AggregateBase
 
@@ -67,6 +81,10 @@ type Portfolio struct {
 	CollateralHeldBySaga  map[string]*CollateralHold
 	ShortCoversHeld       map[string]int64
 	ShortCoverHoldsBySaga map[string]*ShareHold
+	// ActiveMarginCall is non-nil when a margin call is open. The
+	// reactor guards against duplicate issuance by checking this field
+	// before emitting MarginCallIssued.
+	ActiveMarginCall *MarginCall
 }
 
 func NewPortfolio(id string) *Portfolio {
@@ -140,6 +158,10 @@ func (p *Portfolio) Apply(evt es.Event) error {
 		p.applyShortCoverReleased(data)
 	case *portfoliov1.ShortCovered:
 		p.applyShortCovered(data)
+	case *portfoliov1.MarginCallIssued:
+		p.applyMarginCallIssued(data)
+	case *portfoliov1.MarginCallCovered:
+		p.applyMarginCallCovered(data)
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}
@@ -374,4 +396,21 @@ func (p *Portfolio) applyShortCovered(data *portfoliov1.ShortCovered) {
 	}
 
 	p.markSettled(data.OrderSagaId, data.TradeId)
+}
+
+func (p *Portfolio) applyMarginCallIssued(data *portfoliov1.MarginCallIssued) {
+	p.AccountID = data.AccountId
+	p.ActiveMarginCall = &MarginCall{
+		CallID:             data.CallId,
+		TriggerTradeID:     data.TriggerTradeId,
+		TriggerSymbol:      data.TriggerSymbol,
+		MarkPrice:          data.MarkPrice,
+		EquityAtIssue:      data.EquityAtIssue,
+		RequirementAtIssue: data.MaintenanceRequirementAtIssue,
+		IssuedAt:           data.IssuedAt.AsTime(),
+	}
+}
+
+func (p *Portfolio) applyMarginCallCovered(_ *portfoliov1.MarginCallCovered) {
+	p.ActiveMarginCall = nil
 }

@@ -665,3 +665,87 @@ func ExecuteCoverShort(p *Portfolio, cmd CoverShort) ([]es.Event, error) {
 	}
 	return []es.Event{evt}, nil
 }
+
+// --- Margin call commands ---
+
+type IssueMarginCall struct {
+	AccountID                     string
+	CallID                        string
+	TriggerTradeID                string
+	TriggerSymbol                 string
+	MarkPrice                     int64
+	EquityAtIssue                 int64
+	MaintenanceRequirementAtIssue int64
+}
+
+func (c IssueMarginCall) AggregateID() string {
+	return AggregateID(c.AccountID)
+}
+
+// ExecuteIssueMarginCall is idempotent against an already-open call:
+// if ActiveMarginCall has the same call_id, returns no-op. Different
+// call_id while one is active returns no-op too — the reactor uses
+// MarginCallCovered to clear before issuing a new one.
+func ExecuteIssueMarginCall(p *Portfolio, cmd IssueMarginCall) ([]es.Event, error) {
+	if p.ActiveMarginCall != nil {
+		return nil, nil
+	}
+
+	now := time.Now()
+	evt := es.Event{
+		AggregateID: p.AggregateID(),
+		Type:        EventMarginCallIssued,
+		Timestamp:   now,
+		Data: &portfoliov1.MarginCallIssued{
+			AccountId:                     cmd.AccountID,
+			CallId:                        cmd.CallID,
+			TriggerTradeId:                cmd.TriggerTradeID,
+			TriggerSymbol:                 cmd.TriggerSymbol,
+			MarkPrice:                     cmd.MarkPrice,
+			EquityAtIssue:                 cmd.EquityAtIssue,
+			MaintenanceRequirementAtIssue: cmd.MaintenanceRequirementAtIssue,
+			IssuedAt:                      timestamppb.New(now),
+		},
+	}
+	if err := p.Apply(evt); err != nil {
+		return nil, err
+	}
+	return []es.Event{evt}, nil
+}
+
+type CoverMarginCall struct {
+	AccountID                      string
+	EquityAtCover                  int64
+	MaintenanceRequirementAtCover  int64
+}
+
+func (c CoverMarginCall) AggregateID() string {
+	return AggregateID(c.AccountID)
+}
+
+// ExecuteCoverMarginCall clears the active call. No-op if none open.
+// CallID is derived from aggregate state so callers don't need to
+// remember which call is currently active.
+func ExecuteCoverMarginCall(p *Portfolio, cmd CoverMarginCall) ([]es.Event, error) {
+	if p.ActiveMarginCall == nil {
+		return nil, nil
+	}
+
+	now := time.Now()
+	evt := es.Event{
+		AggregateID: p.AggregateID(),
+		Type:        EventMarginCallCovered,
+		Timestamp:   now,
+		Data: &portfoliov1.MarginCallCovered{
+			AccountId:                     cmd.AccountID,
+			CallId:                        p.ActiveMarginCall.CallID,
+			EquityAtCover:                 cmd.EquityAtCover,
+			MaintenanceRequirementAtCover: cmd.MaintenanceRequirementAtCover,
+			CoveredAt:                     timestamppb.New(now),
+		},
+	}
+	if err := p.Apply(evt); err != nil {
+		return nil, err
+	}
+	return []es.Event{evt}, nil
+}

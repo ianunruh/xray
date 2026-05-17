@@ -110,6 +110,9 @@ message PositionPnL {
   int64 avg_cost = 3;
   int64 total_cost = 4;
   int64 realized_pnl = 5;
+  // LONG (default) = bought, owns shares. SHORT = sold-to-open,
+  // owes shares back. avg_cost is the open price for shorts.
+  orderbook.v1.PositionSide position_side = 6;
 }
 
 message PnLEntry {
@@ -119,6 +122,7 @@ message PnLEntry {
   int64 price = 4;
   int64 realized_pnl = 5;
   google.protobuf.Timestamp settled_at = 6;
+  orderbook.v1.PositionSide position_side = 7;
 }
 
 message ListPortfoliosRequest {}

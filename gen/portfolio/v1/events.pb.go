@@ -1361,6 +1361,193 @@ func (x *ShortCovered) GetCoveredAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// MarginCallIssued records that a margin breach was detected. Emitted
+// by the margin-call reactor on the portfolio aggregate; the snapshot
+// fields are at-issuance and not updated as the situation evolves.
+// call_id is deterministic from (account_id, issue_trigger_event_id)
+// so replays don't double-issue.
+type MarginCallIssued struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	AccountId string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	CallId    string                 `protobuf:"bytes,2,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
+	// The TradeExecuted trade_id that moved the mark into breach. Empty
+	// for snapshot-style calls (e.g. fired by manual recheck).
+	TriggerTradeId string `protobuf:"bytes,3,opt,name=trigger_trade_id,json=triggerTradeId,proto3" json:"trigger_trade_id,omitempty"`
+	// Symbol whose mark moved into breach.
+	TriggerSymbol                 string                 `protobuf:"bytes,4,opt,name=trigger_symbol,json=triggerSymbol,proto3" json:"trigger_symbol,omitempty"`
+	MarkPrice                     int64                  `protobuf:"varint,5,opt,name=mark_price,json=markPrice,proto3" json:"mark_price,omitempty"`
+	EquityAtIssue                 int64                  `protobuf:"varint,6,opt,name=equity_at_issue,json=equityAtIssue,proto3" json:"equity_at_issue,omitempty"`
+	MaintenanceRequirementAtIssue int64                  `protobuf:"varint,7,opt,name=maintenance_requirement_at_issue,json=maintenanceRequirementAtIssue,proto3" json:"maintenance_requirement_at_issue,omitempty"`
+	IssuedAt                      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at,omitempty"`
+	unknownFields                 protoimpl.UnknownFields
+	sizeCache                     protoimpl.SizeCache
+}
+
+func (x *MarginCallIssued) Reset() {
+	*x = MarginCallIssued{}
+	mi := &file_portfolio_v1_events_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MarginCallIssued) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MarginCallIssued) ProtoMessage() {}
+
+func (x *MarginCallIssued) ProtoReflect() protoreflect.Message {
+	mi := &file_portfolio_v1_events_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MarginCallIssued.ProtoReflect.Descriptor instead.
+func (*MarginCallIssued) Descriptor() ([]byte, []int) {
+	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *MarginCallIssued) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *MarginCallIssued) GetCallId() string {
+	if x != nil {
+		return x.CallId
+	}
+	return ""
+}
+
+func (x *MarginCallIssued) GetTriggerTradeId() string {
+	if x != nil {
+		return x.TriggerTradeId
+	}
+	return ""
+}
+
+func (x *MarginCallIssued) GetTriggerSymbol() string {
+	if x != nil {
+		return x.TriggerSymbol
+	}
+	return ""
+}
+
+func (x *MarginCallIssued) GetMarkPrice() int64 {
+	if x != nil {
+		return x.MarkPrice
+	}
+	return 0
+}
+
+func (x *MarginCallIssued) GetEquityAtIssue() int64 {
+	if x != nil {
+		return x.EquityAtIssue
+	}
+	return 0
+}
+
+func (x *MarginCallIssued) GetMaintenanceRequirementAtIssue() int64 {
+	if x != nil {
+		return x.MaintenanceRequirementAtIssue
+	}
+	return 0
+}
+
+func (x *MarginCallIssued) GetIssuedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.IssuedAt
+	}
+	return nil
+}
+
+// MarginCallCovered records that the breach was remediated, either by
+// the auto-liquidation reactor closing enough shorts or by the user
+// adding cash or covering manually.
+type MarginCallCovered struct {
+	state                         protoimpl.MessageState `protogen:"open.v1"`
+	AccountId                     string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	CallId                        string                 `protobuf:"bytes,2,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
+	EquityAtCover                 int64                  `protobuf:"varint,3,opt,name=equity_at_cover,json=equityAtCover,proto3" json:"equity_at_cover,omitempty"`
+	MaintenanceRequirementAtCover int64                  `protobuf:"varint,4,opt,name=maintenance_requirement_at_cover,json=maintenanceRequirementAtCover,proto3" json:"maintenance_requirement_at_cover,omitempty"`
+	CoveredAt                     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=covered_at,json=coveredAt,proto3" json:"covered_at,omitempty"`
+	unknownFields                 protoimpl.UnknownFields
+	sizeCache                     protoimpl.SizeCache
+}
+
+func (x *MarginCallCovered) Reset() {
+	*x = MarginCallCovered{}
+	mi := &file_portfolio_v1_events_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MarginCallCovered) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MarginCallCovered) ProtoMessage() {}
+
+func (x *MarginCallCovered) ProtoReflect() protoreflect.Message {
+	mi := &file_portfolio_v1_events_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MarginCallCovered.ProtoReflect.Descriptor instead.
+func (*MarginCallCovered) Descriptor() ([]byte, []int) {
+	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *MarginCallCovered) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *MarginCallCovered) GetCallId() string {
+	if x != nil {
+		return x.CallId
+	}
+	return ""
+}
+
+func (x *MarginCallCovered) GetEquityAtCover() int64 {
+	if x != nil {
+		return x.EquityAtCover
+	}
+	return 0
+}
+
+func (x *MarginCallCovered) GetMaintenanceRequirementAtCover() int64 {
+	if x != nil {
+		return x.MaintenanceRequirementAtCover
+	}
+	return 0
+}
+
+func (x *MarginCallCovered) GetCoveredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CoveredAt
+	}
+	return nil
+}
+
 type OrderSagaStarted struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	SagaId         string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
@@ -1391,7 +1578,7 @@ type OrderSagaStarted struct {
 
 func (x *OrderSagaStarted) Reset() {
 	*x = OrderSagaStarted{}
-	mi := &file_portfolio_v1_events_proto_msgTypes[16]
+	mi := &file_portfolio_v1_events_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1403,7 +1590,7 @@ func (x *OrderSagaStarted) String() string {
 func (*OrderSagaStarted) ProtoMessage() {}
 
 func (x *OrderSagaStarted) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_events_proto_msgTypes[16]
+	mi := &file_portfolio_v1_events_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1416,7 +1603,7 @@ func (x *OrderSagaStarted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderSagaStarted.ProtoReflect.Descriptor instead.
 func (*OrderSagaStarted) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{16}
+	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *OrderSagaStarted) GetSagaId() string {
@@ -1521,7 +1708,7 @@ type OrderSagaCashHeld struct {
 
 func (x *OrderSagaCashHeld) Reset() {
 	*x = OrderSagaCashHeld{}
-	mi := &file_portfolio_v1_events_proto_msgTypes[17]
+	mi := &file_portfolio_v1_events_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1533,7 +1720,7 @@ func (x *OrderSagaCashHeld) String() string {
 func (*OrderSagaCashHeld) ProtoMessage() {}
 
 func (x *OrderSagaCashHeld) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_events_proto_msgTypes[17]
+	mi := &file_portfolio_v1_events_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1546,7 +1733,7 @@ func (x *OrderSagaCashHeld) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderSagaCashHeld.ProtoReflect.Descriptor instead.
 func (*OrderSagaCashHeld) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{17}
+	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *OrderSagaCashHeld) GetSagaId() string {
@@ -1584,7 +1771,7 @@ type OrderSagaCollateralHeld struct {
 
 func (x *OrderSagaCollateralHeld) Reset() {
 	*x = OrderSagaCollateralHeld{}
-	mi := &file_portfolio_v1_events_proto_msgTypes[18]
+	mi := &file_portfolio_v1_events_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1596,7 +1783,7 @@ func (x *OrderSagaCollateralHeld) String() string {
 func (*OrderSagaCollateralHeld) ProtoMessage() {}
 
 func (x *OrderSagaCollateralHeld) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_events_proto_msgTypes[18]
+	mi := &file_portfolio_v1_events_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1609,7 +1796,7 @@ func (x *OrderSagaCollateralHeld) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderSagaCollateralHeld.ProtoReflect.Descriptor instead.
 func (*OrderSagaCollateralHeld) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{18}
+	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *OrderSagaCollateralHeld) GetSagaId() string {
@@ -1644,7 +1831,7 @@ type OrderSagaOrderPlaced struct {
 
 func (x *OrderSagaOrderPlaced) Reset() {
 	*x = OrderSagaOrderPlaced{}
-	mi := &file_portfolio_v1_events_proto_msgTypes[19]
+	mi := &file_portfolio_v1_events_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1656,7 +1843,7 @@ func (x *OrderSagaOrderPlaced) String() string {
 func (*OrderSagaOrderPlaced) ProtoMessage() {}
 
 func (x *OrderSagaOrderPlaced) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_events_proto_msgTypes[19]
+	mi := &file_portfolio_v1_events_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1669,7 +1856,7 @@ func (x *OrderSagaOrderPlaced) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderSagaOrderPlaced.ProtoReflect.Descriptor instead.
 func (*OrderSagaOrderPlaced) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{19}
+	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *OrderSagaOrderPlaced) GetSagaId() string {
@@ -1707,7 +1894,7 @@ type OrderSagaFillRecorded struct {
 
 func (x *OrderSagaFillRecorded) Reset() {
 	*x = OrderSagaFillRecorded{}
-	mi := &file_portfolio_v1_events_proto_msgTypes[20]
+	mi := &file_portfolio_v1_events_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1719,7 +1906,7 @@ func (x *OrderSagaFillRecorded) String() string {
 func (*OrderSagaFillRecorded) ProtoMessage() {}
 
 func (x *OrderSagaFillRecorded) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_events_proto_msgTypes[20]
+	mi := &file_portfolio_v1_events_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1732,7 +1919,7 @@ func (x *OrderSagaFillRecorded) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderSagaFillRecorded.ProtoReflect.Descriptor instead.
 func (*OrderSagaFillRecorded) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{20}
+	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *OrderSagaFillRecorded) GetSagaId() string {
@@ -1787,7 +1974,7 @@ type OrderSagaCompleted struct {
 
 func (x *OrderSagaCompleted) Reset() {
 	*x = OrderSagaCompleted{}
-	mi := &file_portfolio_v1_events_proto_msgTypes[21]
+	mi := &file_portfolio_v1_events_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1799,7 +1986,7 @@ func (x *OrderSagaCompleted) String() string {
 func (*OrderSagaCompleted) ProtoMessage() {}
 
 func (x *OrderSagaCompleted) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_events_proto_msgTypes[21]
+	mi := &file_portfolio_v1_events_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1812,7 +1999,7 @@ func (x *OrderSagaCompleted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderSagaCompleted.ProtoReflect.Descriptor instead.
 func (*OrderSagaCompleted) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{21}
+	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *OrderSagaCompleted) GetSagaId() string {
@@ -1840,7 +2027,7 @@ type OrderSagaFailed struct {
 
 func (x *OrderSagaFailed) Reset() {
 	*x = OrderSagaFailed{}
-	mi := &file_portfolio_v1_events_proto_msgTypes[22]
+	mi := &file_portfolio_v1_events_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1852,7 +2039,7 @@ func (x *OrderSagaFailed) String() string {
 func (*OrderSagaFailed) ProtoMessage() {}
 
 func (x *OrderSagaFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_events_proto_msgTypes[22]
+	mi := &file_portfolio_v1_events_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1865,7 +2052,7 @@ func (x *OrderSagaFailed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderSagaFailed.ProtoReflect.Descriptor instead.
 func (*OrderSagaFailed) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{22}
+	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *OrderSagaFailed) GetSagaId() string {
@@ -1901,7 +2088,7 @@ type OrderSagaActionFailed struct {
 
 func (x *OrderSagaActionFailed) Reset() {
 	*x = OrderSagaActionFailed{}
-	mi := &file_portfolio_v1_events_proto_msgTypes[23]
+	mi := &file_portfolio_v1_events_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1913,7 +2100,7 @@ func (x *OrderSagaActionFailed) String() string {
 func (*OrderSagaActionFailed) ProtoMessage() {}
 
 func (x *OrderSagaActionFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_events_proto_msgTypes[23]
+	mi := &file_portfolio_v1_events_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1926,7 +2113,7 @@ func (x *OrderSagaActionFailed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderSagaActionFailed.ProtoReflect.Descriptor instead.
 func (*OrderSagaActionFailed) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{23}
+	return file_portfolio_v1_events_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *OrderSagaActionFailed) GetSagaId() string {
@@ -2097,7 +2284,26 @@ const file_portfolio_v1_events_proto_rawDesc = "" +
 	"\frealized_pnl\x18\n" +
 	" \x01(\x03R\vrealizedPnl\x129\n" +
 	"\n" +
-	"covered_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcoveredAt\"\xb1\x04\n" +
+	"covered_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcoveredAt\"\xe4\x02\n" +
+	"\x10MarginCallIssued\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\x12\x17\n" +
+	"\acall_id\x18\x02 \x01(\tR\x06callId\x12(\n" +
+	"\x10trigger_trade_id\x18\x03 \x01(\tR\x0etriggerTradeId\x12%\n" +
+	"\x0etrigger_symbol\x18\x04 \x01(\tR\rtriggerSymbol\x12\x1d\n" +
+	"\n" +
+	"mark_price\x18\x05 \x01(\x03R\tmarkPrice\x12&\n" +
+	"\x0fequity_at_issue\x18\x06 \x01(\x03R\requityAtIssue\x12G\n" +
+	" maintenance_requirement_at_issue\x18\a \x01(\x03R\x1dmaintenanceRequirementAtIssue\x127\n" +
+	"\tissued_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\"\xf7\x01\n" +
+	"\x11MarginCallCovered\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\x12\x17\n" +
+	"\acall_id\x18\x02 \x01(\tR\x06callId\x12&\n" +
+	"\x0fequity_at_cover\x18\x03 \x01(\x03R\requityAtCover\x12G\n" +
+	" maintenance_requirement_at_cover\x18\x04 \x01(\x03R\x1dmaintenanceRequirementAtCover\x129\n" +
+	"\n" +
+	"covered_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcoveredAt\"\xb1\x04\n" +
 	"\x10OrderSagaStarted\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x1d\n" +
 	"\n" +
@@ -2163,7 +2369,7 @@ func file_portfolio_v1_events_proto_rawDescGZIP() []byte {
 	return file_portfolio_v1_events_proto_rawDescData
 }
 
-var file_portfolio_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_portfolio_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_portfolio_v1_events_proto_goTypes = []any{
 	(*CashDeposited)(nil),           // 0: portfolio.v1.CashDeposited
 	(*CashWithdrawn)(nil),           // 1: portfolio.v1.CashWithdrawn
@@ -2181,56 +2387,60 @@ var file_portfolio_v1_events_proto_goTypes = []any{
 	(*ShortCoverHeld)(nil),          // 13: portfolio.v1.ShortCoverHeld
 	(*ShortCoverReleased)(nil),      // 14: portfolio.v1.ShortCoverReleased
 	(*ShortCovered)(nil),            // 15: portfolio.v1.ShortCovered
-	(*OrderSagaStarted)(nil),        // 16: portfolio.v1.OrderSagaStarted
-	(*OrderSagaCashHeld)(nil),       // 17: portfolio.v1.OrderSagaCashHeld
-	(*OrderSagaCollateralHeld)(nil), // 18: portfolio.v1.OrderSagaCollateralHeld
-	(*OrderSagaOrderPlaced)(nil),    // 19: portfolio.v1.OrderSagaOrderPlaced
-	(*OrderSagaFillRecorded)(nil),   // 20: portfolio.v1.OrderSagaFillRecorded
-	(*OrderSagaCompleted)(nil),      // 21: portfolio.v1.OrderSagaCompleted
-	(*OrderSagaFailed)(nil),         // 22: portfolio.v1.OrderSagaFailed
-	(*OrderSagaActionFailed)(nil),   // 23: portfolio.v1.OrderSagaActionFailed
-	(*timestamppb.Timestamp)(nil),   // 24: google.protobuf.Timestamp
-	(v1.Side)(0),                    // 25: orderbook.v1.Side
-	(v1.OrderType)(0),               // 26: orderbook.v1.OrderType
-	(v1.TimeInForce)(0),             // 27: orderbook.v1.TimeInForce
-	(v1.PositionSide)(0),            // 28: orderbook.v1.PositionSide
-	(v11.Initiator)(0),              // 29: saga.v1.Initiator
+	(*MarginCallIssued)(nil),        // 16: portfolio.v1.MarginCallIssued
+	(*MarginCallCovered)(nil),       // 17: portfolio.v1.MarginCallCovered
+	(*OrderSagaStarted)(nil),        // 18: portfolio.v1.OrderSagaStarted
+	(*OrderSagaCashHeld)(nil),       // 19: portfolio.v1.OrderSagaCashHeld
+	(*OrderSagaCollateralHeld)(nil), // 20: portfolio.v1.OrderSagaCollateralHeld
+	(*OrderSagaOrderPlaced)(nil),    // 21: portfolio.v1.OrderSagaOrderPlaced
+	(*OrderSagaFillRecorded)(nil),   // 22: portfolio.v1.OrderSagaFillRecorded
+	(*OrderSagaCompleted)(nil),      // 23: portfolio.v1.OrderSagaCompleted
+	(*OrderSagaFailed)(nil),         // 24: portfolio.v1.OrderSagaFailed
+	(*OrderSagaActionFailed)(nil),   // 25: portfolio.v1.OrderSagaActionFailed
+	(*timestamppb.Timestamp)(nil),   // 26: google.protobuf.Timestamp
+	(v1.Side)(0),                    // 27: orderbook.v1.Side
+	(v1.OrderType)(0),               // 28: orderbook.v1.OrderType
+	(v1.TimeInForce)(0),             // 29: orderbook.v1.TimeInForce
+	(v1.PositionSide)(0),            // 30: orderbook.v1.PositionSide
+	(v11.Initiator)(0),              // 31: saga.v1.Initiator
 }
 var file_portfolio_v1_events_proto_depIdxs = []int32{
-	24, // 0: portfolio.v1.CashDeposited.deposited_at:type_name -> google.protobuf.Timestamp
-	24, // 1: portfolio.v1.CashWithdrawn.withdrawn_at:type_name -> google.protobuf.Timestamp
-	24, // 2: portfolio.v1.CashHeld.held_at:type_name -> google.protobuf.Timestamp
-	24, // 3: portfolio.v1.CashReleased.released_at:type_name -> google.protobuf.Timestamp
-	24, // 4: portfolio.v1.CashSettled.settled_at:type_name -> google.protobuf.Timestamp
-	24, // 5: portfolio.v1.SharesCredited.credited_at:type_name -> google.protobuf.Timestamp
-	24, // 6: portfolio.v1.SharesDebited.debited_at:type_name -> google.protobuf.Timestamp
-	24, // 7: portfolio.v1.SharesHeld.held_at:type_name -> google.protobuf.Timestamp
-	24, // 8: portfolio.v1.SharesReleased.released_at:type_name -> google.protobuf.Timestamp
-	24, // 9: portfolio.v1.SharesSettled.settled_at:type_name -> google.protobuf.Timestamp
-	24, // 10: portfolio.v1.CollateralHeld.held_at:type_name -> google.protobuf.Timestamp
-	24, // 11: portfolio.v1.CollateralReleased.released_at:type_name -> google.protobuf.Timestamp
-	24, // 12: portfolio.v1.ShortOpened.opened_at:type_name -> google.protobuf.Timestamp
-	24, // 13: portfolio.v1.ShortCoverHeld.held_at:type_name -> google.protobuf.Timestamp
-	24, // 14: portfolio.v1.ShortCoverReleased.released_at:type_name -> google.protobuf.Timestamp
-	24, // 15: portfolio.v1.ShortCovered.covered_at:type_name -> google.protobuf.Timestamp
-	25, // 16: portfolio.v1.OrderSagaStarted.side:type_name -> orderbook.v1.Side
-	26, // 17: portfolio.v1.OrderSagaStarted.order_type:type_name -> orderbook.v1.OrderType
-	27, // 18: portfolio.v1.OrderSagaStarted.time_in_force:type_name -> orderbook.v1.TimeInForce
-	24, // 19: portfolio.v1.OrderSagaStarted.started_at:type_name -> google.protobuf.Timestamp
-	28, // 20: portfolio.v1.OrderSagaStarted.position_side:type_name -> orderbook.v1.PositionSide
-	29, // 21: portfolio.v1.OrderSagaStarted.initiator:type_name -> saga.v1.Initiator
-	24, // 22: portfolio.v1.OrderSagaCashHeld.held_at:type_name -> google.protobuf.Timestamp
-	24, // 23: portfolio.v1.OrderSagaCollateralHeld.held_at:type_name -> google.protobuf.Timestamp
-	24, // 24: portfolio.v1.OrderSagaOrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
-	24, // 25: portfolio.v1.OrderSagaFillRecorded.filled_at:type_name -> google.protobuf.Timestamp
-	24, // 26: portfolio.v1.OrderSagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
-	24, // 27: portfolio.v1.OrderSagaFailed.failed_at:type_name -> google.protobuf.Timestamp
-	24, // 28: portfolio.v1.OrderSagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
-	29, // [29:29] is the sub-list for method output_type
-	29, // [29:29] is the sub-list for method input_type
-	29, // [29:29] is the sub-list for extension type_name
-	29, // [29:29] is the sub-list for extension extendee
-	0,  // [0:29] is the sub-list for field type_name
+	26, // 0: portfolio.v1.CashDeposited.deposited_at:type_name -> google.protobuf.Timestamp
+	26, // 1: portfolio.v1.CashWithdrawn.withdrawn_at:type_name -> google.protobuf.Timestamp
+	26, // 2: portfolio.v1.CashHeld.held_at:type_name -> google.protobuf.Timestamp
+	26, // 3: portfolio.v1.CashReleased.released_at:type_name -> google.protobuf.Timestamp
+	26, // 4: portfolio.v1.CashSettled.settled_at:type_name -> google.protobuf.Timestamp
+	26, // 5: portfolio.v1.SharesCredited.credited_at:type_name -> google.protobuf.Timestamp
+	26, // 6: portfolio.v1.SharesDebited.debited_at:type_name -> google.protobuf.Timestamp
+	26, // 7: portfolio.v1.SharesHeld.held_at:type_name -> google.protobuf.Timestamp
+	26, // 8: portfolio.v1.SharesReleased.released_at:type_name -> google.protobuf.Timestamp
+	26, // 9: portfolio.v1.SharesSettled.settled_at:type_name -> google.protobuf.Timestamp
+	26, // 10: portfolio.v1.CollateralHeld.held_at:type_name -> google.protobuf.Timestamp
+	26, // 11: portfolio.v1.CollateralReleased.released_at:type_name -> google.protobuf.Timestamp
+	26, // 12: portfolio.v1.ShortOpened.opened_at:type_name -> google.protobuf.Timestamp
+	26, // 13: portfolio.v1.ShortCoverHeld.held_at:type_name -> google.protobuf.Timestamp
+	26, // 14: portfolio.v1.ShortCoverReleased.released_at:type_name -> google.protobuf.Timestamp
+	26, // 15: portfolio.v1.ShortCovered.covered_at:type_name -> google.protobuf.Timestamp
+	26, // 16: portfolio.v1.MarginCallIssued.issued_at:type_name -> google.protobuf.Timestamp
+	26, // 17: portfolio.v1.MarginCallCovered.covered_at:type_name -> google.protobuf.Timestamp
+	27, // 18: portfolio.v1.OrderSagaStarted.side:type_name -> orderbook.v1.Side
+	28, // 19: portfolio.v1.OrderSagaStarted.order_type:type_name -> orderbook.v1.OrderType
+	29, // 20: portfolio.v1.OrderSagaStarted.time_in_force:type_name -> orderbook.v1.TimeInForce
+	26, // 21: portfolio.v1.OrderSagaStarted.started_at:type_name -> google.protobuf.Timestamp
+	30, // 22: portfolio.v1.OrderSagaStarted.position_side:type_name -> orderbook.v1.PositionSide
+	31, // 23: portfolio.v1.OrderSagaStarted.initiator:type_name -> saga.v1.Initiator
+	26, // 24: portfolio.v1.OrderSagaCashHeld.held_at:type_name -> google.protobuf.Timestamp
+	26, // 25: portfolio.v1.OrderSagaCollateralHeld.held_at:type_name -> google.protobuf.Timestamp
+	26, // 26: portfolio.v1.OrderSagaOrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
+	26, // 27: portfolio.v1.OrderSagaFillRecorded.filled_at:type_name -> google.protobuf.Timestamp
+	26, // 28: portfolio.v1.OrderSagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
+	26, // 29: portfolio.v1.OrderSagaFailed.failed_at:type_name -> google.protobuf.Timestamp
+	26, // 30: portfolio.v1.OrderSagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
+	31, // [31:31] is the sub-list for method output_type
+	31, // [31:31] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_portfolio_v1_events_proto_init() }
@@ -2244,7 +2454,7 @@ func file_portfolio_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_portfolio_v1_events_proto_rawDesc), len(file_portfolio_v1_events_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   24,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

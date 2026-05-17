@@ -857,12 +857,15 @@ func (x *GetPnLResponse) GetHistory() []*PnLEntry {
 }
 
 type PositionPnL struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
-	Quantity      int64                  `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	AvgCost       int64                  `protobuf:"varint,3,opt,name=avg_cost,json=avgCost,proto3" json:"avg_cost,omitempty"`
-	TotalCost     int64                  `protobuf:"varint,4,opt,name=total_cost,json=totalCost,proto3" json:"total_cost,omitempty"`
-	RealizedPnl   int64                  `protobuf:"varint,5,opt,name=realized_pnl,json=realizedPnl,proto3" json:"realized_pnl,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Symbol      string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Quantity    int64                  `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	AvgCost     int64                  `protobuf:"varint,3,opt,name=avg_cost,json=avgCost,proto3" json:"avg_cost,omitempty"`
+	TotalCost   int64                  `protobuf:"varint,4,opt,name=total_cost,json=totalCost,proto3" json:"total_cost,omitempty"`
+	RealizedPnl int64                  `protobuf:"varint,5,opt,name=realized_pnl,json=realizedPnl,proto3" json:"realized_pnl,omitempty"`
+	// LONG (default) = bought, owns shares. SHORT = sold-to-open,
+	// owes shares back. avg_cost is the open price for shorts.
+	PositionSide  v1.PositionSide `protobuf:"varint,6,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -932,6 +935,13 @@ func (x *PositionPnL) GetRealizedPnl() int64 {
 	return 0
 }
 
+func (x *PositionPnL) GetPositionSide() v1.PositionSide {
+	if x != nil {
+		return x.PositionSide
+	}
+	return v1.PositionSide(0)
+}
+
 type PnLEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
@@ -940,6 +950,7 @@ type PnLEntry struct {
 	Price         int64                  `protobuf:"varint,4,opt,name=price,proto3" json:"price,omitempty"`
 	RealizedPnl   int64                  `protobuf:"varint,5,opt,name=realized_pnl,json=realizedPnl,proto3" json:"realized_pnl,omitempty"`
 	SettledAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=settled_at,json=settledAt,proto3" json:"settled_at,omitempty"`
+	PositionSide  v1.PositionSide        `protobuf:"varint,7,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1014,6 +1025,13 @@ func (x *PnLEntry) GetSettledAt() *timestamppb.Timestamp {
 		return x.SettledAt
 	}
 	return nil
+}
+
+func (x *PnLEntry) GetPositionSide() v1.PositionSide {
+	if x != nil {
+		return x.PositionSide
+	}
+	return v1.PositionSide(0)
 }
 
 type ListPortfoliosRequest struct {
@@ -1482,14 +1500,15 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x127\n" +
 	"\tpositions\x18\x02 \x03(\v2\x19.portfolio.v1.PositionPnLR\tpositions\x12,\n" +
 	"\x12total_realized_pnl\x18\x03 \x01(\x03R\x10totalRealizedPnl\x120\n" +
-	"\ahistory\x18\x04 \x03(\v2\x16.portfolio.v1.PnLEntryR\ahistory\"\x9e\x01\n" +
+	"\ahistory\x18\x04 \x03(\v2\x16.portfolio.v1.PnLEntryR\ahistory\"\xdf\x01\n" +
 	"\vPositionPnL\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x1a\n" +
 	"\bquantity\x18\x02 \x01(\x03R\bquantity\x12\x19\n" +
 	"\bavg_cost\x18\x03 \x01(\x03R\aavgCost\x12\x1d\n" +
 	"\n" +
 	"total_cost\x18\x04 \x01(\x03R\ttotalCost\x12!\n" +
-	"\frealized_pnl\x18\x05 \x01(\x03R\vrealizedPnl\"\xda\x01\n" +
+	"\frealized_pnl\x18\x05 \x01(\x03R\vrealizedPnl\x12?\n" +
+	"\rposition_side\x18\x06 \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\"\x9b\x02\n" +
 	"\bPnLEntry\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x1a\n" +
@@ -1497,7 +1516,8 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\x05price\x18\x04 \x01(\x03R\x05price\x12!\n" +
 	"\frealized_pnl\x18\x05 \x01(\x03R\vrealizedPnl\x129\n" +
 	"\n" +
-	"settled_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tsettledAt\"\x17\n" +
+	"settled_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tsettledAt\x12?\n" +
+	"\rposition_side\x18\a \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\"\x17\n" +
 	"\x15ListPortfoliosRequest\"9\n" +
 	"\x16ListPortfoliosResponse\x12\x1f\n" +
 	"\vaccount_ids\x18\x01 \x03(\tR\n" +
@@ -1603,31 +1623,33 @@ var file_portfolio_v1_service_proto_depIdxs = []int32{
 	24, // 7: portfolio.v1.PendingOrder.ended_at:type_name -> google.protobuf.Timestamp
 	14, // 8: portfolio.v1.GetPnLResponse.positions:type_name -> portfolio.v1.PositionPnL
 	15, // 9: portfolio.v1.GetPnLResponse.history:type_name -> portfolio.v1.PnLEntry
-	21, // 10: portfolio.v1.PnLEntry.side:type_name -> orderbook.v1.Side
-	24, // 11: portfolio.v1.PnLEntry.settled_at:type_name -> google.protobuf.Timestamp
-	20, // 12: portfolio.v1.GetMarginSnapshotResponse.positions:type_name -> portfolio.v1.PositionMarginInfo
-	25, // 13: portfolio.v1.PositionMarginInfo.side:type_name -> orderbook.v1.PositionSide
-	1,  // 14: portfolio.v1.PortfolioService.Deposit:input_type -> portfolio.v1.DepositRequest
-	3,  // 15: portfolio.v1.PortfolioService.Withdraw:input_type -> portfolio.v1.WithdrawRequest
-	5,  // 16: portfolio.v1.PortfolioService.CreditShares:input_type -> portfolio.v1.CreditSharesRequest
-	7,  // 17: portfolio.v1.PortfolioService.GetPortfolio:input_type -> portfolio.v1.GetPortfolioRequest
-	11, // 18: portfolio.v1.PortfolioService.StreamPortfolio:input_type -> portfolio.v1.StreamPortfolioRequest
-	12, // 19: portfolio.v1.PortfolioService.GetPnL:input_type -> portfolio.v1.GetPnLRequest
-	16, // 20: portfolio.v1.PortfolioService.ListPortfolios:input_type -> portfolio.v1.ListPortfoliosRequest
-	18, // 21: portfolio.v1.PortfolioService.GetMarginSnapshot:input_type -> portfolio.v1.GetMarginSnapshotRequest
-	2,  // 22: portfolio.v1.PortfolioService.Deposit:output_type -> portfolio.v1.DepositResponse
-	4,  // 23: portfolio.v1.PortfolioService.Withdraw:output_type -> portfolio.v1.WithdrawResponse
-	6,  // 24: portfolio.v1.PortfolioService.CreditShares:output_type -> portfolio.v1.CreditSharesResponse
-	8,  // 25: portfolio.v1.PortfolioService.GetPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
-	8,  // 26: portfolio.v1.PortfolioService.StreamPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
-	13, // 27: portfolio.v1.PortfolioService.GetPnL:output_type -> portfolio.v1.GetPnLResponse
-	17, // 28: portfolio.v1.PortfolioService.ListPortfolios:output_type -> portfolio.v1.ListPortfoliosResponse
-	19, // 29: portfolio.v1.PortfolioService.GetMarginSnapshot:output_type -> portfolio.v1.GetMarginSnapshotResponse
-	22, // [22:30] is the sub-list for method output_type
-	14, // [14:22] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	25, // 10: portfolio.v1.PositionPnL.position_side:type_name -> orderbook.v1.PositionSide
+	21, // 11: portfolio.v1.PnLEntry.side:type_name -> orderbook.v1.Side
+	24, // 12: portfolio.v1.PnLEntry.settled_at:type_name -> google.protobuf.Timestamp
+	25, // 13: portfolio.v1.PnLEntry.position_side:type_name -> orderbook.v1.PositionSide
+	20, // 14: portfolio.v1.GetMarginSnapshotResponse.positions:type_name -> portfolio.v1.PositionMarginInfo
+	25, // 15: portfolio.v1.PositionMarginInfo.side:type_name -> orderbook.v1.PositionSide
+	1,  // 16: portfolio.v1.PortfolioService.Deposit:input_type -> portfolio.v1.DepositRequest
+	3,  // 17: portfolio.v1.PortfolioService.Withdraw:input_type -> portfolio.v1.WithdrawRequest
+	5,  // 18: portfolio.v1.PortfolioService.CreditShares:input_type -> portfolio.v1.CreditSharesRequest
+	7,  // 19: portfolio.v1.PortfolioService.GetPortfolio:input_type -> portfolio.v1.GetPortfolioRequest
+	11, // 20: portfolio.v1.PortfolioService.StreamPortfolio:input_type -> portfolio.v1.StreamPortfolioRequest
+	12, // 21: portfolio.v1.PortfolioService.GetPnL:input_type -> portfolio.v1.GetPnLRequest
+	16, // 22: portfolio.v1.PortfolioService.ListPortfolios:input_type -> portfolio.v1.ListPortfoliosRequest
+	18, // 23: portfolio.v1.PortfolioService.GetMarginSnapshot:input_type -> portfolio.v1.GetMarginSnapshotRequest
+	2,  // 24: portfolio.v1.PortfolioService.Deposit:output_type -> portfolio.v1.DepositResponse
+	4,  // 25: portfolio.v1.PortfolioService.Withdraw:output_type -> portfolio.v1.WithdrawResponse
+	6,  // 26: portfolio.v1.PortfolioService.CreditShares:output_type -> portfolio.v1.CreditSharesResponse
+	8,  // 27: portfolio.v1.PortfolioService.GetPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
+	8,  // 28: portfolio.v1.PortfolioService.StreamPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
+	13, // 29: portfolio.v1.PortfolioService.GetPnL:output_type -> portfolio.v1.GetPnLResponse
+	17, // 30: portfolio.v1.PortfolioService.ListPortfolios:output_type -> portfolio.v1.ListPortfoliosResponse
+	19, // 31: portfolio.v1.PortfolioService.GetMarginSnapshot:output_type -> portfolio.v1.GetMarginSnapshotResponse
+	24, // [24:32] is the sub-list for method output_type
+	16, // [16:24] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_portfolio_v1_service_proto_init() }

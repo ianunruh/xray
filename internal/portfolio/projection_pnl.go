@@ -37,6 +37,10 @@ func (p *PgPnLProjection) HandleEvents(ctx context.Context, events []es.Event) e
 			p.handleBuy(batch, data.AccountId, data.Symbol, data.Quantity, data.CostPerShare, data.CreditedAt.AsTime())
 		case *portfoliov1.SharesSettled:
 			p.handleSell(batch, data.AccountId, data.Symbol, data.Quantity, data.PricePerShare, data.Proceeds, data.SettledAt.AsTime())
+		case *portfoliov1.ShortOpened:
+			p.handleShortOpen(batch, data)
+		case *portfoliov1.ShortCovered:
+			p.handleShortCover(batch, data)
 		}
 	}
 
@@ -56,44 +60,92 @@ func (p *PgPnLProjection) HandleEvents(ctx context.Context, events []es.Event) e
 	return nil
 }
 
+const (
+	posSideLong  = int32(orderbookv1.PositionSide_POSITION_SIDE_LONG)
+	posSideShort = int32(orderbookv1.PositionSide_POSITION_SIDE_SHORT)
+)
+
 func (p *PgPnLProjection) handleBuy(batch *pgx.Batch, accountID, symbol string, quantity, costPerShare int64, settledAt time.Time) {
 	batch.Queue(
-		`INSERT INTO projection_pnl_positions (account_id, symbol, quantity, total_cost)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (account_id, symbol) DO UPDATE SET
-			quantity = projection_pnl_positions.quantity + $3,
-			total_cost = projection_pnl_positions.total_cost + $4`,
-		accountID, symbol, quantity, costPerShare*quantity,
+		`INSERT INTO projection_pnl_positions (account_id, symbol, position_side, quantity, total_cost)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (account_id, symbol, position_side) DO UPDATE SET
+			quantity = projection_pnl_positions.quantity + $4,
+			total_cost = projection_pnl_positions.total_cost + $5`,
+		accountID, symbol, posSideLong, quantity, costPerShare*quantity,
 	)
 	batch.Queue(
-		`INSERT INTO projection_pnl (account_id, symbol, side, quantity, price, realized_pnl, settled_at)
-		VALUES ($1, $2, $3, $4, $5, 0, $6)`,
-		accountID, symbol, int32(orderbookv1.Side_SIDE_BUY), quantity, costPerShare, settledAt,
+		`INSERT INTO projection_pnl (account_id, symbol, side, position_side, quantity, price, realized_pnl, settled_at)
+		VALUES ($1, $2, $3, $4, $5, $6, 0, $7)`,
+		accountID, symbol, int32(orderbookv1.Side_SIDE_BUY), posSideLong, quantity, costPerShare, settledAt,
 	)
 }
 
 func (p *PgPnLProjection) handleSell(batch *pgx.Batch, accountID, symbol string, quantity, pricePerShare, proceeds int64, settledAt time.Time) {
-	// Insert P&L entry with realized_pnl computed from current position's avg cost.
-	// proceeds - (total_cost / quantity * sold_quantity) using integer math:
-	// proceeds - (total_cost * sold_quantity / quantity)
 	batch.Queue(
-		`INSERT INTO projection_pnl (account_id, symbol, side, quantity, price, realized_pnl, settled_at)
-		SELECT $1, $2, $3::INT, $4::BIGINT, $5::BIGINT,
-			$6::BIGINT - CASE WHEN pp.quantity > 0 THEN pp.total_cost * $4::BIGINT / pp.quantity ELSE 0 END,
-			$7
+		`INSERT INTO projection_pnl (account_id, symbol, side, position_side, quantity, price, realized_pnl, settled_at)
+		SELECT $1, $2, $3::INT, $4::INT, $5::BIGINT, $6::BIGINT,
+			$7::BIGINT - CASE WHEN pp.quantity > 0 THEN pp.total_cost * $5::BIGINT / pp.quantity ELSE 0 END,
+			$8
 		FROM projection_pnl_positions pp
-		WHERE pp.account_id = $1 AND pp.symbol = $2`,
-		accountID, symbol, int32(orderbookv1.Side_SIDE_SELL), quantity, pricePerShare, proceeds, settledAt,
+		WHERE pp.account_id = $1 AND pp.symbol = $2 AND pp.position_side = $4::INT`,
+		accountID, symbol, int32(orderbookv1.Side_SIDE_SELL), posSideLong, quantity, pricePerShare, proceeds, settledAt,
 	)
 
-	// Update position: reduce quantity and total_cost proportionally, accumulate realized_pnl.
 	batch.Queue(
 		`UPDATE projection_pnl_positions
 		SET realized_pnl = realized_pnl + ($4::BIGINT - CASE WHEN quantity > 0 THEN total_cost * $3::BIGINT / quantity ELSE 0 END),
 			total_cost = CASE WHEN quantity > 0 THEN total_cost * (quantity - $3::BIGINT) / quantity ELSE 0 END,
 			quantity = quantity - $3::BIGINT
-		WHERE account_id = $1 AND symbol = $2`,
-		accountID, symbol, quantity, proceeds,
+		WHERE account_id = $1 AND symbol = $2 AND position_side = $5::INT`,
+		accountID, symbol, quantity, proceeds, posSideLong,
+	)
+}
+
+// handleShortOpen tracks a sell-to-open. quantity goes into the SHORT
+// row's quantity field; total_cost holds the cumulative sale proceeds
+// (used for avg-open-price computation on read). Opening doesn't
+// realize PnL — realized_pnl row is zero until the cover lands.
+func (p *PgPnLProjection) handleShortOpen(batch *pgx.Batch, data *portfoliov1.ShortOpened) {
+	at := data.OpenedAt.AsTime()
+	batch.Queue(
+		`INSERT INTO projection_pnl_positions (account_id, symbol, position_side, quantity, total_cost)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (account_id, symbol, position_side) DO UPDATE SET
+			quantity = projection_pnl_positions.quantity + $4,
+			total_cost = projection_pnl_positions.total_cost + $5`,
+		data.AccountId, data.Symbol, posSideShort,
+		data.Quantity, data.PricePerShare*data.Quantity,
+	)
+	batch.Queue(
+		`INSERT INTO projection_pnl (account_id, symbol, side, position_side, quantity, price, realized_pnl, settled_at)
+		VALUES ($1, $2, $3, $4, $5, $6, 0, $7)`,
+		data.AccountId, data.Symbol, int32(orderbookv1.Side_SIDE_SELL),
+		posSideShort, data.Quantity, data.PricePerShare, at,
+	)
+}
+
+// handleShortCover settles a buy-to-cover. The event carries the
+// realized PnL pre-computed by the portfolio aggregate, so we just
+// record it.
+func (p *PgPnLProjection) handleShortCover(batch *pgx.Batch, data *portfoliov1.ShortCovered) {
+	at := data.CoveredAt.AsTime()
+	batch.Queue(
+		`INSERT INTO projection_pnl (account_id, symbol, side, position_side, quantity, price, realized_pnl, settled_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		data.AccountId, data.Symbol, int32(orderbookv1.Side_SIDE_BUY),
+		posSideShort, data.Quantity, data.CostPerShare, data.RealizedPnl, at,
+	)
+	// Reduce the short position proportionally. total_cost (cumulative
+	// open proceeds) is reduced by the same ratio so the implied
+	// avg-open-price stays stable.
+	batch.Queue(
+		`UPDATE projection_pnl_positions
+		SET realized_pnl = realized_pnl + $3::BIGINT,
+			total_cost = CASE WHEN quantity > 0 THEN total_cost * (quantity - $4::BIGINT) / quantity ELSE 0 END,
+			quantity = quantity - $4::BIGINT
+		WHERE account_id = $1 AND symbol = $2 AND position_side = $5::INT`,
+		data.AccountId, data.Symbol, data.RealizedPnl, data.Quantity, posSideShort,
 	)
 }
 
@@ -103,7 +155,9 @@ func (p *PgPnLProjection) GetPnL(ctx context.Context, accountID string) (*portfo
 	}
 
 	rows, err := p.pool.Query(ctx,
-		`SELECT symbol, quantity, total_cost, realized_pnl FROM projection_pnl_positions WHERE account_id = $1`,
+		`SELECT symbol, position_side, quantity, total_cost, realized_pnl
+		FROM projection_pnl_positions WHERE account_id = $1
+		ORDER BY symbol, position_side`,
 		accountID,
 	)
 	if err != nil {
@@ -113,9 +167,11 @@ func (p *PgPnLProjection) GetPnL(ctx context.Context, accountID string) (*portfo
 
 	for rows.Next() {
 		pos := &portfoliov1.PositionPnL{}
-		if err := rows.Scan(&pos.Symbol, &pos.Quantity, &pos.TotalCost, &pos.RealizedPnl); err != nil {
+		var side int32
+		if err := rows.Scan(&pos.Symbol, &side, &pos.Quantity, &pos.TotalCost, &pos.RealizedPnl); err != nil {
 			return nil, fmt.Errorf("scan pnl position: %w", err)
 		}
+		pos.PositionSide = orderbookv1.PositionSide(side)
 		if pos.Quantity > 0 {
 			pos.AvgCost = pos.TotalCost / pos.Quantity
 		}
@@ -124,7 +180,7 @@ func (p *PgPnLProjection) GetPnL(ctx context.Context, accountID string) (*portfo
 	}
 
 	historyRows, err := p.pool.Query(ctx,
-		`SELECT symbol, side, quantity, price, realized_pnl, settled_at
+		`SELECT symbol, side, position_side, quantity, price, realized_pnl, settled_at
 		FROM projection_pnl WHERE account_id = $1 ORDER BY settled_at`,
 		accountID,
 	)
@@ -137,12 +193,14 @@ func (p *PgPnLProjection) GetPnL(ctx context.Context, accountID string) (*portfo
 		var (
 			entry     portfoliov1.PnLEntry
 			side      int32
+			posSide   int32
 			settledAt time.Time
 		)
-		if err := historyRows.Scan(&entry.Symbol, &side, &entry.Quantity, &entry.Price, &entry.RealizedPnl, &settledAt); err != nil {
+		if err := historyRows.Scan(&entry.Symbol, &side, &posSide, &entry.Quantity, &entry.Price, &entry.RealizedPnl, &settledAt); err != nil {
 			return nil, fmt.Errorf("scan pnl entry: %w", err)
 		}
 		entry.Side = orderbookv1.Side(side)
+		entry.PositionSide = orderbookv1.PositionSide(posSide)
 		entry.SettledAt = timestamppb.New(settledAt)
 		resp.History = append(resp.History, &entry)
 	}

@@ -177,6 +177,36 @@ message ShortCovered {
   google.protobuf.Timestamp covered_at = 11;
 }
 
+// MarginCallIssued records that a margin breach was detected. Emitted
+// by the margin-call reactor on the portfolio aggregate; the snapshot
+// fields are at-issuance and not updated as the situation evolves.
+// call_id is deterministic from (account_id, issue_trigger_event_id)
+// so replays don't double-issue.
+message MarginCallIssued {
+  string account_id = 1;
+  string call_id = 2;
+  // The TradeExecuted trade_id that moved the mark into breach. Empty
+  // for snapshot-style calls (e.g. fired by manual recheck).
+  string trigger_trade_id = 3;
+  // Symbol whose mark moved into breach.
+  string trigger_symbol = 4;
+  int64 mark_price = 5;
+  int64 equity_at_issue = 6;
+  int64 maintenance_requirement_at_issue = 7;
+  google.protobuf.Timestamp issued_at = 8;
+}
+
+// MarginCallCovered records that the breach was remediated, either by
+// the auto-liquidation reactor closing enough shorts or by the user
+// adding cash or covering manually.
+message MarginCallCovered {
+  string account_id = 1;
+  string call_id = 2;
+  int64 equity_at_cover = 3;
+  int64 maintenance_requirement_at_cover = 4;
+  google.protobuf.Timestamp covered_at = 5;
+}
+
 // Order saga events — stored under aggregate ID "order-saga:{uuid}".
 
 message OrderSagaStarted {

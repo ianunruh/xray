@@ -24,6 +24,8 @@ const (
 	EventShortCoverHeld     = "ShortCoverHeld"
 	EventShortCoverReleased = "ShortCoverReleased"
 	EventShortCovered       = "ShortCovered"
+	EventMarginCallIssued   = "MarginCallIssued"
+	EventMarginCallCovered  = "MarginCallCovered"
 )
 
 func RegisterEvents(r *es.Registry) {
@@ -43,4 +45,6 @@ func RegisterEvents(r *es.Registry) {
 	r.Register(EventShortCoverHeld, func() proto.Message { return new(portfoliov1.ShortCoverHeld) })
 	r.Register(EventShortCoverReleased, func() proto.Message { return new(portfoliov1.ShortCoverReleased) })
 	r.Register(EventShortCovered, func() proto.Message { return new(portfoliov1.ShortCovered) })
+	r.Register(EventMarginCallIssued, func() proto.Message { return new(portfoliov1.MarginCallIssued) })
+	r.Register(EventMarginCallCovered, func() proto.Message { return new(portfoliov1.MarginCallCovered) })
 }

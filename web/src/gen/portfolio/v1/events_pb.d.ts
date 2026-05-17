@@ -683,6 +683,108 @@ export declare type ShortCovered = Message<"portfolio.v1.ShortCovered"> & {
 export declare const ShortCoveredSchema: GenMessage<ShortCovered>;
 
 /**
+ * MarginCallIssued records that a margin breach was detected. Emitted
+ * by the margin-call reactor on the portfolio aggregate; the snapshot
+ * fields are at-issuance and not updated as the situation evolves.
+ * call_id is deterministic from (account_id, issue_trigger_event_id)
+ * so replays don't double-issue.
+ *
+ * @generated from message portfolio.v1.MarginCallIssued
+ */
+export declare type MarginCallIssued = Message<"portfolio.v1.MarginCallIssued"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string call_id = 2;
+   */
+  callId: string;
+
+  /**
+   * The TradeExecuted trade_id that moved the mark into breach. Empty
+   * for snapshot-style calls (e.g. fired by manual recheck).
+   *
+   * @generated from field: string trigger_trade_id = 3;
+   */
+  triggerTradeId: string;
+
+  /**
+   * Symbol whose mark moved into breach.
+   *
+   * @generated from field: string trigger_symbol = 4;
+   */
+  triggerSymbol: string;
+
+  /**
+   * @generated from field: int64 mark_price = 5;
+   */
+  markPrice: bigint;
+
+  /**
+   * @generated from field: int64 equity_at_issue = 6;
+   */
+  equityAtIssue: bigint;
+
+  /**
+   * @generated from field: int64 maintenance_requirement_at_issue = 7;
+   */
+  maintenanceRequirementAtIssue: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp issued_at = 8;
+   */
+  issuedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.MarginCallIssued.
+ * Use `create(MarginCallIssuedSchema)` to create a new message.
+ */
+export declare const MarginCallIssuedSchema: GenMessage<MarginCallIssued>;
+
+/**
+ * MarginCallCovered records that the breach was remediated, either by
+ * the auto-liquidation reactor closing enough shorts or by the user
+ * adding cash or covering manually.
+ *
+ * @generated from message portfolio.v1.MarginCallCovered
+ */
+export declare type MarginCallCovered = Message<"portfolio.v1.MarginCallCovered"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string call_id = 2;
+   */
+  callId: string;
+
+  /**
+   * @generated from field: int64 equity_at_cover = 3;
+   */
+  equityAtCover: bigint;
+
+  /**
+   * @generated from field: int64 maintenance_requirement_at_cover = 4;
+   */
+  maintenanceRequirementAtCover: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp covered_at = 5;
+   */
+  coveredAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.MarginCallCovered.
+ * Use `create(MarginCallCoveredSchema)` to create a new message.
+ */
+export declare const MarginCallCoveredSchema: GenMessage<MarginCallCovered>;
+
+/**
  * @generated from message portfolio.v1.OrderSagaStarted
  */
 export declare type OrderSagaStarted = Message<"portfolio.v1.OrderSagaStarted"> & {

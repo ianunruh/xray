@@ -376,6 +376,14 @@ export declare type PositionPnL = Message<"portfolio.v1.PositionPnL"> & {
    * @generated from field: int64 realized_pnl = 5;
    */
   realizedPnl: bigint;
+
+  /**
+   * LONG (default) = bought, owns shares. SHORT = sold-to-open,
+   * owes shares back. avg_cost is the open price for shorts.
+   *
+   * @generated from field: orderbook.v1.PositionSide position_side = 6;
+   */
+  positionSide: PositionSide;
 };
 
 /**
@@ -417,6 +425,11 @@ export declare type PnLEntry = Message<"portfolio.v1.PnLEntry"> & {
    * @generated from field: google.protobuf.Timestamp settled_at = 6;
    */
   settledAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: orderbook.v1.PositionSide position_side = 7;
+   */
+  positionSide: PositionSide;
 };
 
 /**
