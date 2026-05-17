@@ -79,8 +79,12 @@ export function useOrderStatusNotifications() {
         else if (o.status === OrderStatus.FAILED) showFailed(o);
       } else if (
         o.filledQuantity > before.filledQuantity &&
+        o.filledQuantity < o.quantity &&
         o.status !== OrderStatus.COMPLETED
       ) {
+        // Skip when this tick filled the rest — the COMPLETED transition
+        // on the next tick (or this one, if the saga runs them together)
+        // already covers it.
         showPartialFill(o);
       }
     }
