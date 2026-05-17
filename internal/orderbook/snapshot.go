@@ -13,6 +13,7 @@ import (
 func (ob *OrderBook) Snapshot() (proto.Message, error) {
 	snap := &orderbookv1.OrderBookSnapshot{
 		Symbol: ob.Symbol,
+		Phase:  MarketPhaseToProto(ob.Phase),
 	}
 	for _, order := range ob.Orders {
 		snap.Orders = append(snap.Orders, &orderbookv1.OrderSnapshot{
@@ -39,6 +40,7 @@ func (ob *OrderBook) RestoreSnapshot(msg proto.Message) error {
 	}
 
 	ob.Symbol = snap.Symbol
+	ob.Phase = MarketPhaseFromProto(snap.Phase)
 	ob.Orders = make(map[string]*Order, len(snap.Orders))
 	ob.Bids.Reset()
 	ob.Asks.Reset()

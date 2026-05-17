@@ -30,6 +30,29 @@ const (
 	Day TimeInForce = 3
 )
 
+// MarketPhase gates how the orderbook handles incoming orders. The zero
+// value is PhaseContinuous, so a freshly-created OrderBook (or one
+// whose event stream contains no MarketPhaseChanged events) behaves
+// exactly as before.
+type MarketPhase int
+
+const (
+	PhaseContinuous     MarketPhase = 0
+	PhaseAuction        MarketPhase = 1
+	PhaseClosingAuction MarketPhase = 2
+	PhaseClosed         MarketPhase = 3
+)
+
+// CrossType marks how a trade was produced.
+type CrossType int
+
+const (
+	CrossNone       CrossType = 0
+	CrossOpening    CrossType = 1
+	CrossClosing    CrossType = 2
+	CrossHaltReopen CrossType = 3
+)
+
 // Order represents an order on the book.
 type Order struct {
 	ID           string

@@ -24,6 +24,12 @@ var (
 	ErrStopMarketRequiresZeroPrice = errors.New("stop-market orders must have zero price")
 	ErrStopLimitRequiresPrice      = errors.New("stop-limit orders require a positive limit price")
 	ErrAccountMismatch             = errors.New("old order belongs to a different account")
+	ErrAuctionRejectsIOC           = errors.New("IOC/FOK orders cannot be placed during an auction")
+	ErrAuctionRejectsMarket        = errors.New("market orders cannot be placed during an auction without AT_OPEN/AT_CLOSE")
+	ErrMarketClosed                = errors.New("market is closed")
+	ErrAlreadyInAuction            = errors.New("market is already in an auction phase")
+	ErrNotInAuction                = errors.New("uncross requires the market to be in an auction phase")
+	ErrCannotOpenAuction           = errors.New("opening auction can only be entered from CONTINUOUS or CLOSED")
 )
 
 // PlaceOrder is a command to place a new order on the book.
@@ -118,6 +124,22 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 
 	tif := cmd.TimeInForce
 
+	// Phase-aware validation. Auction phases reject orders that need
+	// immediate liquidity (IOC/FOK/Market without an auction binding) —
+	// AT_OPEN/AT_CLOSE bindings are added in later steps. CLOSED rejects
+	// everything except cancels.
+	switch book.Phase {
+	case PhaseClosed:
+		return nil, ErrMarketClosed
+	case PhaseAuction, PhaseClosingAuction:
+		if tif == IOC || tif == FOK {
+			return nil, ErrAuctionRejectsIOC
+		}
+		if cmd.OrderType == Market {
+			return nil, ErrAuctionRejectsMarket
+		}
+	}
+
 	// FOK pre-check: ensure enough liquidity before emitting any events.
 	if tif == FOK {
 		avail := AvailableQty(book, cmd.Side, cmd.Price, cmd.OrderType == Market, cmd.AccountID)
@@ -156,6 +178,12 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 	}
 
 	events := []es.Event{placedEvt}
+
+	// During an auction, orders rest in the book without matching.
+	// The uncross algorithm will pair them at a single clearing price.
+	if book.Phase == PhaseAuction || book.Phase == PhaseClosingAuction {
+		return events, nil
+	}
 
 	// Stop orders rest until triggered — no immediate matching.
 	if cmd.OrderType == StopMarket || cmd.OrderType == StopLimit {
@@ -448,6 +476,14 @@ func ExecuteReplaceOrder(book *OrderBook, cmd ReplaceOrder) ([]es.Event, error) 
 	}
 	if cmd.AccountID != "" && oldOrder.AccountID != cmd.AccountID {
 		return nil, ErrAccountMismatch
+	}
+	// Replace assumes continuous matching semantics; it's not meaningful
+	// mid-auction. Callers should Cancel + Place instead during an auction.
+	switch book.Phase {
+	case PhaseClosed:
+		return nil, ErrMarketClosed
+	case PhaseAuction, PhaseClosingAuction:
+		return nil, ErrAuctionRejectsIOC
 	}
 
 	now := time.Now()

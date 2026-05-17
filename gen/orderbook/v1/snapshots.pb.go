@@ -23,9 +23,12 @@ const (
 )
 
 type OrderBookSnapshot struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
-	Orders        []*OrderSnapshot       `protobuf:"bytes,2,rep,name=orders,proto3" json:"orders,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Symbol string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Orders []*OrderSnapshot       `protobuf:"bytes,2,rep,name=orders,proto3" json:"orders,omitempty"`
+	// Default 0 (UNSPECIFIED) restores as CONTINUOUS so historical
+	// snapshots taken before phase tracking existed remain valid.
+	Phase         MarketPhase `protobuf:"varint,3,opt,name=phase,proto3,enum=orderbook.v1.MarketPhase" json:"phase,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -72,6 +75,13 @@ func (x *OrderBookSnapshot) GetOrders() []*OrderSnapshot {
 		return x.Orders
 	}
 	return nil
+}
+
+func (x *OrderBookSnapshot) GetPhase() MarketPhase {
+	if x != nil {
+		return x.Phase
+	}
+	return MarketPhase_MARKET_PHASE_UNSPECIFIED
 }
 
 type OrderSnapshot struct {
@@ -194,10 +204,11 @@ var File_orderbook_v1_snapshots_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_snapshots_proto_rawDesc = "" +
 	"\n" +
-	"\x1corderbook/v1/snapshots.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"`\n" +
+	"\x1corderbook/v1/snapshots.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"\x91\x01\n" +
 	"\x11OrderBookSnapshot\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x123\n" +
-	"\x06orders\x18\x02 \x03(\v2\x1b.orderbook.v1.OrderSnapshotR\x06orders\"\xa1\x03\n" +
+	"\x06orders\x18\x02 \x03(\v2\x1b.orderbook.v1.OrderSnapshotR\x06orders\x12/\n" +
+	"\x05phase\x18\x03 \x01(\x0e2\x19.orderbook.v1.MarketPhaseR\x05phase\"\xa1\x03\n" +
 	"\rOrderSnapshot\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +
@@ -230,22 +241,24 @@ var file_orderbook_v1_snapshots_proto_msgTypes = make([]protoimpl.MessageInfo, 2
 var file_orderbook_v1_snapshots_proto_goTypes = []any{
 	(*OrderBookSnapshot)(nil),     // 0: orderbook.v1.OrderBookSnapshot
 	(*OrderSnapshot)(nil),         // 1: orderbook.v1.OrderSnapshot
-	(Side)(0),                     // 2: orderbook.v1.Side
-	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
-	(OrderType)(0),                // 4: orderbook.v1.OrderType
-	(TimeInForce)(0),              // 5: orderbook.v1.TimeInForce
+	(MarketPhase)(0),              // 2: orderbook.v1.MarketPhase
+	(Side)(0),                     // 3: orderbook.v1.Side
+	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	(OrderType)(0),                // 5: orderbook.v1.OrderType
+	(TimeInForce)(0),              // 6: orderbook.v1.TimeInForce
 }
 var file_orderbook_v1_snapshots_proto_depIdxs = []int32{
 	1, // 0: orderbook.v1.OrderBookSnapshot.orders:type_name -> orderbook.v1.OrderSnapshot
-	2, // 1: orderbook.v1.OrderSnapshot.side:type_name -> orderbook.v1.Side
-	3, // 2: orderbook.v1.OrderSnapshot.placed_at:type_name -> google.protobuf.Timestamp
-	4, // 3: orderbook.v1.OrderSnapshot.order_type:type_name -> orderbook.v1.OrderType
-	5, // 4: orderbook.v1.OrderSnapshot.time_in_force:type_name -> orderbook.v1.TimeInForce
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	2, // 1: orderbook.v1.OrderBookSnapshot.phase:type_name -> orderbook.v1.MarketPhase
+	3, // 2: orderbook.v1.OrderSnapshot.side:type_name -> orderbook.v1.Side
+	4, // 3: orderbook.v1.OrderSnapshot.placed_at:type_name -> google.protobuf.Timestamp
+	5, // 4: orderbook.v1.OrderSnapshot.order_type:type_name -> orderbook.v1.OrderType
+	6, // 5: orderbook.v1.OrderSnapshot.time_in_force:type_name -> orderbook.v1.TimeInForce
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_orderbook_v1_snapshots_proto_init() }

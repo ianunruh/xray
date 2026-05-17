@@ -19,6 +19,7 @@ type OrderBook struct {
 
 	Symbol     string
 	PriceScale int
+	Phase      MarketPhase
 	Bids       *priceSide
 	Asks       *priceSide
 	Orders     map[string]*Order
@@ -28,6 +29,10 @@ type OrderBook struct {
 	// Used by the matching engine to cancel siblings when any member
 	// of the group trades.
 	OCOGroups map[string]map[string]struct{}
+	// LastTradePrice tracks the most recent continuous-trade print; the
+	// uncross algorithm uses it as the tie-break reference when the
+	// matched range is balanced and brackets the prior print.
+	LastTradePrice int64
 }
 
 // NewOrderBook creates a new OrderBook aggregate with the given ID.
@@ -86,6 +91,12 @@ func (ob *OrderBook) Apply(evt es.Event) error {
 		ob.applyStopTriggered(data)
 	case *orderbookv1.MarketClosed:
 		// State changes are handled by the subsequent OrderCancelled events.
+	case *orderbookv1.MarketPhaseChanged:
+		ob.Phase = MarketPhaseFromProto(data.Phase)
+	case *orderbookv1.AuctionUncrossed:
+		// Header event for an uncross batch — fully described by the
+		// TradeExecuted events that follow it, plus the subsequent
+		// MarketPhaseChanged. No aggregate state to mutate here.
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}
@@ -155,6 +166,8 @@ func (ob *OrderBook) applyTradeExecuted(data *orderbookv1.TradeExecuted) {
 			ob.Asks.Remove(sellOrder)
 		}
 	}
+
+	ob.LastTradePrice = data.Price
 }
 
 func (ob *OrderBook) applyOrderCancelled(data *orderbookv1.OrderCancelled) {

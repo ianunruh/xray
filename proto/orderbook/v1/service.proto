@@ -20,6 +20,8 @@ service OrderBookService {
   rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
   rpc ReplaceOrder(ReplaceOrderRequest) returns (ReplaceOrderResponse);
   rpc CloseMarket(CloseMarketRequest) returns (CloseMarketResponse);
+  rpc OpenAuction(OpenAuctionRequest) returns (OpenAuctionResponse);
+  rpc Uncross(UncrossRequest) returns (UncrossResponse);
   rpc GetOrderBook(GetOrderBookRequest) returns (GetOrderBookResponse);
   rpc GetMarketDepth(GetMarketDepthRequest) returns (GetMarketDepthResponse);
   rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
@@ -80,6 +82,27 @@ message CloseMarketResponse {
   int32 cancelled_orders = 1;
 }
 
+message OpenAuctionRequest {
+  string symbol = 1;
+  // reason is recorded on MarketPhaseChanged; defaults to "session_open".
+  string reason = 2;
+}
+
+message OpenAuctionResponse {}
+
+message UncrossRequest {
+  string symbol = 1;
+}
+
+message UncrossResponse {
+  int64 clearing_price = 1;
+  int64 matched_qty = 2;
+  int64 imbalance_qty = 3;
+  Side imbalance_side = 4;
+  CrossType cross_type = 5;
+  int32 trade_count = 6;
+}
+
 message GetOrderBookRequest {
   string symbol = 1;
 }
@@ -88,6 +111,7 @@ message GetOrderBookResponse {
   string symbol = 1;
   repeated OrderBookLevel bids = 2;
   repeated OrderBookLevel asks = 3;
+  MarketPhase phase = 4;
 }
 
 message OrderBookLevel {

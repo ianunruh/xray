@@ -79,3 +79,58 @@ func TimeInForceToProto(tif TimeInForce) orderbookv1.TimeInForce {
 		return orderbookv1.TimeInForce_TIME_IN_FORCE_UNSPECIFIED
 	}
 }
+
+// MarketPhaseFromProto maps the proto enum to internal phase. UNSPECIFIED
+// (the zero value seen on snapshots written before phase tracking
+// existed) maps to PhaseContinuous so historical data restores cleanly.
+func MarketPhaseFromProto(p orderbookv1.MarketPhase) MarketPhase {
+	switch p {
+	case orderbookv1.MarketPhase_MARKET_PHASE_AUCTION:
+		return PhaseAuction
+	case orderbookv1.MarketPhase_MARKET_PHASE_CLOSING_AUCTION:
+		return PhaseClosingAuction
+	case orderbookv1.MarketPhase_MARKET_PHASE_CLOSED:
+		return PhaseClosed
+	default:
+		return PhaseContinuous
+	}
+}
+
+func MarketPhaseToProto(p MarketPhase) orderbookv1.MarketPhase {
+	switch p {
+	case PhaseAuction:
+		return orderbookv1.MarketPhase_MARKET_PHASE_AUCTION
+	case PhaseClosingAuction:
+		return orderbookv1.MarketPhase_MARKET_PHASE_CLOSING_AUCTION
+	case PhaseClosed:
+		return orderbookv1.MarketPhase_MARKET_PHASE_CLOSED
+	default:
+		return orderbookv1.MarketPhase_MARKET_PHASE_CONTINUOUS
+	}
+}
+
+func CrossTypeFromProto(c orderbookv1.CrossType) CrossType {
+	switch c {
+	case orderbookv1.CrossType_CROSS_TYPE_OPENING:
+		return CrossOpening
+	case orderbookv1.CrossType_CROSS_TYPE_CLOSING:
+		return CrossClosing
+	case orderbookv1.CrossType_CROSS_TYPE_HALT_REOPEN:
+		return CrossHaltReopen
+	default:
+		return CrossNone
+	}
+}
+
+func CrossTypeToProto(c CrossType) orderbookv1.CrossType {
+	switch c {
+	case CrossOpening:
+		return orderbookv1.CrossType_CROSS_TYPE_OPENING
+	case CrossClosing:
+		return orderbookv1.CrossType_CROSS_TYPE_CLOSING
+	case CrossHaltReopen:
+		return orderbookv1.CrossType_CROSS_TYPE_HALT_REOPEN
+	default:
+		return orderbookv1.CrossType_CROSS_TYPE_NONE
+	}
+}

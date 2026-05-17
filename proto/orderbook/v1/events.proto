@@ -26,6 +26,36 @@ enum TimeInForce {
   TIME_IN_FORCE_IOC = 2;
   TIME_IN_FORCE_FOK = 3;
   TIME_IN_FORCE_DAY = 4;
+  // AT_OPEN / AT_CLOSE bind the order to a specific auction cross.
+  // Combined with ORDER_TYPE_MARKET this yields MOO/MOC; with
+  // ORDER_TYPE_LIMIT it yields LOO/LOC. Unfilled at the uncross →
+  // cancelled with reason "missed_auction".
+  TIME_IN_FORCE_AT_OPEN = 5;
+  TIME_IN_FORCE_AT_CLOSE = 6;
+}
+
+// MarketPhase gates how the orderbook handles incoming orders. Default
+// (no MarketPhaseChanged events in history) is CONTINUOUS — the existing
+// price-time priority matching behaviour. AUCTION accumulates orders
+// without crossing; Uncross runs an equilibrium-price algorithm and
+// flips back to CONTINUOUS. CLOSING_AUCTION is the same but flips to
+// CLOSED on uncross.
+enum MarketPhase {
+  MARKET_PHASE_UNSPECIFIED = 0;
+  MARKET_PHASE_CONTINUOUS = 1;
+  MARKET_PHASE_AUCTION = 2;
+  MARKET_PHASE_CLOSING_AUCTION = 3;
+  MARKET_PHASE_CLOSED = 4;
+}
+
+// CrossType marks how a trade was produced. NONE = ordinary continuous
+// trade; OPENING/CLOSING tag the batch emitted by an auction uncross;
+// HALT_REOPEN is reserved for intraday halt/reopen auctions.
+enum CrossType {
+  CROSS_TYPE_NONE = 0;
+  CROSS_TYPE_OPENING = 1;
+  CROSS_TYPE_CLOSING = 2;
+  CROSS_TYPE_HALT_REOPEN = 3;
 }
 
 message OrderPlaced {
@@ -59,6 +89,10 @@ message TradeExecuted {
   int64 price = 5;
   int64 quantity = 6;
   google.protobuf.Timestamp executed_at = 7;
+  // cross_type=NONE for continuous-matching trades; OPENING/CLOSING for
+  // trades emitted by an auction uncross. Informational — projections
+  // can use it to highlight closing prints, etc.
+  CrossType cross_type = 8;
 }
 
 message StopTriggered {
@@ -72,6 +106,34 @@ message StopTriggered {
 message MarketClosed {
   string symbol = 1;
   google.protobuf.Timestamp closed_at = 2;
+}
+
+// MarketPhaseChanged announces that the orderbook has moved between
+// phases (continuous, auction, closed). Emitted by OpenAuction,
+// BeginClosingAuction, and the closing branch of Uncross.
+message MarketPhaseChanged {
+  string symbol = 1;
+  MarketPhase phase = 2;
+  // reason is a human-readable tag, e.g. "session_open", "manual",
+  // "uncross_complete". Not interpreted by the engine.
+  string reason = 3;
+  google.protobuf.Timestamp at = 4;
+}
+
+// AuctionUncrossed is the header event of an uncross batch, carrying
+// the clearing price and aggregate matched/imbalance quantities. The
+// individual TradeExecuted events that follow in the same batch carry
+// the per-pair fills at clearing_price with cross_type set.
+message AuctionUncrossed {
+  string symbol = 1;
+  int64 clearing_price = 2;
+  int64 matched_qty = 3;
+  // imbalance_qty is the unmatched quantity at the clearing price on
+  // imbalance_side. Zero when balanced.
+  int64 imbalance_qty = 4;
+  Side imbalance_side = 5;
+  CrossType cross_type = 6;
+  google.protobuf.Timestamp at = 7;
 }
 
 // Saga lifecycle events — stored under aggregate ID "saga:{uuid}".

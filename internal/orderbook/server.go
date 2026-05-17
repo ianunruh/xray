@@ -160,6 +160,73 @@ func (s *Server) ReplaceOrder(ctx context.Context, req *connect.Request[orderboo
 	return connect.NewResponse(resp), nil
 }
 
+func (s *Server) OpenAuction(ctx context.Context, req *connect.Request[orderbookv1.OpenAuctionRequest]) (*connect.Response[orderbookv1.OpenAuctionResponse], error) {
+	msg := req.Msg
+
+	cmd := OpenAuction{
+		Symbol: msg.Symbol,
+		Reason: msg.Reason,
+	}
+
+	err := s.handler.Handle(ctx, cmd, func(book *OrderBook) ([]es.Event, error) {
+		return ExecuteOpenAuction(book, cmd)
+	})
+	if err != nil {
+		s.log.Warn("OpenAuction failed", "symbol", msg.Symbol, "error", err)
+		return nil, mapError(err)
+	}
+
+	s.log.Info("OpenAuction", "symbol", msg.Symbol, "reason", cmd.Reason)
+	return connect.NewResponse(&orderbookv1.OpenAuctionResponse{}), nil
+}
+
+func (s *Server) Uncross(ctx context.Context, req *connect.Request[orderbookv1.UncrossRequest]) (*connect.Response[orderbookv1.UncrossResponse], error) {
+	msg := req.Msg
+
+	cmd := Uncross{Symbol: msg.Symbol}
+
+	var summary *orderbookv1.AuctionUncrossed
+	var tradeCount int32
+	err := s.handler.Handle(ctx, cmd, func(book *OrderBook) ([]es.Event, error) {
+		events, err := ExecuteUncross(book, cmd)
+		if err != nil {
+			return nil, err
+		}
+		for _, evt := range events {
+			switch d := evt.Data.(type) {
+			case *orderbookv1.AuctionUncrossed:
+				summary = d
+			case *orderbookv1.TradeExecuted:
+				if d.CrossType != orderbookv1.CrossType_CROSS_TYPE_NONE {
+					tradeCount++
+				}
+			}
+		}
+		return events, nil
+	})
+	if err != nil {
+		s.log.Warn("Uncross failed", "symbol", msg.Symbol, "error", err)
+		return nil, mapError(err)
+	}
+
+	resp := &orderbookv1.UncrossResponse{TradeCount: tradeCount}
+	if summary != nil {
+		resp.ClearingPrice = summary.ClearingPrice
+		resp.MatchedQty = summary.MatchedQty
+		resp.ImbalanceQty = summary.ImbalanceQty
+		resp.ImbalanceSide = summary.ImbalanceSide
+		resp.CrossType = summary.CrossType
+	}
+
+	s.log.Info("Uncross", "symbol", msg.Symbol,
+		"clearing_price", resp.ClearingPrice,
+		"matched_qty", resp.MatchedQty,
+		"imbalance_qty", resp.ImbalanceQty,
+		"trades", tradeCount)
+
+	return connect.NewResponse(resp), nil
+}
+
 func (s *Server) CloseMarket(ctx context.Context, req *connect.Request[orderbookv1.CloseMarketRequest]) (*connect.Response[orderbookv1.CloseMarketResponse], error) {
 	msg := req.Msg
 
@@ -201,6 +268,7 @@ func (s *Server) GetOrderBook(ctx context.Context, req *connect.Request[orderboo
 
 	resp := &orderbookv1.GetOrderBookResponse{
 		Symbol: req.Msg.Symbol,
+		Phase:  MarketPhaseToProto(book.Phase),
 	}
 
 	for bid := range book.Bids.All() {
@@ -438,6 +506,9 @@ func mapError(err error) *connect.Error {
 		ErrStopRequiresStopPrice, ErrStopMarketRequiresZeroPrice, ErrStopLimitRequiresPrice:
 		return connect.NewError(connect.CodeInvalidArgument, unwrapped)
 	case ErrInsufficientLiquidity:
+		return connect.NewError(connect.CodeFailedPrecondition, unwrapped)
+	case ErrAuctionRejectsIOC, ErrAuctionRejectsMarket, ErrMarketClosed,
+		ErrAlreadyInAuction, ErrNotInAuction, ErrCannotOpenAuction:
 		return connect.NewError(connect.CodeFailedPrecondition, unwrapped)
 	case ErrOrderNotFound, ErrNoRemainingQty:
 		return connect.NewError(connect.CodeNotFound, unwrapped)

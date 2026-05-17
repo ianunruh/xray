@@ -10,6 +10,9 @@ import "orderbook/v1/events.proto";
 message OrderBookSnapshot {
   string symbol = 1;
   repeated OrderSnapshot orders = 2;
+  // Default 0 (UNSPECIFIED) restores as CONTINUOUS so historical
+  // snapshots taken before phase tracking existed remain valid.
+  MarketPhase phase = 3;
 }
 
 message OrderSnapshot {
