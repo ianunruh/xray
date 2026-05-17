@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import {
   Button,
   Card,
   Group,
+  Modal,
   NumberInput,
   SegmentedControl,
   Select,
@@ -14,8 +16,8 @@ import { notifications } from "@mantine/notifications";
 import { Side, OrderType, PositionSide, TimeInForce } from "../gen/orderbook/v1/events_pb";
 import { sagaClient } from "../client";
 import { formatMoney, formatPrice, moneyToPrice, priceToNumber } from "../format";
-import { useMarketDepth } from "../hooks/useMarketDepth";
-import { useMarginSnapshot } from "../hooks/useMarginSnapshot";
+import { useAccountData } from "../hooks/accountData";
+import { useSharedMarketDepth } from "../hooks/marketDepth";
 import { usePreviewOrderImpact } from "../hooks/usePreviewOrderImpact";
 
 const ORDER_TYPES: Record<string, OrderType> = {
@@ -72,6 +74,66 @@ export type OrderPrefill = {
   nonce: number;
 };
 
+// ImpactRow renders a "Label: before → after (±delta)" line. When
+// `before` is unavailable (margin snapshot not yet loaded) only the
+// projected value shows. redIfDecrease / redIfIncrease flag warning
+// states like insufficient buying power or a margin breach.
+function ImpactRow({
+  label,
+  before,
+  after,
+  redIfDecrease,
+  redIfIncrease,
+}: {
+  label: string;
+  before: bigint | undefined;
+  after: bigint | undefined;
+  redIfDecrease?: boolean;
+  redIfIncrease?: boolean;
+}) {
+  if (after === undefined) return null;
+  const delta = before !== undefined ? after - before : null;
+  const tone =
+    (delta !== null && delta < 0n && redIfDecrease) ||
+    (delta !== null && delta > 0n && redIfIncrease)
+      ? "red"
+      : undefined;
+  return (
+    <Group justify="space-between" gap="xs">
+      <Text size="xs" c="dimmed">
+        {label}
+      </Text>
+      <Text size="xs" fw={600} c={tone} ff="monospace">
+        {before !== undefined && (
+          <Text component="span" size="xs" c="dimmed" mr={6}>
+            {formatMoney(before)} →
+          </Text>
+        )}
+        {formatMoney(after)}
+        {delta !== null && delta !== 0n && (
+          <Text component="span" size="xs" c="dimmed" ml={6}>
+            ({delta > 0n ? "+" : ""}
+            {formatMoney(delta)})
+          </Text>
+        )}
+      </Text>
+    </Group>
+  );
+}
+
+// Pending captures everything needed to (a) render the confirmation
+// modal and (b) actually submit the order if the user confirms. Built
+// after validation passes — once stored, the modal opens.
+type Pending = {
+  request: Parameters<typeof sagaClient.place>[0];
+  heading: string;
+  color: string;
+  rows: { label: string; value: string }[];
+  successTitle: string;
+  successMessage: string;
+  failureTitle: string;
+};
+
 const ACTION_MAP: Record<
   Action,
   { side: Side; positionSide: PositionSide; verb: string; color: string }
@@ -83,11 +145,9 @@ const ACTION_MAP: Record<
 };
 
 export function OrderForm({
-  accountId,
   symbol,
   prefill,
 }: {
-  accountId: string;
   symbol: string;
   prefill?: OrderPrefill | null;
 }) {
@@ -101,6 +161,7 @@ export function OrderForm({
   const [takeProfit, setTakeProfit] = useState<number | string>("");
   const [stopLoss, setStopLoss] = useState<number | string>("");
   const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState<Pending | null>(null);
 
   // Apply a fresh prefill — only triggers on nonce change so multiple
   // clicks on the same Close-at-50% menu re-apply even if the values
@@ -121,8 +182,9 @@ export function OrderForm({
     }
   }, [prefill?.nonce]);
 
-  const margin = useMarginSnapshot(accountId);
-  const { bids, asks } = useMarketDepth(symbol);
+  const { accountId, margin } = useAccountData();
+
+  const { bids, asks } = useSharedMarketDepth();
   const bestBid = bids[0]?.price;
   const bestAsk = asks[0]?.price;
   const midpoint =
@@ -183,7 +245,6 @@ export function OrderForm({
       : null;
   const preview = usePreviewOrderImpact(previewParams);
   const insufficient = preview ? !preview.sufficientBuyingPower : false;
-  const wouldCauseCall = preview ? preview.projectedInCall : false;
 
   function handleOrderTypeChange(v: string | null) {
     const next = v ?? "MARKET";
@@ -196,7 +257,10 @@ export function OrderForm({
     }
   }
 
-  async function handleSubmit() {
+  // handleSubmit validates the form and, if everything checks out,
+  // stores a Pending record. Setting `pending` opens the confirmation
+  // modal — the actual sagaClient.place call happens in executePending.
+  function handleSubmit() {
     const qty = typeof quantity === "number" ? quantity : parseInt(quantity, 10);
     if (!qty || qty <= 0) {
       notifications.show({ message: "Enter a valid quantity", color: "red" });
@@ -209,9 +273,10 @@ export function OrderForm({
         notifications.show({ message: "Enter a valid price", color: "red" });
         return;
       }
-      setLoading(true);
-      try {
-        await sagaClient.place({
+      const verb = ACTION_MAP[action].verb;
+      const priceLabel = isMarket ? "Market" : `$${prc.toFixed(4)}`;
+      setPending({
+        request: {
           accountId,
           plan: {
             case: "singleOrder",
@@ -225,21 +290,18 @@ export function OrderForm({
               positionSide: ps,
             },
           },
-        });
-        notifications.show({
-          title: "Order placed",
-          message: `${ACTION_MAP[action].verb} ${qty} ${symbol}`,
-          color: "green",
-        });
-      } catch (e: unknown) {
-        notifications.show({
-          title: "Order failed",
-          message: e instanceof Error ? e.message : String(e),
-          color: "red",
-        });
-      } finally {
-        setLoading(false);
-      }
+        },
+        heading: `${verb} ${qty} ${symbol}`,
+        color: ACTION_MAP[action].color,
+        rows: [
+          { label: "Type", value: orderType },
+          { label: "TIF", value: tif },
+          { label: isMarket ? "Limit" : "Price", value: priceLabel },
+        ],
+        successTitle: "Order placed",
+        successMessage: `${verb} ${qty} ${symbol}`,
+        failureTitle: "Order failed",
+      });
       return;
     }
 
@@ -255,9 +317,6 @@ export function OrderForm({
     }
 
     if (isOCO) {
-      // OCO has no entry — TP and SL just need to bracket the current position
-      // on opposite sides. SELL exit: TP > SL (profit above, stop below).
-      // BUY exit (covering a short): TP < SL.
       if (side === Side.SELL && tp <= sl) {
         notifications.show({
           message: "For a SELL OCO, TP must be above SL",
@@ -272,9 +331,9 @@ export function OrderForm({
         });
         return;
       }
-      setLoading(true);
-      try {
-        await sagaClient.place({
+      const verb = direction === "SHORT" ? "Cover" : "Sell";
+      setPending({
+        request: {
           accountId,
           plan: {
             case: "oco",
@@ -287,21 +346,17 @@ export function OrderForm({
               positionSide: ps,
             },
           },
-        });
-        notifications.show({
-          title: "OCO placed",
-          message: `${direction === "SHORT" ? "Cover" : "Sell"} OCO ${qty} ${symbol} (TP ${tp} / SL ${sl})`,
-          color: "green",
-        });
-      } catch (e: unknown) {
-        notifications.show({
-          title: "OCO failed",
-          message: e instanceof Error ? e.message : String(e),
-          color: "red",
-        });
-      } finally {
-        setLoading(false);
-      }
+        },
+        heading: `${verb} OCO ${qty} ${symbol}`,
+        color: direction === "SHORT" ? "red" : "green",
+        rows: [
+          { label: "Take Profit", value: `$${tp.toFixed(4)}` },
+          { label: "Stop Loss", value: `$${sl.toFixed(4)}` },
+        ],
+        successTitle: "OCO placed",
+        successMessage: `${verb} OCO ${qty} ${symbol} (TP ${tp} / SL ${sl})`,
+        failureTitle: "OCO failed",
+      });
       return;
     }
 
@@ -311,7 +366,6 @@ export function OrderForm({
       notifications.show({ message: "Enter a valid entry price", color: "red" });
       return;
     }
-    // Sanity check: TP and SL should be on opposite sides of entry.
     if (side === Side.BUY && (tp <= entry || sl >= entry)) {
       notifications.show({
         message: "For a long bracket, TP must be above entry and SL below",
@@ -326,10 +380,9 @@ export function OrderForm({
       });
       return;
     }
-
-    setLoading(true);
-    try {
-      await sagaClient.place({
+    const verb = direction === "SHORT" ? "Short" : "Long";
+    setPending({
+      request: {
         accountId,
         plan: {
           case: "bracket",
@@ -343,15 +396,34 @@ export function OrderForm({
             positionSide: ps,
           },
         },
-      });
+      },
+      heading: `${verb} bracket ${qty} ${symbol}`,
+      color: direction === "SHORT" ? "red" : "green",
+      rows: [
+        { label: "Entry", value: `$${entry.toFixed(4)}` },
+        { label: "Take Profit", value: `$${tp.toFixed(4)}` },
+        { label: "Stop Loss", value: `$${sl.toFixed(4)}` },
+      ],
+      successTitle: "Bracket placed",
+      successMessage: `${verb} bracket ${qty} ${symbol} @ ${entry} (TP ${tp} / SL ${sl})`,
+      failureTitle: "Bracket failed",
+    });
+  }
+
+  async function executePending() {
+    if (!pending) return;
+    setLoading(true);
+    try {
+      await sagaClient.place(pending.request);
       notifications.show({
-        title: "Bracket placed",
-        message: `${direction === "SHORT" ? "Short" : "Long"} bracket ${qty} ${symbol} @ ${entry} (TP ${tp} / SL ${sl})`,
+        title: pending.successTitle,
+        message: pending.successMessage,
         color: "green",
       });
+      setPending(null);
     } catch (e: unknown) {
       notifications.show({
-        title: "Bracket failed",
+        title: pending.failureTitle,
         message: e instanceof Error ? e.message : String(e),
         color: "red",
       });
@@ -359,6 +431,59 @@ export function OrderForm({
       setLoading(false);
     }
   }
+
+  // previewBlock is shared between the inline form (live impact while
+  // editing) and the confirmation modal (final impact before commit).
+  const previewBlock: ReactNode = preview && (
+    <Stack gap={4}>
+      <ImpactRow
+        label="Buying power"
+        before={margin?.buyingPower}
+        after={
+          margin !== null && margin !== undefined
+            ? margin.buyingPower - preview.buyingPowerImpact
+            : undefined
+        }
+        redIfDecrease={insufficient}
+      />
+      {preview.estimatedFillPrice > 0n && (
+        <Group justify="space-between" gap="xs">
+          <Text size="xs" c="dimmed">
+            Est. fill price
+          </Text>
+          <Text size="xs" fw={600} ff="monospace">
+            {formatMoney(preview.estimatedFillPrice)}
+            {isMarket && (
+              <Text component="span" size="xs" c="dimmed" ml={6}>
+                (book-walk avg)
+              </Text>
+            )}
+          </Text>
+        </Group>
+      )}
+      {side === Side.BUY &&
+        positionSide === PositionSide.SHORT &&
+        preview.estimatedFillPrice > 0n &&
+        qtyNum > 0 && (
+        <Group justify="space-between" gap="xs">
+          <Text size="xs" c="dimmed">
+            Cover cost
+          </Text>
+          <Text size="xs" fw={600} ff="monospace">
+            {formatMoney(preview.estimatedFillPrice * BigInt(qtyNum))}
+            <Text component="span" size="xs" c="dimmed" ml={6}>
+              (paid from short pool)
+            </Text>
+          </Text>
+        </Group>
+      )}
+      {preview.warnings.map((w) => (
+        <Text key={w} size="xs" c="red">
+          ⚠ {w}
+        </Text>
+      ))}
+    </Stack>
+  );
 
   return (
     <Card withBorder>
@@ -504,86 +629,7 @@ export function OrderForm({
             />
           </Group>
         )}
-        {preview && (
-          <Stack gap={4}>
-            <Group justify="space-between" gap="xs">
-              <Text size="xs" c="dimmed">
-                Buying power impact
-              </Text>
-              <Text size="xs" c={insufficient ? "red" : undefined} fw={600}>
-                {preview.buyingPowerImpact === 0n
-                  ? "—"
-                  : `-${formatMoney(preview.buyingPowerImpact)}`}
-                {margin && (
-                  <Text component="span" size="xs" c="dimmed" ml={6}>
-                    (avail {formatMoney(margin.buyingPower)})
-                  </Text>
-                )}
-              </Text>
-            </Group>
-            {side === Side.BUY &&
-              positionSide === PositionSide.SHORT &&
-              preview.estimatedFillPrice > 0n &&
-              qtyNum > 0 && (
-              <Group justify="space-between" gap="xs">
-                <Text size="xs" c="dimmed">
-                  Cover cost
-                </Text>
-                <Text size="xs" fw={600}>
-                  {formatMoney(
-                    preview.estimatedFillPrice * BigInt(qtyNum),
-                  )}
-                  <Text component="span" size="xs" c="dimmed" ml={6}>
-                    (paid from short pool)
-                  </Text>
-                </Text>
-              </Group>
-            )}
-            {margin && (
-              <Group justify="space-between" gap="xs">
-                <Text size="xs" c="dimmed">
-                  Equity after fill
-                </Text>
-                <Text size="xs" fw={600}>
-                  {formatMoney(preview.projectedEquity)}
-                  <Text component="span" size="xs" c="dimmed" ml={6}>
-                    ({margin.equity === preview.projectedEquity
-                      ? "no change"
-                      : `${preview.projectedEquity > margin.equity ? "+" : ""}${formatMoney(preview.projectedEquity - margin.equity)}`})
-                  </Text>
-                </Text>
-              </Group>
-            )}
-            {margin &&
-              preview.projectedMaintenanceRequirement !==
-                margin.maintenanceRequirement && (
-              <Group justify="space-between" gap="xs">
-                <Text size="xs" c="dimmed">
-                  Maint. req. after fill
-                </Text>
-                <Text size="xs" fw={600} c={wouldCauseCall ? "red" : undefined}>
-                  {formatMoney(preview.projectedMaintenanceRequirement)}
-                  <Text component="span" size="xs" c="dimmed" ml={6}>
-                    ({preview.projectedMaintenanceRequirement >
-                    margin.maintenanceRequirement
-                      ? "+"
-                      : ""}
-                    {formatMoney(
-                      preview.projectedMaintenanceRequirement -
-                        margin.maintenanceRequirement,
-                    )}
-                    )
-                  </Text>
-                </Text>
-              </Group>
-            )}
-            {preview.warnings.map((w) => (
-              <Text key={w} size="xs" c="red">
-                ⚠ {w}
-              </Text>
-            ))}
-          </Stack>
-        )}
+        {previewBlock}
         <Button
           fullWidth
           color={
@@ -593,7 +639,6 @@ export function OrderForm({
                 ? "red"
                 : "green"
           }
-          loading={loading}
           onClick={handleSubmit}
           disabled={insufficient}
         >
@@ -602,6 +647,50 @@ export function OrderForm({
           {isOCO && `${direction === "SHORT" ? "Cover" : "Sell"} OCO ${symbol}`}
         </Button>
       </Stack>
+
+      <Modal
+        opened={pending !== null}
+        onClose={() => !loading && setPending(null)}
+        title="Confirm order"
+        centered
+      >
+        {pending && (
+          <Stack gap="sm">
+            <Title order={4} c={pending.color}>
+              {pending.heading}
+            </Title>
+            <Stack gap={4}>
+              {pending.rows.map((r) => (
+                <Group key={r.label} justify="space-between" gap="xs">
+                  <Text size="sm" c="dimmed">
+                    {r.label}
+                  </Text>
+                  <Text size="sm" fw={600} ff="monospace">
+                    {r.value}
+                  </Text>
+                </Group>
+              ))}
+            </Stack>
+            {previewBlock}
+            <Group justify="flex-end" gap="xs" mt="xs">
+              <Button
+                variant="default"
+                disabled={loading}
+                onClick={() => setPending(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                color={pending.color}
+                loading={loading}
+                onClick={executePending}
+              >
+                Confirm
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
     </Card>
   );
 }

@@ -6,7 +6,7 @@ import {
   OrderStatus,
   type PendingOrder,
 } from "../gen/portfolio/v1/service_pb";
-import { usePortfolio } from "./usePortfolio";
+import { useAccountData } from "./accountData";
 
 function sideVerb(side: Side): string {
   return side === Side.BUY ? "Buy" : side === Side.SELL ? "Sell" : "Order";
@@ -45,8 +45,8 @@ function showPartialFill(o: PendingOrder) {
 // terminal state (filled / failed / cancelled) or accrues a partial
 // fill. Skips the first snapshot for a given account so historical
 // orders don't spam on initial mount or account switch.
-export function useOrderStatusNotifications(accountId: string) {
-  const portfolio = usePortfolio(accountId);
+export function useOrderStatusNotifications() {
+  const { accountId, portfolio } = useAccountData();
   const prevRef = useRef<Map<string, PendingOrder>>(new Map());
   const initializedRef = useRef(false);
 

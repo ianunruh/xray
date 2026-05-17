@@ -23,9 +23,8 @@ import { notifications } from "@mantine/notifications";
 import { formatMoney, formatPrice, formatQuantity, moneyToPrice, priceToNumber } from "../format";
 import { OrderType, PositionSide, Side, TimeInForce } from "../gen/orderbook/v1/events_pb";
 import { OrderStatus } from "../gen/portfolio/v1/service_pb";
-import { usePortfolio } from "../hooks/usePortfolio";
+import { useAccountData } from "../hooks/accountData";
 import { useMarginCalls } from "../hooks/useMarginCalls";
-import { useMarginSnapshot } from "../hooks/useMarginSnapshot";
 import { portfolioClient, sagaClient } from "../client";
 
 function timestampToMillis(ts: Timestamp | undefined): number | null {
@@ -383,14 +382,11 @@ function Stat({
 // stats, and the active margin-call alert. Designed to sit at the top
 // of the page across every tab.
 export function PortfolioSummary({
-  accountId,
   symbols,
 }: {
-  accountId: string;
   symbols?: string[];
 }) {
-  const portfolio = usePortfolio(accountId);
-  const margin = useMarginSnapshot(accountId);
+  const { accountId, portfolio, margin } = useAccountData();
   const [depositOpened, depositHandlers] = useDisclosure(false);
   const [withdrawOpened, withdrawHandlers] = useDisclosure(false);
   const [creditOpened, creditHandlers] = useDisclosure(false);
@@ -526,16 +522,13 @@ export function PortfolioSummary({
 // PortfolioPositions renders short positions, long holdings, and the
 // margin-call audit log for the account.
 export function PortfolioPositions({
-  accountId,
   onJumpToAggregate,
   onPrefillOrder,
 }: {
-  accountId: string;
   onJumpToAggregate?: (aggregateId: string) => void;
   onPrefillOrder?: (p: OrderPrefill) => void;
 }) {
-  const portfolio = usePortfolio(accountId);
-  const margin = useMarginSnapshot(accountId);
+  const { accountId, portfolio, margin } = useAccountData();
   const marginCalls = useMarginCalls(accountId);
   const [expandedCalls, setExpandedCalls] = useState<Set<string>>(new Set());
   const toggleCallExpanded = (callId: string) => {
@@ -889,13 +882,11 @@ export function PortfolioPositions({
 // PortfolioOrders renders the pending and recent orders tables for the
 // account. Cancel actions hang off the saga client.
 export function PortfolioOrders({
-  accountId,
   onJumpToAggregate,
 }: {
-  accountId: string;
   onJumpToAggregate?: (aggregateId: string) => void;
 }) {
-  const portfolio = usePortfolio(accountId);
+  const { portfolio } = useAccountData();
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   async function handleCancel(sagaId: string, symbol: string) {

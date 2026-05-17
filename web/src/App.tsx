@@ -29,6 +29,8 @@ import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { ChainPanel } from "./components/ChainPanel";
 import { orderBookClient, portfolioClient } from "./client";
 import { moneyToPrice } from "./format";
+import { AccountDataProvider } from "./hooks/accountData";
+import { MarketDepthProvider } from "./hooks/marketDepth";
 import { useOrderStatusNotifications } from "./hooks/useOrderStatusNotifications";
 
 function getParam(key: string): string {
@@ -51,9 +53,10 @@ type Tab = "trade" | "orders" | "positions";
 
 // OrderStatusNotifier mounts the order-status notification hook for
 // the active account. Rendered as a sibling rather than called inline
-// so the subscription survives across view switches.
-function OrderStatusNotifier({ accountId }: { accountId: string }) {
-  useOrderStatusNotifications(accountId);
+// so the subscription survives across view switches. Must be inside
+// an AccountDataProvider — pulls portfolio data from context.
+function OrderStatusNotifier() {
+  useOrderStatusNotifications();
   return null;
 }
 
@@ -154,7 +157,7 @@ export function App() {
     }
     return (
       <Stack gap="md">
-        <PortfolioSummary accountId={account} symbols={symbols} />
+        <PortfolioSummary symbols={symbols} />
         <Tabs
           value={tab}
           onChange={(v) => {
@@ -172,18 +175,16 @@ export function App() {
 
           <Tabs.Panel value="trade" pt="md">
             {symbol ? (
-              <Grid gutter="md">
-                <Grid.Col span={{ base: 12, md: 8 }}>
-                  <MarketPanel symbol={symbol} />
-                </Grid.Col>
-                <Grid.Col span={{ base: 12, md: 4 }}>
-                  <OrderForm
-                    accountId={account}
-                    symbol={symbol}
-                    prefill={orderPrefill}
-                  />
-                </Grid.Col>
-              </Grid>
+              <MarketDepthProvider symbol={symbol}>
+                <Grid gutter="md">
+                  <Grid.Col span={{ base: 12, md: 8 }}>
+                    <MarketPanel symbol={symbol} />
+                  </Grid.Col>
+                  <Grid.Col span={{ base: 12, md: 4 }}>
+                    <OrderForm symbol={symbol} prefill={orderPrefill} />
+                  </Grid.Col>
+                </Grid>
+              </MarketDepthProvider>
             ) : (
               <Text c="dimmed">Select a symbol to view the market.</Text>
             )}
@@ -191,10 +192,7 @@ export function App() {
 
           <Tabs.Panel value="orders" pt="md">
             <Stack gap="md">
-              <PortfolioOrders
-                accountId={account}
-                onJumpToAggregate={jumpToAggregate}
-              />
+              <PortfolioOrders onJumpToAggregate={jumpToAggregate} />
               <BracketsPanel
                 accountId={account}
                 onJumpToAggregate={jumpToAggregate}
@@ -208,7 +206,6 @@ export function App() {
 
           <Tabs.Panel value="positions" pt="md">
             <PortfolioPositions
-              accountId={account}
               onJumpToAggregate={jumpToAggregate}
               onPrefillOrder={applyOrderPrefill}
             />
@@ -218,9 +215,35 @@ export function App() {
     );
   }
 
+  const body =
+    view === "chain" ? (
+      <ChainPanel
+        initialCorrelationId={correlation}
+        onCorrelationChange={(id) => {
+          setCorrelation(id);
+          setParam("correlation", id);
+        }}
+      />
+    ) : view === "diagnostics" ? (
+      <DiagnosticsPanel
+        initialAggregateId={aggregate}
+        onAggregateChange={(id) => {
+          setAggregate(id);
+          setParam("aggregate", id);
+        }}
+        onJumpToChain={(id) => {
+          setCorrelation(id);
+          setParam("correlation", id);
+          setView("chain");
+          setParam("view", "chain");
+        }}
+      />
+    ) : (
+      renderTradingBody()
+    );
+
   return (
     <AppShell header={{ height: 50 }} padding="md">
-      {account && <OrderStatusNotifier accountId={account} />}
       <AppShell.Header p="xs">
         <Group gap="md" h="100%">
           <Title order={4}>xray</Title>
@@ -275,30 +298,13 @@ export function App() {
       </AppShell.Header>
 
       <AppShell.Main>
-        {view === "chain" ? (
-          <ChainPanel
-            initialCorrelationId={correlation}
-            onCorrelationChange={(id) => {
-              setCorrelation(id);
-              setParam("correlation", id);
-            }}
-          />
-        ) : view === "diagnostics" ? (
-          <DiagnosticsPanel
-            initialAggregateId={aggregate}
-            onAggregateChange={(id) => {
-              setAggregate(id);
-              setParam("aggregate", id);
-            }}
-            onJumpToChain={(id) => {
-              setCorrelation(id);
-              setParam("correlation", id);
-              setView("chain");
-              setParam("view", "chain");
-            }}
-          />
+        {account ? (
+          <AccountDataProvider accountId={account}>
+            <OrderStatusNotifier />
+            {body}
+          </AccountDataProvider>
         ) : (
-          renderTradingBody()
+          body
         )}
       </AppShell.Main>
 

@@ -11,7 +11,7 @@ import {
   Title,
 } from "@mantine/core";
 import { orderBookClient } from "../client";
-import { useMarketDepth } from "../hooks/useMarketDepth";
+import { useSharedMarketDepth } from "../hooks/marketDepth";
 import {
   phaseColor,
   phaseLabel,
@@ -177,7 +177,7 @@ function useLastTrade(symbol: string): Trade | undefined {
 }
 
 function LiveBody({ symbol }: { symbol: string }) {
-  const { bids, asks, maxQuantity } = useMarketDepth(symbol);
+  const { bids, asks, maxQuantity } = useSharedMarketDepth();
   const lastTrade = useLastTrade(symbol);
   return (
     <>
