@@ -125,12 +125,12 @@ func (r *Reactor) placeExits(ctx context.Context, sagaID string) error {
 
 	ocoGroup := OCOGroupID(sagaID)
 	tpOrderID := TakeProfitOrderID(sagaID)
-	if err := r.placeExitOrder(ctx, saga.Symbol, saga.ExitSide, saga.TakeProfitPrice, saga.Quantity, orderbook.Limit, 0, tpOrderID, ocoGroup); err != nil {
+	if err := r.placeExitOrder(ctx, saga.AccountID, saga.Symbol, saga.ExitSide, saga.TakeProfitPrice, saga.Quantity, orderbook.Limit, 0, tpOrderID, ocoGroup); err != nil {
 		r.log.Error("ocosaga: failed to place take-profit", "saga_id", sagaID, "error", err)
 		return r.emitActionFailed(ctx, sagaID, "place_exits", err.Error())
 	}
 	slOrderID := StopLossOrderID(sagaID)
-	if err := r.placeExitOrder(ctx, saga.Symbol, saga.ExitSide, 0, saga.Quantity, orderbook.StopMarket, saga.StopLossPrice, slOrderID, ocoGroup); err != nil {
+	if err := r.placeExitOrder(ctx, saga.AccountID, saga.Symbol, saga.ExitSide, 0, saga.Quantity, orderbook.StopMarket, saga.StopLossPrice, slOrderID, ocoGroup); err != nil {
 		r.log.Error("ocosaga: failed to place stop-loss", "saga_id", sagaID, "error", err)
 		return r.emitActionFailed(ctx, sagaID, "place_exits", err.Error())
 	}
@@ -349,7 +349,7 @@ func (r *Reactor) emitActionFailed(ctx context.Context, sagaID, action, reason s
 
 func (r *Reactor) placeExitOrder(
 	ctx context.Context,
-	symbol string,
+	accountID, symbol string,
 	side orderbook.Side,
 	price, qty int64,
 	orderType orderbook.OrderType,
@@ -366,6 +366,7 @@ func (r *Reactor) placeExitOrder(
 		TimeInForce: orderbook.GTC,
 		OrderID:     orderID,
 		OCOGroupID:  ocoGroupID,
+		AccountID:   accountID,
 	}
 	return r.orderbookHandler.Handle(ctx, cmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
 		return orderbook.ExecutePlaceOrder(book, cmd)
