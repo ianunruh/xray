@@ -29,6 +29,7 @@ import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { ChainPanel } from "./components/ChainPanel";
 import { orderBookClient, portfolioClient } from "./client";
 import { moneyToPrice } from "./format";
+import { useOrderStatusNotifications } from "./hooks/useOrderStatusNotifications";
 
 function getParam(key: string): string {
   return new URLSearchParams(window.location.search).get(key) ?? "";
@@ -47,6 +48,14 @@ function setParam(key: string, value: string) {
 
 type View = "trading" | "diagnostics" | "chain";
 type Tab = "trade" | "orders" | "positions";
+
+// OrderStatusNotifier mounts the order-status notification hook for
+// the active account. Rendered as a sibling rather than called inline
+// so the subscription survives across view switches.
+function OrderStatusNotifier({ accountId }: { accountId: string }) {
+  useOrderStatusNotifications(accountId);
+  return null;
+}
 
 function getViewParam(): View {
   const v = getParam("view");
@@ -211,6 +220,7 @@ export function App() {
 
   return (
     <AppShell header={{ height: 50 }} padding="md">
+      {account && <OrderStatusNotifier accountId={account} />}
       <AppShell.Header p="xs">
         <Group gap="md" h="100%">
           <Title order={4}>xray</Title>
