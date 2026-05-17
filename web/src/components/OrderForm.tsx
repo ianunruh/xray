@@ -49,6 +49,25 @@ const MARKET_TIF_OPTIONS = [
 
 type Mode = "SINGLE" | "BRACKET" | "OCO";
 
+// Action is the broker-standard 4-way label for single orders.
+// Maps unambiguously to a (side, position_side) pair — no orthogonal
+// Buy/Sell × Long/Short toggle for the user to reason about.
+type Action = "BUY" | "SELL" | "SHORT" | "COVER";
+
+// Direction is the 2-way long/short choice for bracket/OCO orders,
+// which are inherently directional (a bracket is one or the other).
+type Direction = "LONG" | "SHORT";
+
+const ACTION_MAP: Record<
+  Action,
+  { side: Side; positionSide: PositionSide; verb: string; color: string }
+> = {
+  BUY:   { side: Side.BUY,  positionSide: PositionSide.LONG,  verb: "Buy",   color: "green" },
+  SELL:  { side: Side.SELL, positionSide: PositionSide.LONG,  verb: "Sell",  color: "red" },
+  SHORT: { side: Side.SELL, positionSide: PositionSide.SHORT, verb: "Short", color: "red" },
+  COVER: { side: Side.BUY,  positionSide: PositionSide.SHORT, verb: "Cover", color: "green" },
+};
+
 export function OrderForm({
   accountId,
   symbol,
@@ -57,8 +76,8 @@ export function OrderForm({
   symbol: string;
 }) {
   const [mode, setMode] = useState<Mode>("SINGLE");
-  const [side, setSide] = useState<string>("BUY");
-  const [positionSide, setPositionSide] = useState<string>("LONG");
+  const [action, setAction] = useState<Action>("BUY");
+  const [direction, setDirection] = useState<Direction>("LONG");
   const [orderType, setOrderType] = useState<string>("MARKET");
   const [price, setPrice] = useState<number | string>("");
   const [quantity, setQuantity] = useState<number | string>(100);
@@ -73,9 +92,35 @@ export function OrderForm({
   const isBracket = mode === "BRACKET";
   const isOCO = mode === "OCO";
   const isMarket = orderType === "MARKET";
-  const ps = positionSide === "SHORT"
-    ? PositionSide.SHORT
-    : PositionSide.LONG;
+
+  // Derive (side, position_side) from the user-friendly controls.
+  // SINGLE uses the 4-way action; BRACKET/OCO use the 2-way direction
+  // (entry side for bracket, exit side for OCO).
+  let side: Side;
+  let positionSide: PositionSide;
+  if (isSingle) {
+    const m = ACTION_MAP[action];
+    side = m.side;
+    positionSide = m.positionSide;
+  } else if (isBracket) {
+    if (direction === "LONG") {
+      side = Side.BUY;
+      positionSide = PositionSide.LONG;
+    } else {
+      side = Side.SELL;
+      positionSide = PositionSide.SHORT;
+    }
+  } else {
+    // OCO: exit side. LONG = exit long inventory (sell). SHORT = cover.
+    if (direction === "LONG") {
+      side = Side.SELL;
+      positionSide = PositionSide.LONG;
+    } else {
+      side = Side.BUY;
+      positionSide = PositionSide.SHORT;
+    }
+  }
+  const ps = positionSide;
 
   // Server-side preview of the order's hold + margin impact. OCO
   // mode doesn't request a preview — exits don't take cash, and the
@@ -87,7 +132,7 @@ export function OrderForm({
       ? {
           accountId,
           symbol,
-          side: side === "BUY" ? Side.BUY : Side.SELL,
+          side,
           positionSide: ps,
           orderType: ORDER_TYPES[orderType] ?? OrderType.MARKET,
           price: isMarket ? 0n : moneyToPrice(prcNum),
@@ -130,7 +175,7 @@ export function OrderForm({
             case: "singleOrder",
             value: {
               symbol,
-              side: side === "BUY" ? Side.BUY : Side.SELL,
+              side,
               orderType: ORDER_TYPES[orderType] ?? OrderType.MARKET,
               price: isMarket ? 0n : moneyToPrice(prc),
               quantity: BigInt(qty),
@@ -141,7 +186,7 @@ export function OrderForm({
         });
         notifications.show({
           title: "Order placed",
-          message: `${side} ${qty} ${symbol}`,
+          message: `${ACTION_MAP[action].verb} ${qty} ${symbol}`,
           color: "green",
         });
       } catch (e: unknown) {
@@ -171,14 +216,14 @@ export function OrderForm({
       // OCO has no entry — TP and SL just need to bracket the current position
       // on opposite sides. SELL exit: TP > SL (profit above, stop below).
       // BUY exit (covering a short): TP < SL.
-      if (side === "SELL" && tp <= sl) {
+      if (side === Side.SELL && tp <= sl) {
         notifications.show({
           message: "For a SELL OCO, TP must be above SL",
           color: "red",
         });
         return;
       }
-      if (side === "BUY" && tp >= sl) {
+      if (side === Side.BUY && tp >= sl) {
         notifications.show({
           message: "For a BUY OCO, TP must be below SL",
           color: "red",
@@ -193,7 +238,7 @@ export function OrderForm({
             case: "oco",
             value: {
               symbol,
-              exitSide: side === "BUY" ? Side.BUY : Side.SELL,
+              exitSide: side,
               quantity: BigInt(qty),
               takeProfitPrice: moneyToPrice(tp),
               stopLossPrice: moneyToPrice(sl),
@@ -203,7 +248,7 @@ export function OrderForm({
         });
         notifications.show({
           title: "OCO placed",
-          message: `${side} ${qty} ${symbol} (TP ${tp} / SL ${sl})`,
+          message: `${direction === "SHORT" ? "Cover" : "Sell"} OCO ${qty} ${symbol} (TP ${tp} / SL ${sl})`,
           color: "green",
         });
       } catch (e: unknown) {
@@ -225,16 +270,16 @@ export function OrderForm({
       return;
     }
     // Sanity check: TP and SL should be on opposite sides of entry.
-    if (side === "BUY" && (tp <= entry || sl >= entry)) {
+    if (side === Side.BUY && (tp <= entry || sl >= entry)) {
       notifications.show({
-        message: "For a BUY bracket, TP must be above entry and SL below",
+        message: "For a long bracket, TP must be above entry and SL below",
         color: "red",
       });
       return;
     }
-    if (side === "SELL" && (tp >= entry || sl <= entry)) {
+    if (side === Side.SELL && (tp >= entry || sl <= entry)) {
       notifications.show({
-        message: "For a SELL bracket, TP must be below entry and SL above",
+        message: "For a short bracket, TP must be below entry and SL above",
         color: "red",
       });
       return;
@@ -248,7 +293,7 @@ export function OrderForm({
           case: "bracket",
           value: {
             symbol,
-            entrySide: side === "BUY" ? Side.BUY : Side.SELL,
+            entrySide: side,
             entryPrice: moneyToPrice(entry),
             entryQuantity: BigInt(qty),
             takeProfitPrice: moneyToPrice(tp),
@@ -259,7 +304,7 @@ export function OrderForm({
       });
       notifications.show({
         title: "Bracket placed",
-        message: `${side} ${qty} ${symbol} @ ${entry} (TP ${tp} / SL ${sl})`,
+        message: `${direction === "SHORT" ? "Short" : "Long"} bracket ${qty} ${symbol} @ ${entry} (TP ${tp} / SL ${sl})`,
         color: "green",
       });
     } catch (e: unknown) {
@@ -288,27 +333,31 @@ export function OrderForm({
             { label: "OCO", value: "OCO" },
           ]}
         />
-        <SegmentedControl
-          fullWidth
-          value={side}
-          onChange={setSide}
-          data={[
-            { label: "Buy", value: "BUY" },
-            { label: "Sell", value: "SELL" },
-          ]}
-          color={side === "BUY" ? "green" : "red"}
-        />
-        <SegmentedControl
-          fullWidth
-          size="xs"
-          value={positionSide}
-          onChange={setPositionSide}
-          data={[
-            { label: "Long", value: "LONG" },
-            { label: "Short", value: "SHORT" },
-          ]}
-          color={positionSide === "SHORT" ? "orange" : "blue"}
-        />
+        {isSingle ? (
+          <SegmentedControl
+            fullWidth
+            value={action}
+            onChange={(v) => setAction(v as Action)}
+            data={[
+              { label: "Buy", value: "BUY" },
+              { label: "Sell", value: "SELL" },
+              { label: "Short", value: "SHORT" },
+              { label: "Cover", value: "COVER" },
+            ]}
+            color={ACTION_MAP[action].color}
+          />
+        ) : (
+          <SegmentedControl
+            fullWidth
+            value={direction}
+            onChange={(v) => setDirection(v as Direction)}
+            data={[
+              { label: "Long", value: "LONG" },
+              { label: "Short", value: "SHORT" },
+            ]}
+            color={direction === "SHORT" ? "red" : "green"}
+          />
+        )}
         {isSingle && (
           <Group grow>
             <Select
@@ -391,8 +440,8 @@ export function OrderForm({
                 )}
               </Text>
             </Group>
-            {side === "BUY" &&
-              positionSide === "SHORT" &&
+            {side === Side.BUY &&
+              positionSide === PositionSide.SHORT &&
               preview.estimatedFillPrice > 0n &&
               qtyNum > 0 && (
               <Group justify="space-between" gap="xs">
@@ -456,14 +505,20 @@ export function OrderForm({
         )}
         <Button
           fullWidth
-          color={side === "BUY" ? "green" : "red"}
+          color={
+            isSingle
+              ? ACTION_MAP[action].color
+              : direction === "SHORT"
+                ? "red"
+                : "green"
+          }
           loading={loading}
           onClick={handleSubmit}
           disabled={insufficient}
         >
-          {isSingle && (side === "BUY" ? "Buy" : "Sell")}
-          {isBracket && `${side} Bracket`}
-          {isOCO && `${side} OCO`} {symbol}
+          {isSingle && `${ACTION_MAP[action].verb} ${symbol}`}
+          {isBracket && `${direction === "SHORT" ? "Short" : "Long"} bracket ${symbol}`}
+          {isOCO && `${direction === "SHORT" ? "Cover" : "Sell"} OCO ${symbol}`}
         </Button>
       </Stack>
     </Card>
