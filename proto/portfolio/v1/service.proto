@@ -81,6 +81,10 @@ message PendingOrder {
   google.protobuf.Timestamp started_at = 10;
   string fail_reason = 11;
   google.protobuf.Timestamp ended_at = 12;
+  // Price of the most recent fill on this order. Zero before the
+  // first fill. Useful for market orders where price (the limit) is
+  // unset, so the actual execution price isn't otherwise visible.
+  int64 last_fill_price = 13;
 }
 
 // OrderStatus is kept for the PendingOrder field on GetPortfolioResponse,

@@ -15,9 +15,16 @@ function sideVerb(side: Side): string {
 
 function showFilled(o: PendingOrder) {
   playFillDing();
+  // Prefer the projection's last_fill_price (actual execution price);
+  // fall back to the order's limit for the rare case where it hasn't
+  // populated yet.
+  const fillPrice = o.lastFillPrice > 0n ? o.lastFillPrice : o.price;
+  const qty = formatQuantity(o.filledQuantity);
+  const message =
+    fillPrice > 0n ? `${qty} @ ${formatPrice(fillPrice)}` : qty;
   notifications.show({
     title: `${sideVerb(o.side)} ${o.symbol} filled`,
-    message: `${formatQuantity(o.filledQuantity)} @ ${formatPrice(o.price)}`,
+    message,
     color: "green",
   });
 }
@@ -35,9 +42,13 @@ function showFailed(o: PendingOrder) {
 }
 
 function showPartialFill(o: PendingOrder) {
+  const fillPrice = o.lastFillPrice > 0n ? o.lastFillPrice : o.price;
+  const progress = `${formatQuantity(o.filledQuantity)} of ${formatQuantity(o.quantity)}`;
+  const message =
+    fillPrice > 0n ? `${progress} @ ${formatPrice(fillPrice)}` : progress;
   notifications.show({
     title: `${sideVerb(o.side)} ${o.symbol} partial fill`,
-    message: `${formatQuantity(o.filledQuantity)} of ${formatQuantity(o.quantity)} @ ${formatPrice(o.price)}`,
+    message,
     color: "blue",
   });
 }
@@ -81,12 +92,11 @@ export function useOrderStatusNotifications() {
         else if (o.status === OrderStatus.FAILED) showFailed(o);
       } else if (
         o.filledQuantity > before.filledQuantity &&
-        o.filledQuantity < o.quantity &&
         o.status !== OrderStatus.COMPLETED
       ) {
-        // Skip when this tick filled the rest — the COMPLETED transition
-        // on the next tick (or this one, if the saga runs them together)
-        // already covers it.
+        // Fire even when this tick fills the remainder — the partial
+        // toast carries the trade fill price, which the COMPLETED
+        // toast doesn't have for market orders.
         showPartialFill(o);
       }
     }

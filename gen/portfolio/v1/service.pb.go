@@ -593,8 +593,12 @@ type PendingOrder struct {
 	StartedAt      *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	FailReason     string                 `protobuf:"bytes,11,opt,name=fail_reason,json=failReason,proto3" json:"fail_reason,omitempty"`
 	EndedAt        *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=ended_at,json=endedAt,proto3" json:"ended_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Price of the most recent fill on this order. Zero before the
+	// first fill. Useful for market orders where price (the limit) is
+	// unset, so the actual execution price isn't otherwise visible.
+	LastFillPrice int64 `protobuf:"varint,13,opt,name=last_fill_price,json=lastFillPrice,proto3" json:"last_fill_price,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PendingOrder) Reset() {
@@ -709,6 +713,13 @@ func (x *PendingOrder) GetEndedAt() *timestamppb.Timestamp {
 		return x.EndedAt
 	}
 	return nil
+}
+
+func (x *PendingOrder) GetLastFillPrice() int64 {
+	if x != nil {
+		return x.LastFillPrice
+	}
+	return 0
 }
 
 type StreamPortfolioRequest struct {
@@ -1987,7 +1998,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\faverage_cost\x18\x04 \x01(\x03R\vaverageCost\x12\x1f\n" +
 	"\vshares_held\x18\x05 \x01(\x03R\n" +
 	"sharesHeld\x12!\n" +
-	"\frealized_pnl\x18\x06 \x01(\x03R\vrealizedPnl\"\xff\x03\n" +
+	"\frealized_pnl\x18\x06 \x01(\x03R\vrealizedPnl\"\xa7\x04\n" +
 	"\fPendingOrder\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12&\n" +
@@ -2004,7 +2015,8 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12\x1f\n" +
 	"\vfail_reason\x18\v \x01(\tR\n" +
 	"failReason\x125\n" +
-	"\bended_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\aendedAt\"7\n" +
+	"\bended_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\aendedAt\x12&\n" +
+	"\x0flast_fill_price\x18\r \x01(\x03R\rlastFillPrice\"7\n" +
 	"\x16StreamPortfolioRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\".\n" +

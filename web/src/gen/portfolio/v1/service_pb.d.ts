@@ -286,6 +286,15 @@ export declare type PendingOrder = Message<"portfolio.v1.PendingOrder"> & {
    * @generated from field: google.protobuf.Timestamp ended_at = 12;
    */
   endedAt?: Timestamp | undefined;
+
+  /**
+   * Price of the most recent fill on this order. Zero before the
+   * first fill. Useful for market orders where price (the limit) is
+   * unset, so the actual execution price isn't otherwise visible.
+   *
+   * @generated from field: int64 last_fill_price = 13;
+   */
+  lastFillPrice: bigint;
 };
 
 /**
