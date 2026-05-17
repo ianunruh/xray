@@ -4,7 +4,7 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
-import type { OrderType, Side, TimeInForce, TradeExecuted } from "./events_pb";
+import type { CrossType, MarketPhase, OrderType, Side, TimeInForce, TradeExecuted } from "./events_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
@@ -227,6 +227,236 @@ export declare type CloseMarketResponse = Message<"orderbook.v1.CloseMarketRespo
 export declare const CloseMarketResponseSchema: GenMessage<CloseMarketResponse>;
 
 /**
+ * @generated from message orderbook.v1.OpenAuctionRequest
+ */
+export declare type OpenAuctionRequest = Message<"orderbook.v1.OpenAuctionRequest"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * reason is recorded on MarketPhaseChanged; defaults to "session_open".
+   *
+   * @generated from field: string reason = 2;
+   */
+  reason: string;
+};
+
+/**
+ * Describes the message orderbook.v1.OpenAuctionRequest.
+ * Use `create(OpenAuctionRequestSchema)` to create a new message.
+ */
+export declare const OpenAuctionRequestSchema: GenMessage<OpenAuctionRequest>;
+
+/**
+ * @generated from message orderbook.v1.OpenAuctionResponse
+ */
+export declare type OpenAuctionResponse = Message<"orderbook.v1.OpenAuctionResponse"> & {
+};
+
+/**
+ * Describes the message orderbook.v1.OpenAuctionResponse.
+ * Use `create(OpenAuctionResponseSchema)` to create a new message.
+ */
+export declare const OpenAuctionResponseSchema: GenMessage<OpenAuctionResponse>;
+
+/**
+ * @generated from message orderbook.v1.BeginClosingAuctionRequest
+ */
+export declare type BeginClosingAuctionRequest = Message<"orderbook.v1.BeginClosingAuctionRequest"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * reason is recorded on MarketPhaseChanged; defaults to "session_close".
+   *
+   * @generated from field: string reason = 2;
+   */
+  reason: string;
+};
+
+/**
+ * Describes the message orderbook.v1.BeginClosingAuctionRequest.
+ * Use `create(BeginClosingAuctionRequestSchema)` to create a new message.
+ */
+export declare const BeginClosingAuctionRequestSchema: GenMessage<BeginClosingAuctionRequest>;
+
+/**
+ * @generated from message orderbook.v1.BeginClosingAuctionResponse
+ */
+export declare type BeginClosingAuctionResponse = Message<"orderbook.v1.BeginClosingAuctionResponse"> & {
+};
+
+/**
+ * Describes the message orderbook.v1.BeginClosingAuctionResponse.
+ * Use `create(BeginClosingAuctionResponseSchema)` to create a new message.
+ */
+export declare const BeginClosingAuctionResponseSchema: GenMessage<BeginClosingAuctionResponse>;
+
+/**
+ * @generated from message orderbook.v1.UncrossRequest
+ */
+export declare type UncrossRequest = Message<"orderbook.v1.UncrossRequest"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+};
+
+/**
+ * Describes the message orderbook.v1.UncrossRequest.
+ * Use `create(UncrossRequestSchema)` to create a new message.
+ */
+export declare const UncrossRequestSchema: GenMessage<UncrossRequest>;
+
+/**
+ * @generated from message orderbook.v1.UncrossResponse
+ */
+export declare type UncrossResponse = Message<"orderbook.v1.UncrossResponse"> & {
+  /**
+   * @generated from field: int64 clearing_price = 1;
+   */
+  clearingPrice: bigint;
+
+  /**
+   * @generated from field: int64 matched_qty = 2;
+   */
+  matchedQty: bigint;
+
+  /**
+   * @generated from field: int64 imbalance_qty = 3;
+   */
+  imbalanceQty: bigint;
+
+  /**
+   * @generated from field: orderbook.v1.Side imbalance_side = 4;
+   */
+  imbalanceSide: Side;
+
+  /**
+   * @generated from field: orderbook.v1.CrossType cross_type = 5;
+   */
+  crossType: CrossType;
+
+  /**
+   * @generated from field: int32 trade_count = 6;
+   */
+  tradeCount: number;
+};
+
+/**
+ * Describes the message orderbook.v1.UncrossResponse.
+ * Use `create(UncrossResponseSchema)` to create a new message.
+ */
+export declare const UncrossResponseSchema: GenMessage<UncrossResponse>;
+
+/**
+ * @generated from message orderbook.v1.GetOfficialCloseRequest
+ */
+export declare type GetOfficialCloseRequest = Message<"orderbook.v1.GetOfficialCloseRequest"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * session_date as YYYY-MM-DD. Empty = most recent close.
+   *
+   * @generated from field: string session_date = 2;
+   */
+  sessionDate: string;
+};
+
+/**
+ * Describes the message orderbook.v1.GetOfficialCloseRequest.
+ * Use `create(GetOfficialCloseRequestSchema)` to create a new message.
+ */
+export declare const GetOfficialCloseRequestSchema: GenMessage<GetOfficialCloseRequest>;
+
+/**
+ * @generated from message orderbook.v1.GetOfficialCloseResponse
+ */
+export declare type GetOfficialCloseResponse = Message<"orderbook.v1.GetOfficialCloseResponse"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: string session_date = 2;
+   */
+  sessionDate: string;
+
+  /**
+   * @generated from field: int64 close_price = 3;
+   */
+  closePrice: bigint;
+
+  /**
+   * @generated from field: int64 close_volume = 4;
+   */
+  closeVolume: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp closed_at = 5;
+   */
+  closedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.GetOfficialCloseResponse.
+ * Use `create(GetOfficialCloseResponseSchema)` to create a new message.
+ */
+export declare const GetOfficialCloseResponseSchema: GenMessage<GetOfficialCloseResponse>;
+
+/**
+ * @generated from message orderbook.v1.ListOfficialClosesRequest
+ */
+export declare type ListOfficialClosesRequest = Message<"orderbook.v1.ListOfficialClosesRequest"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * from/to are inclusive YYYY-MM-DD; either may be empty for open-ended.
+   *
+   * @generated from field: string from = 2;
+   */
+  from: string;
+
+  /**
+   * @generated from field: string to = 3;
+   */
+  to: string;
+};
+
+/**
+ * Describes the message orderbook.v1.ListOfficialClosesRequest.
+ * Use `create(ListOfficialClosesRequestSchema)` to create a new message.
+ */
+export declare const ListOfficialClosesRequestSchema: GenMessage<ListOfficialClosesRequest>;
+
+/**
+ * @generated from message orderbook.v1.ListOfficialClosesResponse
+ */
+export declare type ListOfficialClosesResponse = Message<"orderbook.v1.ListOfficialClosesResponse"> & {
+  /**
+   * @generated from field: repeated orderbook.v1.GetOfficialCloseResponse closes = 1;
+   */
+  closes: GetOfficialCloseResponse[];
+};
+
+/**
+ * Describes the message orderbook.v1.ListOfficialClosesResponse.
+ * Use `create(ListOfficialClosesResponseSchema)` to create a new message.
+ */
+export declare const ListOfficialClosesResponseSchema: GenMessage<ListOfficialClosesResponse>;
+
+/**
  * @generated from message orderbook.v1.GetOrderBookRequest
  */
 export declare type GetOrderBookRequest = Message<"orderbook.v1.GetOrderBookRequest"> & {
@@ -260,6 +490,11 @@ export declare type GetOrderBookResponse = Message<"orderbook.v1.GetOrderBookRes
    * @generated from field: repeated orderbook.v1.OrderBookLevel asks = 3;
    */
   asks: OrderBookLevel[];
+
+  /**
+   * @generated from field: orderbook.v1.MarketPhase phase = 4;
+   */
+  phase: MarketPhase;
 };
 
 /**
@@ -531,6 +766,11 @@ export declare type Trade = Message<"orderbook.v1.Trade"> & {
    * @generated from field: google.protobuf.Timestamp executed_at = 7;
    */
   executedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: orderbook.v1.CrossType cross_type = 8;
+   */
+  crossType: CrossType;
 };
 
 /**
@@ -931,6 +1171,46 @@ export declare const OrderBookService: GenService<{
     methodKind: "unary";
     input: typeof CloseMarketRequestSchema;
     output: typeof CloseMarketResponseSchema;
+  },
+  /**
+   * @generated from rpc orderbook.v1.OrderBookService.OpenAuction
+   */
+  openAuction: {
+    methodKind: "unary";
+    input: typeof OpenAuctionRequestSchema;
+    output: typeof OpenAuctionResponseSchema;
+  },
+  /**
+   * @generated from rpc orderbook.v1.OrderBookService.BeginClosingAuction
+   */
+  beginClosingAuction: {
+    methodKind: "unary";
+    input: typeof BeginClosingAuctionRequestSchema;
+    output: typeof BeginClosingAuctionResponseSchema;
+  },
+  /**
+   * @generated from rpc orderbook.v1.OrderBookService.Uncross
+   */
+  uncross: {
+    methodKind: "unary";
+    input: typeof UncrossRequestSchema;
+    output: typeof UncrossResponseSchema;
+  },
+  /**
+   * @generated from rpc orderbook.v1.OrderBookService.GetOfficialClose
+   */
+  getOfficialClose: {
+    methodKind: "unary";
+    input: typeof GetOfficialCloseRequestSchema;
+    output: typeof GetOfficialCloseResponseSchema;
+  },
+  /**
+   * @generated from rpc orderbook.v1.OrderBookService.ListOfficialCloses
+   */
+  listOfficialCloses: {
+    methodKind: "unary";
+    input: typeof ListOfficialClosesRequestSchema;
+    output: typeof ListOfficialClosesResponseSchema;
   },
   /**
    * @generated from rpc orderbook.v1.OrderBookService.GetOrderBook

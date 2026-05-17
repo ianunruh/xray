@@ -34,11 +34,11 @@ func (p *PgTradeProjection) HandleEvents(ctx context.Context, events []es.Event)
 		}
 
 		batch.Queue(
-			`INSERT INTO projection_trades (trade_id, symbol, buy_order_id, sell_order_id, price, quantity, executed_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			`INSERT INTO projection_trades (trade_id, symbol, buy_order_id, sell_order_id, price, quantity, executed_at, cross_type)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			ON CONFLICT DO NOTHING`,
 			data.TradeId, data.Symbol, data.BuyOrderId, data.SellOrderId,
-			data.Price, data.Quantity, data.ExecutedAt.AsTime(),
+			data.Price, data.Quantity, data.ExecutedAt.AsTime(), int32(data.CrossType),
 		)
 	}
 
@@ -64,7 +64,7 @@ func (p *PgTradeProjection) HandleEvents(ctx context.Context, events []es.Event)
 // landed.
 func (p *PgTradeProjection) TradesByOrderID(ctx context.Context, orderID string) ([]*orderbookv1.TradeExecuted, error) {
 	rows, err := p.pool.Query(ctx,
-		`SELECT trade_id, symbol, buy_order_id, sell_order_id, price, quantity, executed_at
+		`SELECT trade_id, symbol, buy_order_id, sell_order_id, price, quantity, executed_at, cross_type
 		FROM projection_trades WHERE buy_order_id = $1 OR sell_order_id = $1
 		ORDER BY executed_at`,
 		orderID,
@@ -79,14 +79,16 @@ func (p *PgTradeProjection) TradesByOrderID(ctx context.Context, orderID string)
 		var (
 			t          orderbookv1.TradeExecuted
 			executedAt time.Time
+			crossType  int32
 		)
 		if err := rows.Scan(
 			&t.TradeId, &t.Symbol, &t.BuyOrderId, &t.SellOrderId,
-			&t.Price, &t.Quantity, &executedAt,
+			&t.Price, &t.Quantity, &executedAt, &crossType,
 		); err != nil {
 			return nil, err
 		}
 		t.ExecutedAt = timestamppb.New(executedAt)
+		t.CrossType = orderbookv1.CrossType(crossType)
 		out = append(out, &t)
 	}
 	return out, rows.Err()
@@ -94,7 +96,7 @@ func (p *PgTradeProjection) TradesByOrderID(ctx context.Context, orderID string)
 
 func (p *PgTradeProjection) ListTrades(symbol string) []*orderbookv1.Trade {
 	rows, err := p.pool.Query(context.Background(),
-		`SELECT trade_id, symbol, buy_order_id, sell_order_id, price, quantity, executed_at
+		`SELECT trade_id, symbol, buy_order_id, sell_order_id, price, quantity, executed_at, cross_type
 		FROM projection_trades WHERE symbol = $1 ORDER BY executed_at`,
 		symbol,
 	)
@@ -108,16 +110,18 @@ func (p *PgTradeProjection) ListTrades(symbol string) []*orderbookv1.Trade {
 		var (
 			t          orderbookv1.Trade
 			executedAt time.Time
+			crossType  int32
 		)
 
 		if err := rows.Scan(
 			&t.TradeId, &t.Symbol, &t.BuyOrderId, &t.SellOrderId,
-			&t.Price, &t.Quantity, &executedAt,
+			&t.Price, &t.Quantity, &executedAt, &crossType,
 		); err != nil {
 			return nil
 		}
 
 		t.ExecutedAt = timestamppb.New(executedAt)
+		t.CrossType = orderbookv1.CrossType(crossType)
 		out = append(out, &t)
 	}
 	return out

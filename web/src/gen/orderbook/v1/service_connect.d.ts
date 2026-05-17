@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, ListOrdersRequest, ListOrdersResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, PlaceOrderRequest, PlaceOrderResponse, ReplaceOrderRequest, ReplaceOrderResponse, StreamCandlesRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade } from "./service_pb.js";
+import { BeginClosingAuctionRequest, BeginClosingAuctionResponse, CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOfficialCloseRequest, GetOfficialCloseResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, ListOfficialClosesRequest, ListOfficialClosesResponse, ListOrdersRequest, ListOrdersResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, OpenAuctionRequest, OpenAuctionResponse, PlaceOrderRequest, PlaceOrderResponse, ReplaceOrderRequest, ReplaceOrderResponse, StreamCandlesRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade, UncrossRequest, UncrossResponse } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -46,6 +46,51 @@ export declare const OrderBookService: {
       readonly name: "CloseMarket",
       readonly I: typeof CloseMarketRequest,
       readonly O: typeof CloseMarketResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc orderbook.v1.OrderBookService.OpenAuction
+     */
+    readonly openAuction: {
+      readonly name: "OpenAuction",
+      readonly I: typeof OpenAuctionRequest,
+      readonly O: typeof OpenAuctionResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc orderbook.v1.OrderBookService.BeginClosingAuction
+     */
+    readonly beginClosingAuction: {
+      readonly name: "BeginClosingAuction",
+      readonly I: typeof BeginClosingAuctionRequest,
+      readonly O: typeof BeginClosingAuctionResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc orderbook.v1.OrderBookService.Uncross
+     */
+    readonly uncross: {
+      readonly name: "Uncross",
+      readonly I: typeof UncrossRequest,
+      readonly O: typeof UncrossResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc orderbook.v1.OrderBookService.GetOfficialClose
+     */
+    readonly getOfficialClose: {
+      readonly name: "GetOfficialClose",
+      readonly I: typeof GetOfficialCloseRequest,
+      readonly O: typeof GetOfficialCloseResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc orderbook.v1.OrderBookService.ListOfficialCloses
+     */
+    readonly listOfficialCloses: {
+      readonly name: "ListOfficialCloses",
+      readonly I: typeof ListOfficialClosesRequest,
+      readonly O: typeof ListOfficialClosesResponse,
       readonly kind: MethodKind.Unary,
     },
     /**

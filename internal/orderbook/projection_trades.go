@@ -42,6 +42,7 @@ func (p *TradeProjection) HandleEvents(_ context.Context, events []es.Event) err
 			Price:       data.Price,
 			Quantity:    data.Quantity,
 			ExecutedAt:  timestamppb.New(data.ExecutedAt.AsTime()),
+			CrossType:   data.CrossType,
 		}
 
 		p.trades[data.Symbol] = append(p.trades[data.Symbol], trade)

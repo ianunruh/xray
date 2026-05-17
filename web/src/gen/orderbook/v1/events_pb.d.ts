@@ -145,6 +145,15 @@ export declare type TradeExecuted = Message<"orderbook.v1.TradeExecuted"> & {
    * @generated from field: google.protobuf.Timestamp executed_at = 7;
    */
   executedAt?: Timestamp | undefined;
+
+  /**
+   * cross_type=NONE for continuous-matching trades; OPENING/CLOSING for
+   * trades emitted by an auction uncross. Informational — projections
+   * can use it to highlight closing prints, etc.
+   *
+   * @generated from field: orderbook.v1.CrossType cross_type = 8;
+   */
+  crossType: CrossType;
 };
 
 /**
@@ -209,6 +218,142 @@ export declare type MarketClosed = Message<"orderbook.v1.MarketClosed"> & {
  * Use `create(MarketClosedSchema)` to create a new message.
  */
 export declare const MarketClosedSchema: GenMessage<MarketClosed>;
+
+/**
+ * MarketPhaseChanged announces that the orderbook has moved between
+ * phases (continuous, auction, closed). Emitted by OpenAuction,
+ * BeginClosingAuction, and the closing branch of Uncross.
+ *
+ * @generated from message orderbook.v1.MarketPhaseChanged
+ */
+export declare type MarketPhaseChanged = Message<"orderbook.v1.MarketPhaseChanged"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: orderbook.v1.MarketPhase phase = 2;
+   */
+  phase: MarketPhase;
+
+  /**
+   * reason is a human-readable tag, e.g. "session_open", "manual",
+   * "uncross_complete". Not interpreted by the engine.
+   *
+   * @generated from field: string reason = 3;
+   */
+  reason: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp at = 4;
+   */
+  at?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.MarketPhaseChanged.
+ * Use `create(MarketPhaseChangedSchema)` to create a new message.
+ */
+export declare const MarketPhaseChangedSchema: GenMessage<MarketPhaseChanged>;
+
+/**
+ * AuctionUncrossed is the header event of an uncross batch, carrying
+ * the clearing price and aggregate matched/imbalance quantities. The
+ * individual TradeExecuted events that follow in the same batch carry
+ * the per-pair fills at clearing_price with cross_type set.
+ *
+ * @generated from message orderbook.v1.AuctionUncrossed
+ */
+export declare type AuctionUncrossed = Message<"orderbook.v1.AuctionUncrossed"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: int64 clearing_price = 2;
+   */
+  clearingPrice: bigint;
+
+  /**
+   * @generated from field: int64 matched_qty = 3;
+   */
+  matchedQty: bigint;
+
+  /**
+   * imbalance_qty is the unmatched quantity at the clearing price on
+   * imbalance_side. Zero when balanced.
+   *
+   * @generated from field: int64 imbalance_qty = 4;
+   */
+  imbalanceQty: bigint;
+
+  /**
+   * @generated from field: orderbook.v1.Side imbalance_side = 5;
+   */
+  imbalanceSide: Side;
+
+  /**
+   * @generated from field: orderbook.v1.CrossType cross_type = 6;
+   */
+  crossType: CrossType;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp at = 7;
+   */
+  at?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.AuctionUncrossed.
+ * Use `create(AuctionUncrossedSchema)` to create a new message.
+ */
+export declare const AuctionUncrossedSchema: GenMessage<AuctionUncrossed>;
+
+/**
+ * OfficialCloseSet is the canonical end-of-day mark, derivable from
+ * the last cross_type=CLOSING trade but emitted explicitly so the
+ * daily_close projection doesn't have to scan trades.
+ *
+ * Downstream consumers (fund NAV, mark-to-market, charting close axis,
+ * closing-print UI badges) treat this as the authoritative session-end
+ * price. session_date is a YYYY-MM-DD string for easy keying.
+ *
+ * @generated from message orderbook.v1.OfficialCloseSet
+ */
+export declare type OfficialCloseSet = Message<"orderbook.v1.OfficialCloseSet"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: string session_date = 2;
+   */
+  sessionDate: string;
+
+  /**
+   * @generated from field: int64 close_price = 3;
+   */
+  closePrice: bigint;
+
+  /**
+   * @generated from field: int64 close_volume = 4;
+   */
+  closeVolume: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp at = 5;
+   */
+  at?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.OfficialCloseSet.
+ * Use `create(OfficialCloseSetSchema)` to create a new message.
+ */
+export declare const OfficialCloseSetSchema: GenMessage<OfficialCloseSet>;
 
 /**
  * @generated from message orderbook.v1.SagaStarted
@@ -730,10 +875,101 @@ export enum TimeInForce {
    * @generated from enum value: TIME_IN_FORCE_DAY = 4;
    */
   DAY = 4,
+
+  /**
+   * AT_OPEN / AT_CLOSE bind the order to a specific auction cross.
+   * Combined with ORDER_TYPE_MARKET this yields MOO/MOC; with
+   * ORDER_TYPE_LIMIT it yields LOO/LOC. Unfilled at the uncross →
+   * cancelled with reason "missed_auction".
+   *
+   * @generated from enum value: TIME_IN_FORCE_AT_OPEN = 5;
+   */
+  AT_OPEN = 5,
+
+  /**
+   * @generated from enum value: TIME_IN_FORCE_AT_CLOSE = 6;
+   */
+  AT_CLOSE = 6,
 }
 
 /**
  * Describes the enum orderbook.v1.TimeInForce.
  */
 export declare const TimeInForceSchema: GenEnum<TimeInForce>;
+
+/**
+ * MarketPhase gates how the orderbook handles incoming orders. Default
+ * (no MarketPhaseChanged events in history) is CONTINUOUS — the existing
+ * price-time priority matching behaviour. AUCTION accumulates orders
+ * without crossing; Uncross runs an equilibrium-price algorithm and
+ * flips back to CONTINUOUS. CLOSING_AUCTION is the same but flips to
+ * CLOSED on uncross.
+ *
+ * @generated from enum orderbook.v1.MarketPhase
+ */
+export enum MarketPhase {
+  /**
+   * @generated from enum value: MARKET_PHASE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: MARKET_PHASE_CONTINUOUS = 1;
+   */
+  CONTINUOUS = 1,
+
+  /**
+   * @generated from enum value: MARKET_PHASE_AUCTION = 2;
+   */
+  AUCTION = 2,
+
+  /**
+   * @generated from enum value: MARKET_PHASE_CLOSING_AUCTION = 3;
+   */
+  CLOSING_AUCTION = 3,
+
+  /**
+   * @generated from enum value: MARKET_PHASE_CLOSED = 4;
+   */
+  CLOSED = 4,
+}
+
+/**
+ * Describes the enum orderbook.v1.MarketPhase.
+ */
+export declare const MarketPhaseSchema: GenEnum<MarketPhase>;
+
+/**
+ * CrossType marks how a trade was produced. NONE = ordinary continuous
+ * trade; OPENING/CLOSING tag the batch emitted by an auction uncross;
+ * HALT_REOPEN is reserved for intraday halt/reopen auctions.
+ *
+ * @generated from enum orderbook.v1.CrossType
+ */
+export enum CrossType {
+  /**
+   * @generated from enum value: CROSS_TYPE_NONE = 0;
+   */
+  NONE = 0,
+
+  /**
+   * @generated from enum value: CROSS_TYPE_OPENING = 1;
+   */
+  OPENING = 1,
+
+  /**
+   * @generated from enum value: CROSS_TYPE_CLOSING = 2;
+   */
+  CLOSING = 2,
+
+  /**
+   * @generated from enum value: CROSS_TYPE_HALT_REOPEN = 3;
+   */
+  HALT_REOPEN = 3,
+}
+
+/**
+ * Describes the enum orderbook.v1.CrossType.
+ */
+export declare const CrossTypeSchema: GenEnum<CrossType>;
 

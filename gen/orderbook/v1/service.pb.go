@@ -1788,6 +1788,7 @@ type Trade struct {
 	Price         int64                  `protobuf:"varint,5,opt,name=price,proto3" json:"price,omitempty"`
 	Quantity      int64                  `protobuf:"varint,6,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	ExecutedAt    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=executed_at,json=executedAt,proto3" json:"executed_at,omitempty"`
+	CrossType     CrossType              `protobuf:"varint,8,opt,name=cross_type,json=crossType,proto3,enum=orderbook.v1.CrossType" json:"cross_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1869,6 +1870,13 @@ func (x *Trade) GetExecutedAt() *timestamppb.Timestamp {
 		return x.ExecutedAt
 	}
 	return nil
+}
+
+func (x *Trade) GetCrossType() CrossType {
+	if x != nil {
+		return x.CrossType
+	}
+	return CrossType_CROSS_TYPE_NONE
 }
 
 type ListOrdersRequest struct {
@@ -2650,7 +2658,7 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\x11ListTradesRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"A\n" +
 	"\x12ListTradesResponse\x12+\n" +
-	"\x06trades\x18\x01 \x03(\v2\x13.orderbook.v1.TradeR\x06trades\"\xef\x01\n" +
+	"\x06trades\x18\x01 \x03(\v2\x13.orderbook.v1.TradeR\x06trades\"\xa7\x02\n" +
 	"\x05Trade\x12\x19\n" +
 	"\btrade_id\x18\x01 \x01(\tR\atradeId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12 \n" +
@@ -2660,7 +2668,9 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\x05price\x18\x05 \x01(\x03R\x05price\x12\x1a\n" +
 	"\bquantity\x18\x06 \x01(\x03R\bquantity\x12;\n" +
 	"\vexecuted_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"executedAt\"+\n" +
+	"executedAt\x126\n" +
+	"\n" +
+	"cross_type\x18\b \x01(\x0e2\x17.orderbook.v1.CrossTypeR\tcrossType\"+\n" +
 	"\x11ListOrdersRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"H\n" +
 	"\x18StreamMarketDepthRequest\x12\x16\n" +
@@ -2835,62 +2845,63 @@ var file_orderbook_v1_service_proto_depIdxs = []int32{
 	44, // 21: orderbook.v1.GetOrderResponse.time_in_force:type_name -> orderbook.v1.TimeInForce
 	30, // 22: orderbook.v1.ListTradesResponse.trades:type_name -> orderbook.v1.Trade
 	47, // 23: orderbook.v1.Trade.executed_at:type_name -> google.protobuf.Timestamp
-	1,  // 24: orderbook.v1.Candle.interval:type_name -> orderbook.v1.CandleInterval
-	47, // 25: orderbook.v1.Candle.open_time:type_name -> google.protobuf.Timestamp
-	1,  // 26: orderbook.v1.GetCandlesRequest.interval:type_name -> orderbook.v1.CandleInterval
-	47, // 27: orderbook.v1.GetCandlesRequest.from:type_name -> google.protobuf.Timestamp
-	47, // 28: orderbook.v1.GetCandlesRequest.to:type_name -> google.protobuf.Timestamp
-	34, // 29: orderbook.v1.GetCandlesResponse.candles:type_name -> orderbook.v1.Candle
-	1,  // 30: orderbook.v1.StreamCandlesRequest.interval:type_name -> orderbook.v1.CandleInterval
-	41, // 31: orderbook.v1.ListOrdersResponse.orders:type_name -> orderbook.v1.OrderSummary
-	42, // 32: orderbook.v1.OrderSummary.side:type_name -> orderbook.v1.Side
-	0,  // 33: orderbook.v1.OrderSummary.status:type_name -> orderbook.v1.OrderStatus
-	47, // 34: orderbook.v1.OrderSummary.placed_at:type_name -> google.protobuf.Timestamp
-	43, // 35: orderbook.v1.OrderSummary.order_type:type_name -> orderbook.v1.OrderType
-	44, // 36: orderbook.v1.OrderSummary.time_in_force:type_name -> orderbook.v1.TimeInForce
-	2,  // 37: orderbook.v1.OrderBookService.PlaceOrder:input_type -> orderbook.v1.PlaceOrderRequest
-	4,  // 38: orderbook.v1.OrderBookService.CancelOrder:input_type -> orderbook.v1.CancelOrderRequest
-	6,  // 39: orderbook.v1.OrderBookService.ReplaceOrder:input_type -> orderbook.v1.ReplaceOrderRequest
-	8,  // 40: orderbook.v1.OrderBookService.CloseMarket:input_type -> orderbook.v1.CloseMarketRequest
-	10, // 41: orderbook.v1.OrderBookService.OpenAuction:input_type -> orderbook.v1.OpenAuctionRequest
-	12, // 42: orderbook.v1.OrderBookService.BeginClosingAuction:input_type -> orderbook.v1.BeginClosingAuctionRequest
-	14, // 43: orderbook.v1.OrderBookService.Uncross:input_type -> orderbook.v1.UncrossRequest
-	16, // 44: orderbook.v1.OrderBookService.GetOfficialClose:input_type -> orderbook.v1.GetOfficialCloseRequest
-	18, // 45: orderbook.v1.OrderBookService.ListOfficialCloses:input_type -> orderbook.v1.ListOfficialClosesRequest
-	20, // 46: orderbook.v1.OrderBookService.GetOrderBook:input_type -> orderbook.v1.GetOrderBookRequest
-	23, // 47: orderbook.v1.OrderBookService.GetMarketDepth:input_type -> orderbook.v1.GetMarketDepthRequest
-	26, // 48: orderbook.v1.OrderBookService.GetOrder:input_type -> orderbook.v1.GetOrderRequest
-	28, // 49: orderbook.v1.OrderBookService.ListTrades:input_type -> orderbook.v1.ListTradesRequest
-	31, // 50: orderbook.v1.OrderBookService.ListOrders:input_type -> orderbook.v1.ListOrdersRequest
-	39, // 51: orderbook.v1.OrderBookService.ListSymbols:input_type -> orderbook.v1.ListSymbolsRequest
-	32, // 52: orderbook.v1.OrderBookService.StreamMarketDepth:input_type -> orderbook.v1.StreamMarketDepthRequest
-	33, // 53: orderbook.v1.OrderBookService.StreamTrades:input_type -> orderbook.v1.StreamTradesRequest
-	35, // 54: orderbook.v1.OrderBookService.GetCandles:input_type -> orderbook.v1.GetCandlesRequest
-	37, // 55: orderbook.v1.OrderBookService.StreamCandles:input_type -> orderbook.v1.StreamCandlesRequest
-	3,  // 56: orderbook.v1.OrderBookService.PlaceOrder:output_type -> orderbook.v1.PlaceOrderResponse
-	5,  // 57: orderbook.v1.OrderBookService.CancelOrder:output_type -> orderbook.v1.CancelOrderResponse
-	7,  // 58: orderbook.v1.OrderBookService.ReplaceOrder:output_type -> orderbook.v1.ReplaceOrderResponse
-	9,  // 59: orderbook.v1.OrderBookService.CloseMarket:output_type -> orderbook.v1.CloseMarketResponse
-	11, // 60: orderbook.v1.OrderBookService.OpenAuction:output_type -> orderbook.v1.OpenAuctionResponse
-	13, // 61: orderbook.v1.OrderBookService.BeginClosingAuction:output_type -> orderbook.v1.BeginClosingAuctionResponse
-	15, // 62: orderbook.v1.OrderBookService.Uncross:output_type -> orderbook.v1.UncrossResponse
-	17, // 63: orderbook.v1.OrderBookService.GetOfficialClose:output_type -> orderbook.v1.GetOfficialCloseResponse
-	19, // 64: orderbook.v1.OrderBookService.ListOfficialCloses:output_type -> orderbook.v1.ListOfficialClosesResponse
-	21, // 65: orderbook.v1.OrderBookService.GetOrderBook:output_type -> orderbook.v1.GetOrderBookResponse
-	24, // 66: orderbook.v1.OrderBookService.GetMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
-	27, // 67: orderbook.v1.OrderBookService.GetOrder:output_type -> orderbook.v1.GetOrderResponse
-	29, // 68: orderbook.v1.OrderBookService.ListTrades:output_type -> orderbook.v1.ListTradesResponse
-	38, // 69: orderbook.v1.OrderBookService.ListOrders:output_type -> orderbook.v1.ListOrdersResponse
-	40, // 70: orderbook.v1.OrderBookService.ListSymbols:output_type -> orderbook.v1.ListSymbolsResponse
-	24, // 71: orderbook.v1.OrderBookService.StreamMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
-	30, // 72: orderbook.v1.OrderBookService.StreamTrades:output_type -> orderbook.v1.Trade
-	36, // 73: orderbook.v1.OrderBookService.GetCandles:output_type -> orderbook.v1.GetCandlesResponse
-	34, // 74: orderbook.v1.OrderBookService.StreamCandles:output_type -> orderbook.v1.Candle
-	56, // [56:75] is the sub-list for method output_type
-	37, // [37:56] is the sub-list for method input_type
-	37, // [37:37] is the sub-list for extension type_name
-	37, // [37:37] is the sub-list for extension extendee
-	0,  // [0:37] is the sub-list for field type_name
+	46, // 24: orderbook.v1.Trade.cross_type:type_name -> orderbook.v1.CrossType
+	1,  // 25: orderbook.v1.Candle.interval:type_name -> orderbook.v1.CandleInterval
+	47, // 26: orderbook.v1.Candle.open_time:type_name -> google.protobuf.Timestamp
+	1,  // 27: orderbook.v1.GetCandlesRequest.interval:type_name -> orderbook.v1.CandleInterval
+	47, // 28: orderbook.v1.GetCandlesRequest.from:type_name -> google.protobuf.Timestamp
+	47, // 29: orderbook.v1.GetCandlesRequest.to:type_name -> google.protobuf.Timestamp
+	34, // 30: orderbook.v1.GetCandlesResponse.candles:type_name -> orderbook.v1.Candle
+	1,  // 31: orderbook.v1.StreamCandlesRequest.interval:type_name -> orderbook.v1.CandleInterval
+	41, // 32: orderbook.v1.ListOrdersResponse.orders:type_name -> orderbook.v1.OrderSummary
+	42, // 33: orderbook.v1.OrderSummary.side:type_name -> orderbook.v1.Side
+	0,  // 34: orderbook.v1.OrderSummary.status:type_name -> orderbook.v1.OrderStatus
+	47, // 35: orderbook.v1.OrderSummary.placed_at:type_name -> google.protobuf.Timestamp
+	43, // 36: orderbook.v1.OrderSummary.order_type:type_name -> orderbook.v1.OrderType
+	44, // 37: orderbook.v1.OrderSummary.time_in_force:type_name -> orderbook.v1.TimeInForce
+	2,  // 38: orderbook.v1.OrderBookService.PlaceOrder:input_type -> orderbook.v1.PlaceOrderRequest
+	4,  // 39: orderbook.v1.OrderBookService.CancelOrder:input_type -> orderbook.v1.CancelOrderRequest
+	6,  // 40: orderbook.v1.OrderBookService.ReplaceOrder:input_type -> orderbook.v1.ReplaceOrderRequest
+	8,  // 41: orderbook.v1.OrderBookService.CloseMarket:input_type -> orderbook.v1.CloseMarketRequest
+	10, // 42: orderbook.v1.OrderBookService.OpenAuction:input_type -> orderbook.v1.OpenAuctionRequest
+	12, // 43: orderbook.v1.OrderBookService.BeginClosingAuction:input_type -> orderbook.v1.BeginClosingAuctionRequest
+	14, // 44: orderbook.v1.OrderBookService.Uncross:input_type -> orderbook.v1.UncrossRequest
+	16, // 45: orderbook.v1.OrderBookService.GetOfficialClose:input_type -> orderbook.v1.GetOfficialCloseRequest
+	18, // 46: orderbook.v1.OrderBookService.ListOfficialCloses:input_type -> orderbook.v1.ListOfficialClosesRequest
+	20, // 47: orderbook.v1.OrderBookService.GetOrderBook:input_type -> orderbook.v1.GetOrderBookRequest
+	23, // 48: orderbook.v1.OrderBookService.GetMarketDepth:input_type -> orderbook.v1.GetMarketDepthRequest
+	26, // 49: orderbook.v1.OrderBookService.GetOrder:input_type -> orderbook.v1.GetOrderRequest
+	28, // 50: orderbook.v1.OrderBookService.ListTrades:input_type -> orderbook.v1.ListTradesRequest
+	31, // 51: orderbook.v1.OrderBookService.ListOrders:input_type -> orderbook.v1.ListOrdersRequest
+	39, // 52: orderbook.v1.OrderBookService.ListSymbols:input_type -> orderbook.v1.ListSymbolsRequest
+	32, // 53: orderbook.v1.OrderBookService.StreamMarketDepth:input_type -> orderbook.v1.StreamMarketDepthRequest
+	33, // 54: orderbook.v1.OrderBookService.StreamTrades:input_type -> orderbook.v1.StreamTradesRequest
+	35, // 55: orderbook.v1.OrderBookService.GetCandles:input_type -> orderbook.v1.GetCandlesRequest
+	37, // 56: orderbook.v1.OrderBookService.StreamCandles:input_type -> orderbook.v1.StreamCandlesRequest
+	3,  // 57: orderbook.v1.OrderBookService.PlaceOrder:output_type -> orderbook.v1.PlaceOrderResponse
+	5,  // 58: orderbook.v1.OrderBookService.CancelOrder:output_type -> orderbook.v1.CancelOrderResponse
+	7,  // 59: orderbook.v1.OrderBookService.ReplaceOrder:output_type -> orderbook.v1.ReplaceOrderResponse
+	9,  // 60: orderbook.v1.OrderBookService.CloseMarket:output_type -> orderbook.v1.CloseMarketResponse
+	11, // 61: orderbook.v1.OrderBookService.OpenAuction:output_type -> orderbook.v1.OpenAuctionResponse
+	13, // 62: orderbook.v1.OrderBookService.BeginClosingAuction:output_type -> orderbook.v1.BeginClosingAuctionResponse
+	15, // 63: orderbook.v1.OrderBookService.Uncross:output_type -> orderbook.v1.UncrossResponse
+	17, // 64: orderbook.v1.OrderBookService.GetOfficialClose:output_type -> orderbook.v1.GetOfficialCloseResponse
+	19, // 65: orderbook.v1.OrderBookService.ListOfficialCloses:output_type -> orderbook.v1.ListOfficialClosesResponse
+	21, // 66: orderbook.v1.OrderBookService.GetOrderBook:output_type -> orderbook.v1.GetOrderBookResponse
+	24, // 67: orderbook.v1.OrderBookService.GetMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
+	27, // 68: orderbook.v1.OrderBookService.GetOrder:output_type -> orderbook.v1.GetOrderResponse
+	29, // 69: orderbook.v1.OrderBookService.ListTrades:output_type -> orderbook.v1.ListTradesResponse
+	38, // 70: orderbook.v1.OrderBookService.ListOrders:output_type -> orderbook.v1.ListOrdersResponse
+	40, // 71: orderbook.v1.OrderBookService.ListSymbols:output_type -> orderbook.v1.ListSymbolsResponse
+	24, // 72: orderbook.v1.OrderBookService.StreamMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
+	30, // 73: orderbook.v1.OrderBookService.StreamTrades:output_type -> orderbook.v1.Trade
+	36, // 74: orderbook.v1.OrderBookService.GetCandles:output_type -> orderbook.v1.GetCandlesResponse
+	34, // 75: orderbook.v1.OrderBookService.StreamCandles:output_type -> orderbook.v1.Candle
+	57, // [57:76] is the sub-list for method output_type
+	38, // [38:57] is the sub-list for method input_type
+	38, // [38:38] is the sub-list for extension type_name
+	38, // [38:38] is the sub-list for extension extendee
+	0,  // [0:38] is the sub-list for field type_name
 }
 
 func init() { file_orderbook_v1_service_proto_init() }

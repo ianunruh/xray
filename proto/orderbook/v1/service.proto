@@ -209,6 +209,7 @@ message Trade {
   int64 price = 5;
   int64 quantity = 6;
   google.protobuf.Timestamp executed_at = 7;
+  CrossType cross_type = 8;
 }
 
 message ListOrdersRequest {

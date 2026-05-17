@@ -24,6 +24,8 @@ const TIME_IN_FORCE: Record<string, TimeInForce> = {
   IOC: TimeInForce.IOC,
   FOK: TimeInForce.FOK,
   DAY: TimeInForce.DAY,
+  AT_OPEN: TimeInForce.AT_OPEN,
+  AT_CLOSE: TimeInForce.AT_CLOSE,
 };
 
 const LIMIT_TIF_OPTIONS = [
@@ -31,11 +33,15 @@ const LIMIT_TIF_OPTIONS = [
   { label: "IOC", value: "IOC" },
   { label: "FOK", value: "FOK" },
   { label: "DAY", value: "DAY" },
+  { label: "LOO (At Open)", value: "AT_OPEN" },
+  { label: "LOC (At Close)", value: "AT_CLOSE" },
 ];
 
 const MARKET_TIF_OPTIONS = [
   { label: "IOC", value: "IOC" },
   { label: "FOK", value: "FOK" },
+  { label: "MOO (At Open)", value: "AT_OPEN" },
+  { label: "MOC (At Close)", value: "AT_CLOSE" },
 ];
 
 type Mode = "SINGLE" | "BRACKET" | "OCO";

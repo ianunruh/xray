@@ -9,7 +9,7 @@ import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
  * Describes the file orderbook/v1/events.proto.
  */
 export const file_orderbook_v1_events = /*@__PURE__*/
-  fileDesc("ChlvcmRlcmJvb2svdjEvZXZlbnRzLnByb3RvEgxvcmRlcmJvb2sudjEivgIKC09yZGVyUGxhY2VkEhAKCG9yZGVyX2lkGAEgASgJEg4KBnN5bWJvbBgCIAEoCRIgCgRzaWRlGAMgASgOMhIub3JkZXJib29rLnYxLlNpZGUSDQoFcHJpY2UYBCABKAMSEAoIcXVhbnRpdHkYBSABKAMSLQoJcGxhY2VkX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIrCgpvcmRlcl90eXBlGAcgASgOMhcub3JkZXJib29rLnYxLk9yZGVyVHlwZRIwCg10aW1lX2luX2ZvcmNlGAggASgOMhkub3JkZXJib29rLnYxLlRpbWVJbkZvcmNlEhIKCnN0b3BfcHJpY2UYCSABKAMSEgoKYWNjb3VudF9pZBgKIAEoCRIUCgxvY29fZ3JvdXBfaWQYCyABKAkiQgoOT3JkZXJDYW5jZWxsZWQSEAoIb3JkZXJfaWQYASABKAkSDgoGc3ltYm9sGAIgASgJEg4KBnJlYXNvbhgDIAEoCSKwAQoNVHJhZGVFeGVjdXRlZBIQCgh0cmFkZV9pZBgBIAEoCRIUCgxidXlfb3JkZXJfaWQYAiABKAkSFQoNc2VsbF9vcmRlcl9pZBgDIAEoCRIOCgZzeW1ib2wYBCABKAkSDQoFcHJpY2UYBSABKAMSEAoIcXVhbnRpdHkYBiABKAMSLwoLZXhlY3V0ZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIosBCg1TdG9wVHJpZ2dlcmVkEhAKCG9yZGVyX2lkGAEgASgJEg4KBnN5bWJvbBgCIAEoCRISCgpzdG9wX3ByaWNlGAMgASgDEhUKDXRyaWdnZXJfcHJpY2UYBCABKAMSLQoMYWN0aXZhdGVkX2FzGAUgASgOMhcub3JkZXJib29rLnYxLk9yZGVyVHlwZSJNCgxNYXJrZXRDbG9zZWQSDgoGc3ltYm9sGAEgASgJEi0KCWNsb3NlZF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAikwIKC1NhZ2FTdGFydGVkEg8KB3NhZ2FfaWQYASABKAkSDgoGc3ltYm9sGAIgASgJEiYKCmVudHJ5X3NpZGUYAyABKA4yEi5vcmRlcmJvb2sudjEuU2lkZRITCgtlbnRyeV9wcmljZRgEIAEoAxIWCg5lbnRyeV9xdWFudGl0eRgFIAEoAxIZChF0YWtlX3Byb2ZpdF9wcmljZRgGIAEoAxIXCg9zdG9wX2xvc3NfcHJpY2UYByABKAMSFgoOZW50cnlfb3JkZXJfaWQYCCABKAkSLgoKc3RhcnRlZF9hdBgJIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEgoKYWNjb3VudF9pZBgKIAEoCSKHAQoLRW50cnlGaWxsZWQSDwoHc2FnYV9pZBgBIAEoCRIcChR0YWtlX3Byb2ZpdF9vcmRlcl9pZBgCIAEoCRIaChJzdG9wX2xvc3Nfb3JkZXJfaWQYAyABKAkSLQoJZmlsbGVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCKBAQoKRXhpdEZpbGxlZBIPCgdzYWdhX2lkGAEgASgJEhcKD2ZpbGxlZF9vcmRlcl9pZBgCIAEoCRIaChJjYW5jZWxsZWRfb3JkZXJfaWQYAyABKAkSLQoJZmlsbGVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJSCg1TYWdhQ29tcGxldGVkEg8KB3NhZ2FfaWQYASABKAkSMAoMY29tcGxldGVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJcCgpTYWdhRmFpbGVkEg8KB3NhZ2FfaWQYASABKAkSDgoGcmVhc29uGAIgASgJEi0KCWZhaWxlZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAidAoQU2FnYUFjdGlvbkZhaWxlZBIPCgdzYWdhX2lkGAEgASgJEg4KBmFjdGlvbhgCIAEoCRIQCghhdHRlbXB0cxgDIAEoBRItCglmYWlsZWRfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIuIBCg5PQ09TYWdhU3RhcnRlZBIPCgdzYWdhX2lkGAEgASgJEhIKCmFjY291bnRfaWQYAiABKAkSDgoGc3ltYm9sGAMgASgJEiUKCWV4aXRfc2lkZRgEIAEoDjISLm9yZGVyYm9vay52MS5TaWRlEhAKCHF1YW50aXR5GAUgASgDEhkKEXRha2VfcHJvZml0X3ByaWNlGAYgASgDEhcKD3N0b3BfbG9zc19wcmljZRgHIAEoAxIuCgpzdGFydGVkX2F0GAggASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJRChFPQ09TYWdhU2hhcmVzSGVsZBIPCgdzYWdhX2lkGAEgASgJEisKB2hlbGRfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIo0BChFPQ09TYWdhRXhpdFBsYWNlZBIPCgdzYWdhX2lkGAEgASgJEhwKFHRha2VfcHJvZml0X29yZGVyX2lkGAIgASgJEhoKEnN0b3BfbG9zc19vcmRlcl9pZBgDIAEoCRItCglwbGFjZWRfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIqYBChNPQ09TYWdhRmlsbFJlY29yZGVkEg8KB3NhZ2FfaWQYASABKAkSEAoIdHJhZGVfaWQYAiABKAkSEAoIb3JkZXJfaWQYAyABKAkSFQoNZmlsbF9xdWFudGl0eRgEIAEoAxISCgpmaWxsX3ByaWNlGAUgASgDEi8KC3JlY29yZGVkX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJVChBPQ09TYWdhQ29tcGxldGVkEg8KB3NhZ2FfaWQYASABKAkSMAoMY29tcGxldGVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJfCg1PQ09TYWdhRmFpbGVkEg8KB3NhZ2FfaWQYASABKAkSDgoGcmVhc29uGAIgASgJEi0KCWZhaWxlZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAidwoTT0NPU2FnYUFjdGlvbkZhaWxlZBIPCgdzYWdhX2lkGAEgASgJEg4KBmFjdGlvbhgCIAEoCRIQCghhdHRlbXB0cxgDIAEoBRItCglmYWlsZWRfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wKjkKBFNpZGUSFAoQU0lERV9VTlNQRUNJRklFRBAAEgwKCFNJREVfQlVZEAESDQoJU0lERV9TRUxMEAIqiwEKCU9yZGVyVHlwZRIaChZPUkRFUl9UWVBFX1VOU1BFQ0lGSUVEEAASFAoQT1JERVJfVFlQRV9MSU1JVBABEhUKEU9SREVSX1RZUEVfTUFSS0VUEAISGgoWT1JERVJfVFlQRV9TVE9QX01BUktFVBADEhkKFU9SREVSX1RZUEVfU1RPUF9MSU1JVBAEKogBCgtUaW1lSW5Gb3JjZRIdChlUSU1FX0lOX0ZPUkNFX1VOU1BFQ0lGSUVEEAASFQoRVElNRV9JTl9GT1JDRV9HVEMQARIVChFUSU1FX0lOX0ZPUkNFX0lPQxACEhUKEVRJTUVfSU5fRk9SQ0VfRk9LEAMSFQoRVElNRV9JTl9GT1JDRV9EQVkQBEI3WjVnaXRodWIuY29tL2lhbnVucnVoL3hyYXkvZ2VuL29yZGVyYm9vay92MTtvcmRlcmJvb2t2MWIGcHJvdG8z", [file_google_protobuf_timestamp]);
+  fileDesc("ChlvcmRlcmJvb2svdjEvZXZlbnRzLnByb3RvEgxvcmRlcmJvb2sudjEivgIKC09yZGVyUGxhY2VkEhAKCG9yZGVyX2lkGAEgASgJEg4KBnN5bWJvbBgCIAEoCRIgCgRzaWRlGAMgASgOMhIub3JkZXJib29rLnYxLlNpZGUSDQoFcHJpY2UYBCABKAMSEAoIcXVhbnRpdHkYBSABKAMSLQoJcGxhY2VkX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIrCgpvcmRlcl90eXBlGAcgASgOMhcub3JkZXJib29rLnYxLk9yZGVyVHlwZRIwCg10aW1lX2luX2ZvcmNlGAggASgOMhkub3JkZXJib29rLnYxLlRpbWVJbkZvcmNlEhIKCnN0b3BfcHJpY2UYCSABKAMSEgoKYWNjb3VudF9pZBgKIAEoCRIUCgxvY29fZ3JvdXBfaWQYCyABKAkiQgoOT3JkZXJDYW5jZWxsZWQSEAoIb3JkZXJfaWQYASABKAkSDgoGc3ltYm9sGAIgASgJEg4KBnJlYXNvbhgDIAEoCSLdAQoNVHJhZGVFeGVjdXRlZBIQCgh0cmFkZV9pZBgBIAEoCRIUCgxidXlfb3JkZXJfaWQYAiABKAkSFQoNc2VsbF9vcmRlcl9pZBgDIAEoCRIOCgZzeW1ib2wYBCABKAkSDQoFcHJpY2UYBSABKAMSEAoIcXVhbnRpdHkYBiABKAMSLwoLZXhlY3V0ZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEisKCmNyb3NzX3R5cGUYCCABKA4yFy5vcmRlcmJvb2sudjEuQ3Jvc3NUeXBlIosBCg1TdG9wVHJpZ2dlcmVkEhAKCG9yZGVyX2lkGAEgASgJEg4KBnN5bWJvbBgCIAEoCRISCgpzdG9wX3ByaWNlGAMgASgDEhUKDXRyaWdnZXJfcHJpY2UYBCABKAMSLQoMYWN0aXZhdGVkX2FzGAUgASgOMhcub3JkZXJib29rLnYxLk9yZGVyVHlwZSJNCgxNYXJrZXRDbG9zZWQSDgoGc3ltYm9sGAEgASgJEi0KCWNsb3NlZF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAihgEKEk1hcmtldFBoYXNlQ2hhbmdlZBIOCgZzeW1ib2wYASABKAkSKAoFcGhhc2UYAiABKA4yGS5vcmRlcmJvb2sudjEuTWFya2V0UGhhc2USDgoGcmVhc29uGAMgASgJEiYKAmF0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCLnAQoQQXVjdGlvblVuY3Jvc3NlZBIOCgZzeW1ib2wYASABKAkSFgoOY2xlYXJpbmdfcHJpY2UYAiABKAMSEwoLbWF0Y2hlZF9xdHkYAyABKAMSFQoNaW1iYWxhbmNlX3F0eRgEIAEoAxIqCg5pbWJhbGFuY2Vfc2lkZRgFIAEoDjISLm9yZGVyYm9vay52MS5TaWRlEisKCmNyb3NzX3R5cGUYBiABKA4yFy5vcmRlcmJvb2sudjEuQ3Jvc3NUeXBlEiYKAmF0GAcgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCKLAQoQT2ZmaWNpYWxDbG9zZVNldBIOCgZzeW1ib2wYASABKAkSFAoMc2Vzc2lvbl9kYXRlGAIgASgJEhMKC2Nsb3NlX3ByaWNlGAMgASgDEhQKDGNsb3NlX3ZvbHVtZRgEIAEoAxImCgJhdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAikwIKC1NhZ2FTdGFydGVkEg8KB3NhZ2FfaWQYASABKAkSDgoGc3ltYm9sGAIgASgJEiYKCmVudHJ5X3NpZGUYAyABKA4yEi5vcmRlcmJvb2sudjEuU2lkZRITCgtlbnRyeV9wcmljZRgEIAEoAxIWCg5lbnRyeV9xdWFudGl0eRgFIAEoAxIZChF0YWtlX3Byb2ZpdF9wcmljZRgGIAEoAxIXCg9zdG9wX2xvc3NfcHJpY2UYByABKAMSFgoOZW50cnlfb3JkZXJfaWQYCCABKAkSLgoKc3RhcnRlZF9hdBgJIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEgoKYWNjb3VudF9pZBgKIAEoCSKHAQoLRW50cnlGaWxsZWQSDwoHc2FnYV9pZBgBIAEoCRIcChR0YWtlX3Byb2ZpdF9vcmRlcl9pZBgCIAEoCRIaChJzdG9wX2xvc3Nfb3JkZXJfaWQYAyABKAkSLQoJZmlsbGVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCKBAQoKRXhpdEZpbGxlZBIPCgdzYWdhX2lkGAEgASgJEhcKD2ZpbGxlZF9vcmRlcl9pZBgCIAEoCRIaChJjYW5jZWxsZWRfb3JkZXJfaWQYAyABKAkSLQoJZmlsbGVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJSCg1TYWdhQ29tcGxldGVkEg8KB3NhZ2FfaWQYASABKAkSMAoMY29tcGxldGVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJcCgpTYWdhRmFpbGVkEg8KB3NhZ2FfaWQYASABKAkSDgoGcmVhc29uGAIgASgJEi0KCWZhaWxlZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAidAoQU2FnYUFjdGlvbkZhaWxlZBIPCgdzYWdhX2lkGAEgASgJEg4KBmFjdGlvbhgCIAEoCRIQCghhdHRlbXB0cxgDIAEoBRItCglmYWlsZWRfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIuIBCg5PQ09TYWdhU3RhcnRlZBIPCgdzYWdhX2lkGAEgASgJEhIKCmFjY291bnRfaWQYAiABKAkSDgoGc3ltYm9sGAMgASgJEiUKCWV4aXRfc2lkZRgEIAEoDjISLm9yZGVyYm9vay52MS5TaWRlEhAKCHF1YW50aXR5GAUgASgDEhkKEXRha2VfcHJvZml0X3ByaWNlGAYgASgDEhcKD3N0b3BfbG9zc19wcmljZRgHIAEoAxIuCgpzdGFydGVkX2F0GAggASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJRChFPQ09TYWdhU2hhcmVzSGVsZBIPCgdzYWdhX2lkGAEgASgJEisKB2hlbGRfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIo0BChFPQ09TYWdhRXhpdFBsYWNlZBIPCgdzYWdhX2lkGAEgASgJEhwKFHRha2VfcHJvZml0X29yZGVyX2lkGAIgASgJEhoKEnN0b3BfbG9zc19vcmRlcl9pZBgDIAEoCRItCglwbGFjZWRfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIqYBChNPQ09TYWdhRmlsbFJlY29yZGVkEg8KB3NhZ2FfaWQYASABKAkSEAoIdHJhZGVfaWQYAiABKAkSEAoIb3JkZXJfaWQYAyABKAkSFQoNZmlsbF9xdWFudGl0eRgEIAEoAxISCgpmaWxsX3ByaWNlGAUgASgDEi8KC3JlY29yZGVkX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJVChBPQ09TYWdhQ29tcGxldGVkEg8KB3NhZ2FfaWQYASABKAkSMAoMY29tcGxldGVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJfCg1PQ09TYWdhRmFpbGVkEg8KB3NhZ2FfaWQYASABKAkSDgoGcmVhc29uGAIgASgJEi0KCWZhaWxlZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAidwoTT0NPU2FnYUFjdGlvbkZhaWxlZBIPCgdzYWdhX2lkGAEgASgJEg4KBmFjdGlvbhgCIAEoCRIQCghhdHRlbXB0cxgDIAEoBRItCglmYWlsZWRfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wKjkKBFNpZGUSFAoQU0lERV9VTlNQRUNJRklFRBAAEgwKCFNJREVfQlVZEAESDQoJU0lERV9TRUxMEAIqiwEKCU9yZGVyVHlwZRIaChZPUkRFUl9UWVBFX1VOU1BFQ0lGSUVEEAASFAoQT1JERVJfVFlQRV9MSU1JVBABEhUKEU9SREVSX1RZUEVfTUFSS0VUEAISGgoWT1JERVJfVFlQRV9TVE9QX01BUktFVBADEhkKFU9SREVSX1RZUEVfU1RPUF9MSU1JVBAEKr8BCgtUaW1lSW5Gb3JjZRIdChlUSU1FX0lOX0ZPUkNFX1VOU1BFQ0lGSUVEEAASFQoRVElNRV9JTl9GT1JDRV9HVEMQARIVChFUSU1FX0lOX0ZPUkNFX0lPQxACEhUKEVRJTUVfSU5fRk9SQ0VfRk9LEAMSFQoRVElNRV9JTl9GT1JDRV9EQVkQBBIZChVUSU1FX0lOX0ZPUkNFX0FUX09QRU4QBRIaChZUSU1FX0lOX0ZPUkNFX0FUX0NMT1NFEAYqnQEKC01hcmtldFBoYXNlEhwKGE1BUktFVF9QSEFTRV9VTlNQRUNJRklFRBAAEhsKF01BUktFVF9QSEFTRV9DT05USU5VT1VTEAESGAoUTUFSS0VUX1BIQVNFX0FVQ1RJT04QAhIgChxNQVJLRVRfUEhBU0VfQ0xPU0lOR19BVUNUSU9OEAMSFwoTTUFSS0VUX1BIQVNFX0NMT1NFRBAEKmwKCUNyb3NzVHlwZRITCg9DUk9TU19UWVBFX05PTkUQABIWChJDUk9TU19UWVBFX09QRU5JTkcQARIWChJDUk9TU19UWVBFX0NMT1NJTkcQAhIaChZDUk9TU19UWVBFX0hBTFRfUkVPUEVOEANCN1o1Z2l0aHViLmNvbS9pYW51bnJ1aC94cmF5L2dlbi9vcmRlcmJvb2svdjE7b3JkZXJib29rdjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
 
 /**
  * Describes the message orderbook.v1.OrderPlaced.
@@ -47,95 +47,116 @@ export const MarketClosedSchema = /*@__PURE__*/
   messageDesc(file_orderbook_v1_events, 4);
 
 /**
+ * Describes the message orderbook.v1.MarketPhaseChanged.
+ * Use `create(MarketPhaseChangedSchema)` to create a new message.
+ */
+export const MarketPhaseChangedSchema = /*@__PURE__*/
+  messageDesc(file_orderbook_v1_events, 5);
+
+/**
+ * Describes the message orderbook.v1.AuctionUncrossed.
+ * Use `create(AuctionUncrossedSchema)` to create a new message.
+ */
+export const AuctionUncrossedSchema = /*@__PURE__*/
+  messageDesc(file_orderbook_v1_events, 6);
+
+/**
+ * Describes the message orderbook.v1.OfficialCloseSet.
+ * Use `create(OfficialCloseSetSchema)` to create a new message.
+ */
+export const OfficialCloseSetSchema = /*@__PURE__*/
+  messageDesc(file_orderbook_v1_events, 7);
+
+/**
  * Describes the message orderbook.v1.SagaStarted.
  * Use `create(SagaStartedSchema)` to create a new message.
  */
 export const SagaStartedSchema = /*@__PURE__*/
-  messageDesc(file_orderbook_v1_events, 5);
+  messageDesc(file_orderbook_v1_events, 8);
 
 /**
  * Describes the message orderbook.v1.EntryFilled.
  * Use `create(EntryFilledSchema)` to create a new message.
  */
 export const EntryFilledSchema = /*@__PURE__*/
-  messageDesc(file_orderbook_v1_events, 6);
+  messageDesc(file_orderbook_v1_events, 9);
 
 /**
  * Describes the message orderbook.v1.ExitFilled.
  * Use `create(ExitFilledSchema)` to create a new message.
  */
 export const ExitFilledSchema = /*@__PURE__*/
-  messageDesc(file_orderbook_v1_events, 7);
+  messageDesc(file_orderbook_v1_events, 10);
 
 /**
  * Describes the message orderbook.v1.SagaCompleted.
  * Use `create(SagaCompletedSchema)` to create a new message.
  */
 export const SagaCompletedSchema = /*@__PURE__*/
-  messageDesc(file_orderbook_v1_events, 8);
+  messageDesc(file_orderbook_v1_events, 11);
 
 /**
  * Describes the message orderbook.v1.SagaFailed.
  * Use `create(SagaFailedSchema)` to create a new message.
  */
 export const SagaFailedSchema = /*@__PURE__*/
-  messageDesc(file_orderbook_v1_events, 9);
+  messageDesc(file_orderbook_v1_events, 12);
 
 /**
  * Describes the message orderbook.v1.SagaActionFailed.
  * Use `create(SagaActionFailedSchema)` to create a new message.
  */
 export const SagaActionFailedSchema = /*@__PURE__*/
-  messageDesc(file_orderbook_v1_events, 10);
+  messageDesc(file_orderbook_v1_events, 13);
 
 /**
  * Describes the message orderbook.v1.OCOSagaStarted.
  * Use `create(OCOSagaStartedSchema)` to create a new message.
  */
 export const OCOSagaStartedSchema = /*@__PURE__*/
-  messageDesc(file_orderbook_v1_events, 11);
+  messageDesc(file_orderbook_v1_events, 14);
 
 /**
  * Describes the message orderbook.v1.OCOSagaSharesHeld.
  * Use `create(OCOSagaSharesHeldSchema)` to create a new message.
  */
 export const OCOSagaSharesHeldSchema = /*@__PURE__*/
-  messageDesc(file_orderbook_v1_events, 12);
+  messageDesc(file_orderbook_v1_events, 15);
 
 /**
  * Describes the message orderbook.v1.OCOSagaExitPlaced.
  * Use `create(OCOSagaExitPlacedSchema)` to create a new message.
  */
 export const OCOSagaExitPlacedSchema = /*@__PURE__*/
-  messageDesc(file_orderbook_v1_events, 13);
+  messageDesc(file_orderbook_v1_events, 16);
 
 /**
  * Describes the message orderbook.v1.OCOSagaFillRecorded.
  * Use `create(OCOSagaFillRecordedSchema)` to create a new message.
  */
 export const OCOSagaFillRecordedSchema = /*@__PURE__*/
-  messageDesc(file_orderbook_v1_events, 14);
+  messageDesc(file_orderbook_v1_events, 17);
 
 /**
  * Describes the message orderbook.v1.OCOSagaCompleted.
  * Use `create(OCOSagaCompletedSchema)` to create a new message.
  */
 export const OCOSagaCompletedSchema = /*@__PURE__*/
-  messageDesc(file_orderbook_v1_events, 15);
+  messageDesc(file_orderbook_v1_events, 18);
 
 /**
  * Describes the message orderbook.v1.OCOSagaFailed.
  * Use `create(OCOSagaFailedSchema)` to create a new message.
  */
 export const OCOSagaFailedSchema = /*@__PURE__*/
-  messageDesc(file_orderbook_v1_events, 16);
+  messageDesc(file_orderbook_v1_events, 19);
 
 /**
  * Describes the message orderbook.v1.OCOSagaActionFailed.
  * Use `create(OCOSagaActionFailedSchema)` to create a new message.
  */
 export const OCOSagaActionFailedSchema = /*@__PURE__*/
-  messageDesc(file_orderbook_v1_events, 17);
+  messageDesc(file_orderbook_v1_events, 20);
 
 /**
  * Describes the enum orderbook.v1.Side.
@@ -172,4 +193,39 @@ export const TimeInForceSchema = /*@__PURE__*/
  */
 export const TimeInForce = /*@__PURE__*/
   tsEnum(TimeInForceSchema);
+
+/**
+ * Describes the enum orderbook.v1.MarketPhase.
+ */
+export const MarketPhaseSchema = /*@__PURE__*/
+  enumDesc(file_orderbook_v1_events, 3);
+
+/**
+ * MarketPhase gates how the orderbook handles incoming orders. Default
+ * (no MarketPhaseChanged events in history) is CONTINUOUS — the existing
+ * price-time priority matching behaviour. AUCTION accumulates orders
+ * without crossing; Uncross runs an equilibrium-price algorithm and
+ * flips back to CONTINUOUS. CLOSING_AUCTION is the same but flips to
+ * CLOSED on uncross.
+ *
+ * @generated from enum orderbook.v1.MarketPhase
+ */
+export const MarketPhase = /*@__PURE__*/
+  tsEnum(MarketPhaseSchema);
+
+/**
+ * Describes the enum orderbook.v1.CrossType.
+ */
+export const CrossTypeSchema = /*@__PURE__*/
+  enumDesc(file_orderbook_v1_events, 4);
+
+/**
+ * CrossType marks how a trade was produced. NONE = ordinary continuous
+ * trade; OPENING/CLOSING tag the batch emitted by an auction uncross;
+ * HALT_REOPEN is reserved for intraday halt/reopen auctions.
+ *
+ * @generated from enum orderbook.v1.CrossType
+ */
+export const CrossType = /*@__PURE__*/
+  tsEnum(CrossTypeSchema);
 

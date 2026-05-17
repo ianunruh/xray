@@ -4,7 +4,7 @@
 
 import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
-import type { OrderType, Side, TimeInForce } from "./events_pb";
+import type { MarketPhase, OrderType, Side, TimeInForce } from "./events_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
@@ -25,6 +25,14 @@ export declare type OrderBookSnapshot = Message<"orderbook.v1.OrderBookSnapshot"
    * @generated from field: repeated orderbook.v1.OrderSnapshot orders = 2;
    */
   orders: OrderSnapshot[];
+
+  /**
+   * Default 0 (UNSPECIFIED) restores as CONTINUOUS so historical
+   * snapshots taken before phase tracking existed remain valid.
+   *
+   * @generated from field: orderbook.v1.MarketPhase phase = 3;
+   */
+  phase: MarketPhase;
 };
 
 /**

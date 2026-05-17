@@ -464,6 +464,7 @@ func (s *Server) StreamTrades(ctx context.Context, req *connect.Request[orderboo
 					Price:       data.Price,
 					Quantity:    data.Quantity,
 					ExecutedAt:  data.ExecutedAt,
+					CrossType:   data.CrossType,
 				}); err != nil {
 					return err
 				}
