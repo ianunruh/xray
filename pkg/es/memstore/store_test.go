@@ -3,6 +3,7 @@ package memstore_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -88,6 +89,111 @@ func TestStore_LoadFrom(t *testing.T) {
 	loaded, err = store.LoadFrom(ctx, "orderbook:AAPL", 10)
 	require.NoError(t, err)
 	assert.Empty(t, loaded)
+}
+
+func TestStore_LoadRange(t *testing.T) {
+	store := memstore.New()
+	ctx := context.Background()
+
+	events := []es.RawEvent{
+		{Type: "A", Data: []byte("a")},
+		{Type: "B", Data: []byte("b")},
+		{Type: "C", Data: []byte("c")},
+		{Type: "D", Data: []byte("d")},
+	}
+	require.NoError(t, store.Append(ctx, "orderbook:AAPL", 0, events))
+
+	// Closed interval [2, 3].
+	loaded, err := store.LoadRange(ctx, "orderbook:AAPL", 2, 3)
+	require.NoError(t, err)
+	require.Len(t, loaded, 2)
+	assert.Equal(t, "B", loaded[0].Type)
+	assert.Equal(t, "C", loaded[1].Type)
+
+	// fromVersion == toVersion returns single event.
+	loaded, err = store.LoadRange(ctx, "orderbook:AAPL", 3, 3)
+	require.NoError(t, err)
+	require.Len(t, loaded, 1)
+	assert.Equal(t, "C", loaded[0].Type)
+
+	// toVersion <= 0 means no upper bound — equivalent to LoadFrom.
+	loaded, err = store.LoadRange(ctx, "orderbook:AAPL", 3, 0)
+	require.NoError(t, err)
+	require.Len(t, loaded, 2)
+	assert.Equal(t, "C", loaded[0].Type)
+	assert.Equal(t, "D", loaded[1].Type)
+
+	// Range entirely beyond stream returns empty.
+	loaded, err = store.LoadRange(ctx, "orderbook:AAPL", 10, 20)
+	require.NoError(t, err)
+	assert.Empty(t, loaded)
+}
+
+func TestStore_StreamMetadata(t *testing.T) {
+	store := memstore.New()
+	ctx := context.Background()
+
+	// Empty stream returns zero values, no error.
+	meta, err := store.StreamMetadata(ctx, "orderbook:AAPL")
+	require.NoError(t, err)
+	assert.Equal(t, 0, meta.FirstVersion)
+	assert.Equal(t, 0, meta.LastVersion)
+	assert.True(t, meta.FirstTimestamp.IsZero())
+
+	t0 := time.Date(2026, 1, 1, 9, 30, 0, 0, time.UTC)
+	t1 := t0.Add(5 * time.Minute)
+	t2 := t0.Add(10 * time.Minute)
+	require.NoError(t, store.Append(ctx, "orderbook:AAPL", 0, []es.RawEvent{
+		{Type: "A", Timestamp: t0, Data: []byte("a")},
+		{Type: "B", Timestamp: t1, Data: []byte("b")},
+		{Type: "C", Timestamp: t2, Data: []byte("c")},
+	}))
+
+	meta, err = store.StreamMetadata(ctx, "orderbook:AAPL")
+	require.NoError(t, err)
+	assert.Equal(t, 1, meta.FirstVersion)
+	assert.Equal(t, 3, meta.LastVersion)
+	assert.True(t, meta.FirstTimestamp.Equal(t0))
+	assert.True(t, meta.LastTimestamp.Equal(t2))
+}
+
+func TestStore_VersionAtTimestamp(t *testing.T) {
+	store := memstore.New()
+	ctx := context.Background()
+
+	// Empty stream returns 0.
+	v, err := store.VersionAtTimestamp(ctx, "orderbook:AAPL", time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, 0, v)
+
+	t0 := time.Date(2026, 1, 1, 9, 30, 0, 0, time.UTC)
+	t1 := t0.Add(5 * time.Minute)
+	t2 := t0.Add(10 * time.Minute)
+	require.NoError(t, store.Append(ctx, "orderbook:AAPL", 0, []es.RawEvent{
+		{Type: "A", Timestamp: t0, Data: []byte("a")},
+		{Type: "B", Timestamp: t1, Data: []byte("b")},
+		{Type: "C", Timestamp: t2, Data: []byte("c")},
+	}))
+
+	// Before the first event.
+	v, err = store.VersionAtTimestamp(ctx, "orderbook:AAPL", t0.Add(-time.Second))
+	require.NoError(t, err)
+	assert.Equal(t, 0, v)
+
+	// Exactly at the first event.
+	v, err = store.VersionAtTimestamp(ctx, "orderbook:AAPL", t0)
+	require.NoError(t, err)
+	assert.Equal(t, 1, v)
+
+	// Between events 2 and 3.
+	v, err = store.VersionAtTimestamp(ctx, "orderbook:AAPL", t1.Add(30*time.Second))
+	require.NoError(t, err)
+	assert.Equal(t, 2, v)
+
+	// After the last event.
+	v, err = store.VersionAtTimestamp(ctx, "orderbook:AAPL", t2.Add(time.Hour))
+	require.NoError(t, err)
+	assert.Equal(t, 3, v)
 }
 
 func TestStore_LoadSnapshot_None(t *testing.T) {

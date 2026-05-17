@@ -1062,6 +1062,172 @@ export declare type OrderSummary = Message<"orderbook.v1.OrderSummary"> & {
 export declare const OrderSummarySchema: GenMessage<OrderSummary>;
 
 /**
+ * @generated from message orderbook.v1.GetReplayBoundsRequest
+ */
+export declare type GetReplayBoundsRequest = Message<"orderbook.v1.GetReplayBoundsRequest"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+};
+
+/**
+ * Describes the message orderbook.v1.GetReplayBoundsRequest.
+ * Use `create(GetReplayBoundsRequestSchema)` to create a new message.
+ */
+export declare const GetReplayBoundsRequestSchema: GenMessage<GetReplayBoundsRequest>;
+
+/**
+ * @generated from message orderbook.v1.GetReplayBoundsResponse
+ */
+export declare type GetReplayBoundsResponse = Message<"orderbook.v1.GetReplayBoundsResponse"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * Inclusive version range of the aggregate's event stream.
+   *
+   * @generated from field: int32 first_version = 2;
+   */
+  firstVersion: number;
+
+  /**
+   * @generated from field: int32 last_version = 3;
+   */
+  lastVersion: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp first_timestamp = 4;
+   */
+  firstTimestamp?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_timestamp = 5;
+   */
+  lastTimestamp?: Timestamp | undefined;
+
+  /**
+   * The live phase of the orderbook right now (head of stream).
+   *
+   * @generated from field: orderbook.v1.MarketPhase current_phase = 6;
+   */
+  currentPhase: MarketPhase;
+};
+
+/**
+ * Describes the message orderbook.v1.GetReplayBoundsResponse.
+ * Use `create(GetReplayBoundsResponseSchema)` to create a new message.
+ */
+export declare const GetReplayBoundsResponseSchema: GenMessage<GetReplayBoundsResponse>;
+
+/**
+ * @generated from message orderbook.v1.ReplayOrderBookRequest
+ */
+export declare type ReplayOrderBookRequest = Message<"orderbook.v1.ReplayOrderBookRequest"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * Address the replay point by either version or timestamp.
+   *
+   * @generated from oneof orderbook.v1.ReplayOrderBookRequest.at
+   */
+  at: {
+    /**
+     * @generated from field: int32 at_version = 2;
+     */
+    value: number;
+    case: "atVersion";
+  } | {
+    /**
+     * @generated from field: google.protobuf.Timestamp at_timestamp = 3;
+     */
+    value: Timestamp;
+    case: "atTimestamp";
+  } | { case: undefined; value?: undefined };
+
+  /**
+   * Maximum number of recent trades to include in the response.
+   * Defaults to 50 if zero.
+   *
+   * @generated from field: int32 trade_limit = 4;
+   */
+  tradeLimit: number;
+};
+
+/**
+ * Describes the message orderbook.v1.ReplayOrderBookRequest.
+ * Use `create(ReplayOrderBookRequestSchema)` to create a new message.
+ */
+export declare const ReplayOrderBookRequestSchema: GenMessage<ReplayOrderBookRequest>;
+
+/**
+ * @generated from message orderbook.v1.ReplayOrderBookResponse
+ */
+export declare type ReplayOrderBookResponse = Message<"orderbook.v1.ReplayOrderBookResponse"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * The resolved version the response reflects.
+   *
+   * @generated from field: int32 at_version = 2;
+   */
+  atVersion: number;
+
+  /**
+   * Timestamp of the event at at_version (or zero if no events).
+   *
+   * @generated from field: google.protobuf.Timestamp at_timestamp = 3;
+   */
+  atTimestamp?: Timestamp | undefined;
+
+  /**
+   * @generated from field: orderbook.v1.MarketPhase phase = 4;
+   */
+  phase: MarketPhase;
+
+  /**
+   * Depth-aggregated bids/asks reconstructed from the replayed aggregate.
+   *
+   * @generated from field: repeated orderbook.v1.PriceLevel bids = 5;
+   */
+  bids: PriceLevel[];
+
+  /**
+   * @generated from field: repeated orderbook.v1.PriceLevel asks = 6;
+   */
+  asks: PriceLevel[];
+
+  /**
+   * Open orders as of at_version.
+   *
+   * @generated from field: repeated orderbook.v1.OrderSummary orders = 7;
+   */
+  orders: OrderSummary[];
+
+  /**
+   * Most recent trades at or before at_version (oldest-first), up to
+   * trade_limit. Drawn from a bounded look-back window for cheap reads.
+   *
+   * @generated from field: repeated orderbook.v1.Trade recent_trades = 8;
+   */
+  recentTrades: Trade[];
+};
+
+/**
+ * Describes the message orderbook.v1.ReplayOrderBookResponse.
+ * Use `create(ReplayOrderBookResponseSchema)` to create a new message.
+ */
+export declare const ReplayOrderBookResponseSchema: GenMessage<ReplayOrderBookResponse>;
+
+/**
  * @generated from enum orderbook.v1.OrderStatus
  */
 export enum OrderStatus {
@@ -1291,6 +1457,22 @@ export declare const OrderBookService: GenService<{
     methodKind: "server_streaming";
     input: typeof StreamCandlesRequestSchema;
     output: typeof CandleSchema;
+  },
+  /**
+   * @generated from rpc orderbook.v1.OrderBookService.GetReplayBounds
+   */
+  getReplayBounds: {
+    methodKind: "unary";
+    input: typeof GetReplayBoundsRequestSchema;
+    output: typeof GetReplayBoundsResponseSchema;
+  },
+  /**
+   * @generated from rpc orderbook.v1.OrderBookService.ReplayOrderBook
+   */
+  replayOrderBook: {
+    methodKind: "unary";
+    input: typeof ReplayOrderBookRequestSchema;
+    output: typeof ReplayOrderBookResponseSchema;
   },
 }>;
 

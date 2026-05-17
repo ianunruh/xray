@@ -90,6 +90,12 @@ const (
 	// OrderBookServiceStreamCandlesProcedure is the fully-qualified name of the OrderBookService's
 	// StreamCandles RPC.
 	OrderBookServiceStreamCandlesProcedure = "/orderbook.v1.OrderBookService/StreamCandles"
+	// OrderBookServiceGetReplayBoundsProcedure is the fully-qualified name of the OrderBookService's
+	// GetReplayBounds RPC.
+	OrderBookServiceGetReplayBoundsProcedure = "/orderbook.v1.OrderBookService/GetReplayBounds"
+	// OrderBookServiceReplayOrderBookProcedure is the fully-qualified name of the OrderBookService's
+	// ReplayOrderBook RPC.
+	OrderBookServiceReplayOrderBookProcedure = "/orderbook.v1.OrderBookService/ReplayOrderBook"
 )
 
 // OrderBookServiceClient is a client for the orderbook.v1.OrderBookService service.
@@ -113,6 +119,8 @@ type OrderBookServiceClient interface {
 	StreamTrades(context.Context, *connect.Request[v1.StreamTradesRequest]) (*connect.ServerStreamForClient[v1.Trade], error)
 	GetCandles(context.Context, *connect.Request[v1.GetCandlesRequest]) (*connect.Response[v1.GetCandlesResponse], error)
 	StreamCandles(context.Context, *connect.Request[v1.StreamCandlesRequest]) (*connect.ServerStreamForClient[v1.Candle], error)
+	GetReplayBounds(context.Context, *connect.Request[v1.GetReplayBoundsRequest]) (*connect.Response[v1.GetReplayBoundsResponse], error)
+	ReplayOrderBook(context.Context, *connect.Request[v1.ReplayOrderBookRequest]) (*connect.Response[v1.ReplayOrderBookResponse], error)
 }
 
 // NewOrderBookServiceClient constructs a client for the orderbook.v1.OrderBookService service. By
@@ -240,6 +248,18 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(orderBookServiceMethods.ByName("StreamCandles")),
 			connect.WithClientOptions(opts...),
 		),
+		getReplayBounds: connect.NewClient[v1.GetReplayBoundsRequest, v1.GetReplayBoundsResponse](
+			httpClient,
+			baseURL+OrderBookServiceGetReplayBoundsProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("GetReplayBounds")),
+			connect.WithClientOptions(opts...),
+		),
+		replayOrderBook: connect.NewClient[v1.ReplayOrderBookRequest, v1.ReplayOrderBookResponse](
+			httpClient,
+			baseURL+OrderBookServiceReplayOrderBookProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("ReplayOrderBook")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -264,6 +284,8 @@ type orderBookServiceClient struct {
 	streamTrades        *connect.Client[v1.StreamTradesRequest, v1.Trade]
 	getCandles          *connect.Client[v1.GetCandlesRequest, v1.GetCandlesResponse]
 	streamCandles       *connect.Client[v1.StreamCandlesRequest, v1.Candle]
+	getReplayBounds     *connect.Client[v1.GetReplayBoundsRequest, v1.GetReplayBoundsResponse]
+	replayOrderBook     *connect.Client[v1.ReplayOrderBookRequest, v1.ReplayOrderBookResponse]
 }
 
 // PlaceOrder calls orderbook.v1.OrderBookService.PlaceOrder.
@@ -361,6 +383,16 @@ func (c *orderBookServiceClient) StreamCandles(ctx context.Context, req *connect
 	return c.streamCandles.CallServerStream(ctx, req)
 }
 
+// GetReplayBounds calls orderbook.v1.OrderBookService.GetReplayBounds.
+func (c *orderBookServiceClient) GetReplayBounds(ctx context.Context, req *connect.Request[v1.GetReplayBoundsRequest]) (*connect.Response[v1.GetReplayBoundsResponse], error) {
+	return c.getReplayBounds.CallUnary(ctx, req)
+}
+
+// ReplayOrderBook calls orderbook.v1.OrderBookService.ReplayOrderBook.
+func (c *orderBookServiceClient) ReplayOrderBook(ctx context.Context, req *connect.Request[v1.ReplayOrderBookRequest]) (*connect.Response[v1.ReplayOrderBookResponse], error) {
+	return c.replayOrderBook.CallUnary(ctx, req)
+}
+
 // OrderBookServiceHandler is an implementation of the orderbook.v1.OrderBookService service.
 type OrderBookServiceHandler interface {
 	PlaceOrder(context.Context, *connect.Request[v1.PlaceOrderRequest]) (*connect.Response[v1.PlaceOrderResponse], error)
@@ -382,6 +414,8 @@ type OrderBookServiceHandler interface {
 	StreamTrades(context.Context, *connect.Request[v1.StreamTradesRequest], *connect.ServerStream[v1.Trade]) error
 	GetCandles(context.Context, *connect.Request[v1.GetCandlesRequest]) (*connect.Response[v1.GetCandlesResponse], error)
 	StreamCandles(context.Context, *connect.Request[v1.StreamCandlesRequest], *connect.ServerStream[v1.Candle]) error
+	GetReplayBounds(context.Context, *connect.Request[v1.GetReplayBoundsRequest]) (*connect.Response[v1.GetReplayBoundsResponse], error)
+	ReplayOrderBook(context.Context, *connect.Request[v1.ReplayOrderBookRequest]) (*connect.Response[v1.ReplayOrderBookResponse], error)
 }
 
 // NewOrderBookServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -505,6 +539,18 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 		connect.WithSchema(orderBookServiceMethods.ByName("StreamCandles")),
 		connect.WithHandlerOptions(opts...),
 	)
+	orderBookServiceGetReplayBoundsHandler := connect.NewUnaryHandler(
+		OrderBookServiceGetReplayBoundsProcedure,
+		svc.GetReplayBounds,
+		connect.WithSchema(orderBookServiceMethods.ByName("GetReplayBounds")),
+		connect.WithHandlerOptions(opts...),
+	)
+	orderBookServiceReplayOrderBookHandler := connect.NewUnaryHandler(
+		OrderBookServiceReplayOrderBookProcedure,
+		svc.ReplayOrderBook,
+		connect.WithSchema(orderBookServiceMethods.ByName("ReplayOrderBook")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/orderbook.v1.OrderBookService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case OrderBookServicePlaceOrderProcedure:
@@ -545,6 +591,10 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 			orderBookServiceGetCandlesHandler.ServeHTTP(w, r)
 		case OrderBookServiceStreamCandlesProcedure:
 			orderBookServiceStreamCandlesHandler.ServeHTTP(w, r)
+		case OrderBookServiceGetReplayBoundsProcedure:
+			orderBookServiceGetReplayBoundsHandler.ServeHTTP(w, r)
+		case OrderBookServiceReplayOrderBookProcedure:
+			orderBookServiceReplayOrderBookHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -628,4 +678,12 @@ func (UnimplementedOrderBookServiceHandler) GetCandles(context.Context, *connect
 
 func (UnimplementedOrderBookServiceHandler) StreamCandles(context.Context, *connect.Request[v1.StreamCandlesRequest], *connect.ServerStream[v1.Candle]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.StreamCandles is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) GetReplayBounds(context.Context, *connect.Request[v1.GetReplayBoundsRequest]) (*connect.Response[v1.GetReplayBoundsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.GetReplayBounds is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) ReplayOrderBook(context.Context, *connect.Request[v1.ReplayOrderBookRequest]) (*connect.Response[v1.ReplayOrderBookResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.ReplayOrderBook is not implemented"))
 }

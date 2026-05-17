@@ -343,6 +343,208 @@ func TestHandler_CacheReuse(t *testing.T) {
 	assert.Len(t, raw, 2)
 }
 
+func TestHandler_LoadAt_NoSnapshot(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+
+	handler := es.NewHandler(store, registry, func(id string) *testAggregate {
+		a := &testAggregate{}
+		a.SetID(id)
+		return a
+	}, slog.Default())
+
+	ctx := context.Background()
+	cmd := testCommand{aggregateID: "orderbook:AAPL"}
+
+	// Append 5 events via the handler.
+	for i := 1; i <= 5; i++ {
+		err := handler.Handle(ctx, cmd, func(agg *testAggregate) ([]es.Event, error) {
+			evt := es.Event{
+				AggregateID: agg.AggregateID(),
+				Type:        "OrderPlaced",
+				Timestamp:   time.Now(),
+				Data: &orderbookv1.OrderPlaced{
+					OrderId:  fmt.Sprintf("order-%d", i),
+					Symbol:   "AAPL",
+					Side:     orderbookv1.Side_SIDE_BUY,
+					Price:    1500000,
+					Quantity: 1,
+					PlacedAt: timestamppb.Now(),
+				},
+			}
+			require.NoError(t, agg.Apply(evt))
+			return []es.Event{evt}, nil
+		})
+		require.NoError(t, err)
+	}
+
+	// LoadAt(3) should yield an aggregate that's seen exactly 3 events.
+	agg, err := handler.LoadAt(ctx, "orderbook:AAPL", 3)
+	require.NoError(t, err)
+	assert.Equal(t, 3, agg.orderCount)
+	assert.Equal(t, 3, agg.Version())
+
+	// LoadAt(5) yields head state.
+	agg, err = handler.LoadAt(ctx, "orderbook:AAPL", 5)
+	require.NoError(t, err)
+	assert.Equal(t, 5, agg.orderCount)
+
+	// LoadAt(0) is an error.
+	_, err = handler.LoadAt(ctx, "orderbook:AAPL", 0)
+	assert.Error(t, err)
+}
+
+func TestHandler_LoadAt_SnapshotBeforeTarget(t *testing.T) {
+	// snapshotAggregate has SnapshotInterval=3, so a snapshot is saved at
+	// version 3. LoadAt(5) should restore from the snapshot and apply
+	// events 4-5.
+	registry := newTestRegistry()
+	store := memstore.New()
+
+	handler := es.NewHandler(store, registry, func(id string) *snapshotAggregate {
+		a := &snapshotAggregate{}
+		a.SetID(id)
+		return a
+	}, slog.Default()).WithSnapshots(store)
+
+	ctx := context.Background()
+	cmd := testCommand{aggregateID: "orderbook:AAPL"}
+
+	for i := 1; i <= 5; i++ {
+		err := handler.Handle(ctx, cmd, func(agg *snapshotAggregate) ([]es.Event, error) {
+			evt := es.Event{
+				AggregateID: agg.AggregateID(),
+				Type:        "OrderPlaced",
+				Timestamp:   time.Now(),
+				Data: &orderbookv1.OrderPlaced{
+					OrderId:  fmt.Sprintf("order-%d", i),
+					Symbol:   "AAPL",
+					Side:     orderbookv1.Side_SIDE_BUY,
+					Price:    1500000,
+					Quantity: 1,
+					PlacedAt: timestamppb.Now(),
+				},
+			}
+			require.NoError(t, agg.Apply(evt))
+			return []es.Event{evt}, nil
+		})
+		require.NoError(t, err)
+	}
+
+	snap, err := store.LoadSnapshot(ctx, "orderbook:AAPL")
+	require.NoError(t, err)
+	require.NotNil(t, snap)
+	require.Equal(t, 3, snap.Version)
+
+	agg, err := handler.LoadAt(ctx, "orderbook:AAPL", 5)
+	require.NoError(t, err)
+	assert.Equal(t, 5, agg.orderCount)
+	assert.Equal(t, 5, agg.Version())
+
+	// LoadAt at exactly the snapshot version should restore and apply no
+	// further events.
+	agg, err = handler.LoadAt(ctx, "orderbook:AAPL", 3)
+	require.NoError(t, err)
+	assert.Equal(t, 3, agg.orderCount)
+	assert.Equal(t, 3, agg.Version())
+}
+
+func TestHandler_LoadAt_SnapshotAfterTarget(t *testing.T) {
+	// When the latest snapshot is newer than atVersion the handler must
+	// fall back to a full replay from version 1, not restore the snapshot
+	// (which would yield state from a future point).
+	registry := newTestRegistry()
+	store := memstore.New()
+
+	handler := es.NewHandler(store, registry, func(id string) *snapshotAggregate {
+		a := &snapshotAggregate{}
+		a.SetID(id)
+		return a
+	}, slog.Default()).WithSnapshots(store)
+
+	ctx := context.Background()
+	cmd := testCommand{aggregateID: "orderbook:AAPL"}
+
+	for i := 1; i <= 6; i++ {
+		err := handler.Handle(ctx, cmd, func(agg *snapshotAggregate) ([]es.Event, error) {
+			evt := es.Event{
+				AggregateID: agg.AggregateID(),
+				Type:        "OrderPlaced",
+				Timestamp:   time.Now(),
+				Data: &orderbookv1.OrderPlaced{
+					OrderId:  fmt.Sprintf("order-%d", i),
+					Symbol:   "AAPL",
+					Side:     orderbookv1.Side_SIDE_BUY,
+					Price:    1500000,
+					Quantity: 1,
+					PlacedAt: timestamppb.Now(),
+				},
+			}
+			require.NoError(t, agg.Apply(evt))
+			return []es.Event{evt}, nil
+		})
+		require.NoError(t, err)
+	}
+
+	// Snapshots fire at versions 3 and 6; latest snapshot is at v6.
+	snap, err := store.LoadSnapshot(ctx, "orderbook:AAPL")
+	require.NoError(t, err)
+	require.NotNil(t, snap)
+	require.Equal(t, 6, snap.Version)
+
+	// Asking for v2 must NOT use the v6 snapshot.
+	agg, err := handler.LoadAt(ctx, "orderbook:AAPL", 2)
+	require.NoError(t, err)
+	assert.Equal(t, 2, agg.orderCount, "expected fall-back to replay from version 1")
+	assert.Equal(t, 2, agg.Version())
+}
+
+func TestHandler_LoadEvents(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+
+	handler := es.NewHandler(store, registry, func(id string) *testAggregate {
+		a := &testAggregate{}
+		a.SetID(id)
+		return a
+	}, slog.Default())
+
+	ctx := context.Background()
+	cmd := testCommand{aggregateID: "orderbook:AAPL"}
+
+	for i := 1; i <= 4; i++ {
+		err := handler.Handle(ctx, cmd, func(agg *testAggregate) ([]es.Event, error) {
+			evt := es.Event{
+				AggregateID: agg.AggregateID(),
+				Type:        "OrderPlaced",
+				Timestamp:   time.Now(),
+				Data: &orderbookv1.OrderPlaced{
+					OrderId:  fmt.Sprintf("order-%d", i),
+					Symbol:   "AAPL",
+					Side:     orderbookv1.Side_SIDE_BUY,
+					Price:    1500000,
+					Quantity: 1,
+					PlacedAt: timestamppb.Now(),
+				},
+			}
+			require.NoError(t, agg.Apply(evt))
+			return []es.Event{evt}, nil
+		})
+		require.NoError(t, err)
+	}
+
+	events, err := handler.LoadEvents(ctx, "orderbook:AAPL", 2, 3)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	assert.Equal(t, 2, events[0].Version)
+	assert.Equal(t, 3, events[1].Version)
+
+	// Verify Data is deserialized.
+	placed, ok := events[0].Data.(*orderbookv1.OrderPlaced)
+	require.True(t, ok)
+	assert.Equal(t, "order-2", placed.OrderId)
+}
+
 type recordingPublisher struct {
 	published []es.Event
 }

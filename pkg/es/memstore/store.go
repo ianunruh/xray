@@ -5,6 +5,7 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/ianunruh/xray/pkg/es"
 )
@@ -56,6 +57,60 @@ func (s *Store) LoadFrom(_ context.Context, aggregateID string, fromVersion int)
 	out := make([]es.RawEvent, len(events)-start)
 	copy(out, events[start:])
 	return out, nil
+}
+
+// LoadRange returns events with version in [fromVersion, toVersion].
+// toVersion <= 0 means no upper bound.
+func (s *Store) LoadRange(_ context.Context, aggregateID string, fromVersion, toVersion int) ([]es.RawEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	events := s.streams[aggregateID]
+	out := make([]es.RawEvent, 0, len(events))
+	for _, evt := range events {
+		if evt.Version < fromVersion {
+			continue
+		}
+		if toVersion > 0 && evt.Version > toVersion {
+			break
+		}
+		out = append(out, evt)
+	}
+	return out, nil
+}
+
+// VersionAtTimestamp returns the largest version with timestamp <= ts, or 0
+// if no such event exists.
+func (s *Store) VersionAtTimestamp(_ context.Context, aggregateID string, ts time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	events := s.streams[aggregateID]
+	best := 0
+	for _, evt := range events {
+		if evt.Timestamp.After(ts) {
+			break
+		}
+		best = evt.Version
+	}
+	return best, nil
+}
+
+// StreamMetadata returns version and timestamp bounds for the stream.
+func (s *Store) StreamMetadata(_ context.Context, aggregateID string) (es.StreamMetadata, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	events := s.streams[aggregateID]
+	if len(events) == 0 {
+		return es.StreamMetadata{}, nil
+	}
+	return es.StreamMetadata{
+		FirstVersion:   events[0].Version,
+		LastVersion:    events[len(events)-1].Version,
+		FirstTimestamp: events[0].Timestamp,
+		LastTimestamp:  events[len(events)-1].Timestamp,
+	}, nil
 }
 
 // Append adds new events to the stream. It returns ErrOptimisticConcurrency

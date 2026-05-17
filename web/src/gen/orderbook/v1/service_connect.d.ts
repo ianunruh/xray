@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { BeginClosingAuctionRequest, BeginClosingAuctionResponse, CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOfficialCloseRequest, GetOfficialCloseResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, ListOfficialClosesRequest, ListOfficialClosesResponse, ListOrdersRequest, ListOrdersResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, OpenAuctionRequest, OpenAuctionResponse, PlaceOrderRequest, PlaceOrderResponse, ReplaceOrderRequest, ReplaceOrderResponse, StreamCandlesRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade, UncrossRequest, UncrossResponse } from "./service_pb.js";
+import { BeginClosingAuctionRequest, BeginClosingAuctionResponse, CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOfficialCloseRequest, GetOfficialCloseResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, GetReplayBoundsRequest, GetReplayBoundsResponse, ListOfficialClosesRequest, ListOfficialClosesResponse, ListOrdersRequest, ListOrdersResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, OpenAuctionRequest, OpenAuctionResponse, PlaceOrderRequest, PlaceOrderResponse, ReplaceOrderRequest, ReplaceOrderResponse, ReplayOrderBookRequest, ReplayOrderBookResponse, StreamCandlesRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade, UncrossRequest, UncrossResponse } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -182,6 +182,24 @@ export declare const OrderBookService: {
       readonly I: typeof StreamCandlesRequest,
       readonly O: typeof Candle,
       readonly kind: MethodKind.ServerStreaming,
+    },
+    /**
+     * @generated from rpc orderbook.v1.OrderBookService.GetReplayBounds
+     */
+    readonly getReplayBounds: {
+      readonly name: "GetReplayBounds",
+      readonly I: typeof GetReplayBoundsRequest,
+      readonly O: typeof GetReplayBoundsResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc orderbook.v1.OrderBookService.ReplayOrderBook
+     */
+    readonly replayOrderBook: {
+      readonly name: "ReplayOrderBook",
+      readonly I: typeof ReplayOrderBookRequest,
+      readonly O: typeof ReplayOrderBookResponse,
+      readonly kind: MethodKind.Unary,
     },
   }
 };

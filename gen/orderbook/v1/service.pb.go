@@ -2531,6 +2531,344 @@ func (x *OrderSummary) GetStopPrice() int64 {
 	return 0
 }
 
+type GetReplayBoundsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetReplayBoundsRequest) Reset() {
+	*x = GetReplayBoundsRequest{}
+	mi := &file_orderbook_v1_service_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetReplayBoundsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetReplayBoundsRequest) ProtoMessage() {}
+
+func (x *GetReplayBoundsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_service_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetReplayBoundsRequest.ProtoReflect.Descriptor instead.
+func (*GetReplayBoundsRequest) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *GetReplayBoundsRequest) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+type GetReplayBoundsResponse struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Symbol string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	// Inclusive version range of the aggregate's event stream.
+	FirstVersion   int32                  `protobuf:"varint,2,opt,name=first_version,json=firstVersion,proto3" json:"first_version,omitempty"`
+	LastVersion    int32                  `protobuf:"varint,3,opt,name=last_version,json=lastVersion,proto3" json:"last_version,omitempty"`
+	FirstTimestamp *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=first_timestamp,json=firstTimestamp,proto3" json:"first_timestamp,omitempty"`
+	LastTimestamp  *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_timestamp,json=lastTimestamp,proto3" json:"last_timestamp,omitempty"`
+	// The live phase of the orderbook right now (head of stream).
+	CurrentPhase  MarketPhase `protobuf:"varint,6,opt,name=current_phase,json=currentPhase,proto3,enum=orderbook.v1.MarketPhase" json:"current_phase,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetReplayBoundsResponse) Reset() {
+	*x = GetReplayBoundsResponse{}
+	mi := &file_orderbook_v1_service_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetReplayBoundsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetReplayBoundsResponse) ProtoMessage() {}
+
+func (x *GetReplayBoundsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_service_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetReplayBoundsResponse.ProtoReflect.Descriptor instead.
+func (*GetReplayBoundsResponse) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *GetReplayBoundsResponse) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *GetReplayBoundsResponse) GetFirstVersion() int32 {
+	if x != nil {
+		return x.FirstVersion
+	}
+	return 0
+}
+
+func (x *GetReplayBoundsResponse) GetLastVersion() int32 {
+	if x != nil {
+		return x.LastVersion
+	}
+	return 0
+}
+
+func (x *GetReplayBoundsResponse) GetFirstTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FirstTimestamp
+	}
+	return nil
+}
+
+func (x *GetReplayBoundsResponse) GetLastTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastTimestamp
+	}
+	return nil
+}
+
+func (x *GetReplayBoundsResponse) GetCurrentPhase() MarketPhase {
+	if x != nil {
+		return x.CurrentPhase
+	}
+	return MarketPhase_MARKET_PHASE_UNSPECIFIED
+}
+
+type ReplayOrderBookRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Symbol string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	// Address the replay point by either version or timestamp.
+	//
+	// Types that are valid to be assigned to At:
+	//
+	//	*ReplayOrderBookRequest_AtVersion
+	//	*ReplayOrderBookRequest_AtTimestamp
+	At isReplayOrderBookRequest_At `protobuf_oneof:"at"`
+	// Maximum number of recent trades to include in the response.
+	// Defaults to 50 if zero.
+	TradeLimit    int32 `protobuf:"varint,4,opt,name=trade_limit,json=tradeLimit,proto3" json:"trade_limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReplayOrderBookRequest) Reset() {
+	*x = ReplayOrderBookRequest{}
+	mi := &file_orderbook_v1_service_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplayOrderBookRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplayOrderBookRequest) ProtoMessage() {}
+
+func (x *ReplayOrderBookRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_service_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReplayOrderBookRequest.ProtoReflect.Descriptor instead.
+func (*ReplayOrderBookRequest) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *ReplayOrderBookRequest) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *ReplayOrderBookRequest) GetAt() isReplayOrderBookRequest_At {
+	if x != nil {
+		return x.At
+	}
+	return nil
+}
+
+func (x *ReplayOrderBookRequest) GetAtVersion() int32 {
+	if x != nil {
+		if x, ok := x.At.(*ReplayOrderBookRequest_AtVersion); ok {
+			return x.AtVersion
+		}
+	}
+	return 0
+}
+
+func (x *ReplayOrderBookRequest) GetAtTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		if x, ok := x.At.(*ReplayOrderBookRequest_AtTimestamp); ok {
+			return x.AtTimestamp
+		}
+	}
+	return nil
+}
+
+func (x *ReplayOrderBookRequest) GetTradeLimit() int32 {
+	if x != nil {
+		return x.TradeLimit
+	}
+	return 0
+}
+
+type isReplayOrderBookRequest_At interface {
+	isReplayOrderBookRequest_At()
+}
+
+type ReplayOrderBookRequest_AtVersion struct {
+	AtVersion int32 `protobuf:"varint,2,opt,name=at_version,json=atVersion,proto3,oneof"`
+}
+
+type ReplayOrderBookRequest_AtTimestamp struct {
+	AtTimestamp *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=at_timestamp,json=atTimestamp,proto3,oneof"`
+}
+
+func (*ReplayOrderBookRequest_AtVersion) isReplayOrderBookRequest_At() {}
+
+func (*ReplayOrderBookRequest_AtTimestamp) isReplayOrderBookRequest_At() {}
+
+type ReplayOrderBookResponse struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Symbol string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	// The resolved version the response reflects.
+	AtVersion int32 `protobuf:"varint,2,opt,name=at_version,json=atVersion,proto3" json:"at_version,omitempty"`
+	// Timestamp of the event at at_version (or zero if no events).
+	AtTimestamp *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=at_timestamp,json=atTimestamp,proto3" json:"at_timestamp,omitempty"`
+	Phase       MarketPhase            `protobuf:"varint,4,opt,name=phase,proto3,enum=orderbook.v1.MarketPhase" json:"phase,omitempty"`
+	// Depth-aggregated bids/asks reconstructed from the replayed aggregate.
+	Bids []*PriceLevel `protobuf:"bytes,5,rep,name=bids,proto3" json:"bids,omitempty"`
+	Asks []*PriceLevel `protobuf:"bytes,6,rep,name=asks,proto3" json:"asks,omitempty"`
+	// Open orders as of at_version.
+	Orders []*OrderSummary `protobuf:"bytes,7,rep,name=orders,proto3" json:"orders,omitempty"`
+	// Most recent trades at or before at_version (oldest-first), up to
+	// trade_limit. Drawn from a bounded look-back window for cheap reads.
+	RecentTrades  []*Trade `protobuf:"bytes,8,rep,name=recent_trades,json=recentTrades,proto3" json:"recent_trades,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReplayOrderBookResponse) Reset() {
+	*x = ReplayOrderBookResponse{}
+	mi := &file_orderbook_v1_service_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplayOrderBookResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplayOrderBookResponse) ProtoMessage() {}
+
+func (x *ReplayOrderBookResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_service_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReplayOrderBookResponse.ProtoReflect.Descriptor instead.
+func (*ReplayOrderBookResponse) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *ReplayOrderBookResponse) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *ReplayOrderBookResponse) GetAtVersion() int32 {
+	if x != nil {
+		return x.AtVersion
+	}
+	return 0
+}
+
+func (x *ReplayOrderBookResponse) GetAtTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AtTimestamp
+	}
+	return nil
+}
+
+func (x *ReplayOrderBookResponse) GetPhase() MarketPhase {
+	if x != nil {
+		return x.Phase
+	}
+	return MarketPhase_MARKET_PHASE_UNSPECIFIED
+}
+
+func (x *ReplayOrderBookResponse) GetBids() []*PriceLevel {
+	if x != nil {
+		return x.Bids
+	}
+	return nil
+}
+
+func (x *ReplayOrderBookResponse) GetAsks() []*PriceLevel {
+	if x != nil {
+		return x.Asks
+	}
+	return nil
+}
+
+func (x *ReplayOrderBookResponse) GetOrders() []*OrderSummary {
+	if x != nil {
+		return x.Orders
+	}
+	return nil
+}
+
+func (x *ReplayOrderBookResponse) GetRecentTrades() []*Trade {
+	if x != nil {
+		return x.RecentTrades
+	}
+	return nil
+}
+
 var File_orderbook_v1_service_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_service_proto_rawDesc = "" +
@@ -2716,7 +3054,34 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\rtime_in_force\x18\n" +
 	" \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\x12\x1d\n" +
 	"\n" +
-	"stop_price\x18\v \x01(\x03R\tstopPrice*\x9a\x01\n" +
+	"stop_price\x18\v \x01(\x03R\tstopPrice\"0\n" +
+	"\x16GetReplayBoundsRequest\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"\xc1\x02\n" +
+	"\x17GetReplayBoundsResponse\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12#\n" +
+	"\rfirst_version\x18\x02 \x01(\x05R\ffirstVersion\x12!\n" +
+	"\flast_version\x18\x03 \x01(\x05R\vlastVersion\x12C\n" +
+	"\x0ffirst_timestamp\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x0efirstTimestamp\x12A\n" +
+	"\x0elast_timestamp\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\rlastTimestamp\x12>\n" +
+	"\rcurrent_phase\x18\x06 \x01(\x0e2\x19.orderbook.v1.MarketPhaseR\fcurrentPhase\"\xb9\x01\n" +
+	"\x16ReplayOrderBookRequest\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x1f\n" +
+	"\n" +
+	"at_version\x18\x02 \x01(\x05H\x00R\tatVersion\x12?\n" +
+	"\fat_timestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampH\x00R\vatTimestamp\x12\x1f\n" +
+	"\vtrade_limit\x18\x04 \x01(\x05R\n" +
+	"tradeLimitB\x04\n" +
+	"\x02at\"\x8a\x03\n" +
+	"\x17ReplayOrderBookResponse\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x1d\n" +
+	"\n" +
+	"at_version\x18\x02 \x01(\x05R\tatVersion\x12=\n" +
+	"\fat_timestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\vatTimestamp\x12/\n" +
+	"\x05phase\x18\x04 \x01(\x0e2\x19.orderbook.v1.MarketPhaseR\x05phase\x12,\n" +
+	"\x04bids\x18\x05 \x03(\v2\x18.orderbook.v1.PriceLevelR\x04bids\x12,\n" +
+	"\x04asks\x18\x06 \x03(\v2\x18.orderbook.v1.PriceLevelR\x04asks\x122\n" +
+	"\x06orders\x18\a \x03(\v2\x1a.orderbook.v1.OrderSummaryR\x06orders\x128\n" +
+	"\rrecent_trades\x18\b \x03(\v2\x13.orderbook.v1.TradeR\frecentTrades*\x9a\x01\n" +
 	"\vOrderStatus\x12\x1c\n" +
 	"\x18ORDER_STATUS_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11ORDER_STATUS_OPEN\x10\x01\x12!\n" +
@@ -2729,7 +3094,7 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\x12CANDLE_INTERVAL_5M\x10\x02\x12\x17\n" +
 	"\x13CANDLE_INTERVAL_15M\x10\x03\x12\x16\n" +
 	"\x12CANDLE_INTERVAL_1H\x10\x04\x12\x16\n" +
-	"\x12CANDLE_INTERVAL_1D\x10\x052\xf8\f\n" +
+	"\x12CANDLE_INTERVAL_1D\x10\x052\xb8\x0e\n" +
 	"\x10OrderBookService\x12O\n" +
 	"\n" +
 	"PlaceOrder\x12\x1f.orderbook.v1.PlaceOrderRequest\x1a .orderbook.v1.PlaceOrderResponse\x12R\n" +
@@ -2753,7 +3118,9 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\fStreamTrades\x12!.orderbook.v1.StreamTradesRequest\x1a\x13.orderbook.v1.Trade0\x01\x12O\n" +
 	"\n" +
 	"GetCandles\x12\x1f.orderbook.v1.GetCandlesRequest\x1a .orderbook.v1.GetCandlesResponse\x12K\n" +
-	"\rStreamCandles\x12\".orderbook.v1.StreamCandlesRequest\x1a\x14.orderbook.v1.Candle0\x01B7Z5github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1b\x06proto3"
+	"\rStreamCandles\x12\".orderbook.v1.StreamCandlesRequest\x1a\x14.orderbook.v1.Candle0\x01\x12^\n" +
+	"\x0fGetReplayBounds\x12$.orderbook.v1.GetReplayBoundsRequest\x1a%.orderbook.v1.GetReplayBoundsResponse\x12^\n" +
+	"\x0fReplayOrderBook\x12$.orderbook.v1.ReplayOrderBookRequest\x1a%.orderbook.v1.ReplayOrderBookResponseB7Z5github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1b\x06proto3"
 
 var (
 	file_orderbook_v1_service_proto_rawDescOnce sync.Once
@@ -2768,7 +3135,7 @@ func file_orderbook_v1_service_proto_rawDescGZIP() []byte {
 }
 
 var file_orderbook_v1_service_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_orderbook_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
+var file_orderbook_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
 var file_orderbook_v1_service_proto_goTypes = []any{
 	(OrderStatus)(0),                    // 0: orderbook.v1.OrderStatus
 	(CandleInterval)(0),                 // 1: orderbook.v1.CandleInterval
@@ -2812,96 +3179,114 @@ var file_orderbook_v1_service_proto_goTypes = []any{
 	(*ListSymbolsRequest)(nil),          // 39: orderbook.v1.ListSymbolsRequest
 	(*ListSymbolsResponse)(nil),         // 40: orderbook.v1.ListSymbolsResponse
 	(*OrderSummary)(nil),                // 41: orderbook.v1.OrderSummary
-	(Side)(0),                           // 42: orderbook.v1.Side
-	(OrderType)(0),                      // 43: orderbook.v1.OrderType
-	(TimeInForce)(0),                    // 44: orderbook.v1.TimeInForce
-	(*TradeExecuted)(nil),               // 45: orderbook.v1.TradeExecuted
-	(CrossType)(0),                      // 46: orderbook.v1.CrossType
-	(*timestamppb.Timestamp)(nil),       // 47: google.protobuf.Timestamp
-	(MarketPhase)(0),                    // 48: orderbook.v1.MarketPhase
+	(*GetReplayBoundsRequest)(nil),      // 42: orderbook.v1.GetReplayBoundsRequest
+	(*GetReplayBoundsResponse)(nil),     // 43: orderbook.v1.GetReplayBoundsResponse
+	(*ReplayOrderBookRequest)(nil),      // 44: orderbook.v1.ReplayOrderBookRequest
+	(*ReplayOrderBookResponse)(nil),     // 45: orderbook.v1.ReplayOrderBookResponse
+	(Side)(0),                           // 46: orderbook.v1.Side
+	(OrderType)(0),                      // 47: orderbook.v1.OrderType
+	(TimeInForce)(0),                    // 48: orderbook.v1.TimeInForce
+	(*TradeExecuted)(nil),               // 49: orderbook.v1.TradeExecuted
+	(CrossType)(0),                      // 50: orderbook.v1.CrossType
+	(*timestamppb.Timestamp)(nil),       // 51: google.protobuf.Timestamp
+	(MarketPhase)(0),                    // 52: orderbook.v1.MarketPhase
 }
 var file_orderbook_v1_service_proto_depIdxs = []int32{
-	42, // 0: orderbook.v1.PlaceOrderRequest.side:type_name -> orderbook.v1.Side
-	43, // 1: orderbook.v1.PlaceOrderRequest.order_type:type_name -> orderbook.v1.OrderType
-	44, // 2: orderbook.v1.PlaceOrderRequest.time_in_force:type_name -> orderbook.v1.TimeInForce
-	45, // 3: orderbook.v1.PlaceOrderResponse.trades:type_name -> orderbook.v1.TradeExecuted
-	42, // 4: orderbook.v1.ReplaceOrderRequest.side:type_name -> orderbook.v1.Side
-	43, // 5: orderbook.v1.ReplaceOrderRequest.order_type:type_name -> orderbook.v1.OrderType
-	44, // 6: orderbook.v1.ReplaceOrderRequest.time_in_force:type_name -> orderbook.v1.TimeInForce
-	45, // 7: orderbook.v1.ReplaceOrderResponse.trades:type_name -> orderbook.v1.TradeExecuted
-	42, // 8: orderbook.v1.UncrossResponse.imbalance_side:type_name -> orderbook.v1.Side
-	46, // 9: orderbook.v1.UncrossResponse.cross_type:type_name -> orderbook.v1.CrossType
-	47, // 10: orderbook.v1.GetOfficialCloseResponse.closed_at:type_name -> google.protobuf.Timestamp
+	46, // 0: orderbook.v1.PlaceOrderRequest.side:type_name -> orderbook.v1.Side
+	47, // 1: orderbook.v1.PlaceOrderRequest.order_type:type_name -> orderbook.v1.OrderType
+	48, // 2: orderbook.v1.PlaceOrderRequest.time_in_force:type_name -> orderbook.v1.TimeInForce
+	49, // 3: orderbook.v1.PlaceOrderResponse.trades:type_name -> orderbook.v1.TradeExecuted
+	46, // 4: orderbook.v1.ReplaceOrderRequest.side:type_name -> orderbook.v1.Side
+	47, // 5: orderbook.v1.ReplaceOrderRequest.order_type:type_name -> orderbook.v1.OrderType
+	48, // 6: orderbook.v1.ReplaceOrderRequest.time_in_force:type_name -> orderbook.v1.TimeInForce
+	49, // 7: orderbook.v1.ReplaceOrderResponse.trades:type_name -> orderbook.v1.TradeExecuted
+	46, // 8: orderbook.v1.UncrossResponse.imbalance_side:type_name -> orderbook.v1.Side
+	50, // 9: orderbook.v1.UncrossResponse.cross_type:type_name -> orderbook.v1.CrossType
+	51, // 10: orderbook.v1.GetOfficialCloseResponse.closed_at:type_name -> google.protobuf.Timestamp
 	17, // 11: orderbook.v1.ListOfficialClosesResponse.closes:type_name -> orderbook.v1.GetOfficialCloseResponse
 	22, // 12: orderbook.v1.GetOrderBookResponse.bids:type_name -> orderbook.v1.OrderBookLevel
 	22, // 13: orderbook.v1.GetOrderBookResponse.asks:type_name -> orderbook.v1.OrderBookLevel
-	48, // 14: orderbook.v1.GetOrderBookResponse.phase:type_name -> orderbook.v1.MarketPhase
-	47, // 15: orderbook.v1.OrderBookLevel.placed_at:type_name -> google.protobuf.Timestamp
+	52, // 14: orderbook.v1.GetOrderBookResponse.phase:type_name -> orderbook.v1.MarketPhase
+	51, // 15: orderbook.v1.OrderBookLevel.placed_at:type_name -> google.protobuf.Timestamp
 	25, // 16: orderbook.v1.GetMarketDepthResponse.bids:type_name -> orderbook.v1.PriceLevel
 	25, // 17: orderbook.v1.GetMarketDepthResponse.asks:type_name -> orderbook.v1.PriceLevel
-	42, // 18: orderbook.v1.GetOrderResponse.side:type_name -> orderbook.v1.Side
-	47, // 19: orderbook.v1.GetOrderResponse.placed_at:type_name -> google.protobuf.Timestamp
-	43, // 20: orderbook.v1.GetOrderResponse.order_type:type_name -> orderbook.v1.OrderType
-	44, // 21: orderbook.v1.GetOrderResponse.time_in_force:type_name -> orderbook.v1.TimeInForce
+	46, // 18: orderbook.v1.GetOrderResponse.side:type_name -> orderbook.v1.Side
+	51, // 19: orderbook.v1.GetOrderResponse.placed_at:type_name -> google.protobuf.Timestamp
+	47, // 20: orderbook.v1.GetOrderResponse.order_type:type_name -> orderbook.v1.OrderType
+	48, // 21: orderbook.v1.GetOrderResponse.time_in_force:type_name -> orderbook.v1.TimeInForce
 	30, // 22: orderbook.v1.ListTradesResponse.trades:type_name -> orderbook.v1.Trade
-	47, // 23: orderbook.v1.Trade.executed_at:type_name -> google.protobuf.Timestamp
-	46, // 24: orderbook.v1.Trade.cross_type:type_name -> orderbook.v1.CrossType
+	51, // 23: orderbook.v1.Trade.executed_at:type_name -> google.protobuf.Timestamp
+	50, // 24: orderbook.v1.Trade.cross_type:type_name -> orderbook.v1.CrossType
 	1,  // 25: orderbook.v1.Candle.interval:type_name -> orderbook.v1.CandleInterval
-	47, // 26: orderbook.v1.Candle.open_time:type_name -> google.protobuf.Timestamp
+	51, // 26: orderbook.v1.Candle.open_time:type_name -> google.protobuf.Timestamp
 	1,  // 27: orderbook.v1.GetCandlesRequest.interval:type_name -> orderbook.v1.CandleInterval
-	47, // 28: orderbook.v1.GetCandlesRequest.from:type_name -> google.protobuf.Timestamp
-	47, // 29: orderbook.v1.GetCandlesRequest.to:type_name -> google.protobuf.Timestamp
+	51, // 28: orderbook.v1.GetCandlesRequest.from:type_name -> google.protobuf.Timestamp
+	51, // 29: orderbook.v1.GetCandlesRequest.to:type_name -> google.protobuf.Timestamp
 	34, // 30: orderbook.v1.GetCandlesResponse.candles:type_name -> orderbook.v1.Candle
 	1,  // 31: orderbook.v1.StreamCandlesRequest.interval:type_name -> orderbook.v1.CandleInterval
 	41, // 32: orderbook.v1.ListOrdersResponse.orders:type_name -> orderbook.v1.OrderSummary
-	42, // 33: orderbook.v1.OrderSummary.side:type_name -> orderbook.v1.Side
+	46, // 33: orderbook.v1.OrderSummary.side:type_name -> orderbook.v1.Side
 	0,  // 34: orderbook.v1.OrderSummary.status:type_name -> orderbook.v1.OrderStatus
-	47, // 35: orderbook.v1.OrderSummary.placed_at:type_name -> google.protobuf.Timestamp
-	43, // 36: orderbook.v1.OrderSummary.order_type:type_name -> orderbook.v1.OrderType
-	44, // 37: orderbook.v1.OrderSummary.time_in_force:type_name -> orderbook.v1.TimeInForce
-	2,  // 38: orderbook.v1.OrderBookService.PlaceOrder:input_type -> orderbook.v1.PlaceOrderRequest
-	4,  // 39: orderbook.v1.OrderBookService.CancelOrder:input_type -> orderbook.v1.CancelOrderRequest
-	6,  // 40: orderbook.v1.OrderBookService.ReplaceOrder:input_type -> orderbook.v1.ReplaceOrderRequest
-	8,  // 41: orderbook.v1.OrderBookService.CloseMarket:input_type -> orderbook.v1.CloseMarketRequest
-	10, // 42: orderbook.v1.OrderBookService.OpenAuction:input_type -> orderbook.v1.OpenAuctionRequest
-	12, // 43: orderbook.v1.OrderBookService.BeginClosingAuction:input_type -> orderbook.v1.BeginClosingAuctionRequest
-	14, // 44: orderbook.v1.OrderBookService.Uncross:input_type -> orderbook.v1.UncrossRequest
-	16, // 45: orderbook.v1.OrderBookService.GetOfficialClose:input_type -> orderbook.v1.GetOfficialCloseRequest
-	18, // 46: orderbook.v1.OrderBookService.ListOfficialCloses:input_type -> orderbook.v1.ListOfficialClosesRequest
-	20, // 47: orderbook.v1.OrderBookService.GetOrderBook:input_type -> orderbook.v1.GetOrderBookRequest
-	23, // 48: orderbook.v1.OrderBookService.GetMarketDepth:input_type -> orderbook.v1.GetMarketDepthRequest
-	26, // 49: orderbook.v1.OrderBookService.GetOrder:input_type -> orderbook.v1.GetOrderRequest
-	28, // 50: orderbook.v1.OrderBookService.ListTrades:input_type -> orderbook.v1.ListTradesRequest
-	31, // 51: orderbook.v1.OrderBookService.ListOrders:input_type -> orderbook.v1.ListOrdersRequest
-	39, // 52: orderbook.v1.OrderBookService.ListSymbols:input_type -> orderbook.v1.ListSymbolsRequest
-	32, // 53: orderbook.v1.OrderBookService.StreamMarketDepth:input_type -> orderbook.v1.StreamMarketDepthRequest
-	33, // 54: orderbook.v1.OrderBookService.StreamTrades:input_type -> orderbook.v1.StreamTradesRequest
-	35, // 55: orderbook.v1.OrderBookService.GetCandles:input_type -> orderbook.v1.GetCandlesRequest
-	37, // 56: orderbook.v1.OrderBookService.StreamCandles:input_type -> orderbook.v1.StreamCandlesRequest
-	3,  // 57: orderbook.v1.OrderBookService.PlaceOrder:output_type -> orderbook.v1.PlaceOrderResponse
-	5,  // 58: orderbook.v1.OrderBookService.CancelOrder:output_type -> orderbook.v1.CancelOrderResponse
-	7,  // 59: orderbook.v1.OrderBookService.ReplaceOrder:output_type -> orderbook.v1.ReplaceOrderResponse
-	9,  // 60: orderbook.v1.OrderBookService.CloseMarket:output_type -> orderbook.v1.CloseMarketResponse
-	11, // 61: orderbook.v1.OrderBookService.OpenAuction:output_type -> orderbook.v1.OpenAuctionResponse
-	13, // 62: orderbook.v1.OrderBookService.BeginClosingAuction:output_type -> orderbook.v1.BeginClosingAuctionResponse
-	15, // 63: orderbook.v1.OrderBookService.Uncross:output_type -> orderbook.v1.UncrossResponse
-	17, // 64: orderbook.v1.OrderBookService.GetOfficialClose:output_type -> orderbook.v1.GetOfficialCloseResponse
-	19, // 65: orderbook.v1.OrderBookService.ListOfficialCloses:output_type -> orderbook.v1.ListOfficialClosesResponse
-	21, // 66: orderbook.v1.OrderBookService.GetOrderBook:output_type -> orderbook.v1.GetOrderBookResponse
-	24, // 67: orderbook.v1.OrderBookService.GetMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
-	27, // 68: orderbook.v1.OrderBookService.GetOrder:output_type -> orderbook.v1.GetOrderResponse
-	29, // 69: orderbook.v1.OrderBookService.ListTrades:output_type -> orderbook.v1.ListTradesResponse
-	38, // 70: orderbook.v1.OrderBookService.ListOrders:output_type -> orderbook.v1.ListOrdersResponse
-	40, // 71: orderbook.v1.OrderBookService.ListSymbols:output_type -> orderbook.v1.ListSymbolsResponse
-	24, // 72: orderbook.v1.OrderBookService.StreamMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
-	30, // 73: orderbook.v1.OrderBookService.StreamTrades:output_type -> orderbook.v1.Trade
-	36, // 74: orderbook.v1.OrderBookService.GetCandles:output_type -> orderbook.v1.GetCandlesResponse
-	34, // 75: orderbook.v1.OrderBookService.StreamCandles:output_type -> orderbook.v1.Candle
-	57, // [57:76] is the sub-list for method output_type
-	38, // [38:57] is the sub-list for method input_type
-	38, // [38:38] is the sub-list for extension type_name
-	38, // [38:38] is the sub-list for extension extendee
-	0,  // [0:38] is the sub-list for field type_name
+	51, // 35: orderbook.v1.OrderSummary.placed_at:type_name -> google.protobuf.Timestamp
+	47, // 36: orderbook.v1.OrderSummary.order_type:type_name -> orderbook.v1.OrderType
+	48, // 37: orderbook.v1.OrderSummary.time_in_force:type_name -> orderbook.v1.TimeInForce
+	51, // 38: orderbook.v1.GetReplayBoundsResponse.first_timestamp:type_name -> google.protobuf.Timestamp
+	51, // 39: orderbook.v1.GetReplayBoundsResponse.last_timestamp:type_name -> google.protobuf.Timestamp
+	52, // 40: orderbook.v1.GetReplayBoundsResponse.current_phase:type_name -> orderbook.v1.MarketPhase
+	51, // 41: orderbook.v1.ReplayOrderBookRequest.at_timestamp:type_name -> google.protobuf.Timestamp
+	51, // 42: orderbook.v1.ReplayOrderBookResponse.at_timestamp:type_name -> google.protobuf.Timestamp
+	52, // 43: orderbook.v1.ReplayOrderBookResponse.phase:type_name -> orderbook.v1.MarketPhase
+	25, // 44: orderbook.v1.ReplayOrderBookResponse.bids:type_name -> orderbook.v1.PriceLevel
+	25, // 45: orderbook.v1.ReplayOrderBookResponse.asks:type_name -> orderbook.v1.PriceLevel
+	41, // 46: orderbook.v1.ReplayOrderBookResponse.orders:type_name -> orderbook.v1.OrderSummary
+	30, // 47: orderbook.v1.ReplayOrderBookResponse.recent_trades:type_name -> orderbook.v1.Trade
+	2,  // 48: orderbook.v1.OrderBookService.PlaceOrder:input_type -> orderbook.v1.PlaceOrderRequest
+	4,  // 49: orderbook.v1.OrderBookService.CancelOrder:input_type -> orderbook.v1.CancelOrderRequest
+	6,  // 50: orderbook.v1.OrderBookService.ReplaceOrder:input_type -> orderbook.v1.ReplaceOrderRequest
+	8,  // 51: orderbook.v1.OrderBookService.CloseMarket:input_type -> orderbook.v1.CloseMarketRequest
+	10, // 52: orderbook.v1.OrderBookService.OpenAuction:input_type -> orderbook.v1.OpenAuctionRequest
+	12, // 53: orderbook.v1.OrderBookService.BeginClosingAuction:input_type -> orderbook.v1.BeginClosingAuctionRequest
+	14, // 54: orderbook.v1.OrderBookService.Uncross:input_type -> orderbook.v1.UncrossRequest
+	16, // 55: orderbook.v1.OrderBookService.GetOfficialClose:input_type -> orderbook.v1.GetOfficialCloseRequest
+	18, // 56: orderbook.v1.OrderBookService.ListOfficialCloses:input_type -> orderbook.v1.ListOfficialClosesRequest
+	20, // 57: orderbook.v1.OrderBookService.GetOrderBook:input_type -> orderbook.v1.GetOrderBookRequest
+	23, // 58: orderbook.v1.OrderBookService.GetMarketDepth:input_type -> orderbook.v1.GetMarketDepthRequest
+	26, // 59: orderbook.v1.OrderBookService.GetOrder:input_type -> orderbook.v1.GetOrderRequest
+	28, // 60: orderbook.v1.OrderBookService.ListTrades:input_type -> orderbook.v1.ListTradesRequest
+	31, // 61: orderbook.v1.OrderBookService.ListOrders:input_type -> orderbook.v1.ListOrdersRequest
+	39, // 62: orderbook.v1.OrderBookService.ListSymbols:input_type -> orderbook.v1.ListSymbolsRequest
+	32, // 63: orderbook.v1.OrderBookService.StreamMarketDepth:input_type -> orderbook.v1.StreamMarketDepthRequest
+	33, // 64: orderbook.v1.OrderBookService.StreamTrades:input_type -> orderbook.v1.StreamTradesRequest
+	35, // 65: orderbook.v1.OrderBookService.GetCandles:input_type -> orderbook.v1.GetCandlesRequest
+	37, // 66: orderbook.v1.OrderBookService.StreamCandles:input_type -> orderbook.v1.StreamCandlesRequest
+	42, // 67: orderbook.v1.OrderBookService.GetReplayBounds:input_type -> orderbook.v1.GetReplayBoundsRequest
+	44, // 68: orderbook.v1.OrderBookService.ReplayOrderBook:input_type -> orderbook.v1.ReplayOrderBookRequest
+	3,  // 69: orderbook.v1.OrderBookService.PlaceOrder:output_type -> orderbook.v1.PlaceOrderResponse
+	5,  // 70: orderbook.v1.OrderBookService.CancelOrder:output_type -> orderbook.v1.CancelOrderResponse
+	7,  // 71: orderbook.v1.OrderBookService.ReplaceOrder:output_type -> orderbook.v1.ReplaceOrderResponse
+	9,  // 72: orderbook.v1.OrderBookService.CloseMarket:output_type -> orderbook.v1.CloseMarketResponse
+	11, // 73: orderbook.v1.OrderBookService.OpenAuction:output_type -> orderbook.v1.OpenAuctionResponse
+	13, // 74: orderbook.v1.OrderBookService.BeginClosingAuction:output_type -> orderbook.v1.BeginClosingAuctionResponse
+	15, // 75: orderbook.v1.OrderBookService.Uncross:output_type -> orderbook.v1.UncrossResponse
+	17, // 76: orderbook.v1.OrderBookService.GetOfficialClose:output_type -> orderbook.v1.GetOfficialCloseResponse
+	19, // 77: orderbook.v1.OrderBookService.ListOfficialCloses:output_type -> orderbook.v1.ListOfficialClosesResponse
+	21, // 78: orderbook.v1.OrderBookService.GetOrderBook:output_type -> orderbook.v1.GetOrderBookResponse
+	24, // 79: orderbook.v1.OrderBookService.GetMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
+	27, // 80: orderbook.v1.OrderBookService.GetOrder:output_type -> orderbook.v1.GetOrderResponse
+	29, // 81: orderbook.v1.OrderBookService.ListTrades:output_type -> orderbook.v1.ListTradesResponse
+	38, // 82: orderbook.v1.OrderBookService.ListOrders:output_type -> orderbook.v1.ListOrdersResponse
+	40, // 83: orderbook.v1.OrderBookService.ListSymbols:output_type -> orderbook.v1.ListSymbolsResponse
+	24, // 84: orderbook.v1.OrderBookService.StreamMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
+	30, // 85: orderbook.v1.OrderBookService.StreamTrades:output_type -> orderbook.v1.Trade
+	36, // 86: orderbook.v1.OrderBookService.GetCandles:output_type -> orderbook.v1.GetCandlesResponse
+	34, // 87: orderbook.v1.OrderBookService.StreamCandles:output_type -> orderbook.v1.Candle
+	43, // 88: orderbook.v1.OrderBookService.GetReplayBounds:output_type -> orderbook.v1.GetReplayBoundsResponse
+	45, // 89: orderbook.v1.OrderBookService.ReplayOrderBook:output_type -> orderbook.v1.ReplayOrderBookResponse
+	69, // [69:90] is the sub-list for method output_type
+	48, // [48:69] is the sub-list for method input_type
+	48, // [48:48] is the sub-list for extension type_name
+	48, // [48:48] is the sub-list for extension extendee
+	0,  // [0:48] is the sub-list for field type_name
 }
 
 func init() { file_orderbook_v1_service_proto_init() }
@@ -2910,13 +3295,17 @@ func file_orderbook_v1_service_proto_init() {
 		return
 	}
 	file_orderbook_v1_events_proto_init()
+	file_orderbook_v1_service_proto_msgTypes[42].OneofWrappers = []any{
+		(*ReplayOrderBookRequest_AtVersion)(nil),
+		(*ReplayOrderBookRequest_AtTimestamp)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_orderbook_v1_service_proto_rawDesc), len(file_orderbook_v1_service_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   40,
+			NumMessages:   44,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

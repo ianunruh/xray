@@ -29,6 +29,20 @@ const (
 		WHERE aggregate_id = $1 AND version >= $2
 		ORDER BY version`
 
+	queryLoadRange = `SELECT id, aggregate_id, type, version, data, timestamp, position
+		FROM events
+		WHERE aggregate_id = $1 AND version >= $2 AND version <= $3
+		ORDER BY version`
+
+	queryStreamMetadata = `SELECT
+			min(version), max(version), min(timestamp), max(timestamp)
+		FROM events
+		WHERE aggregate_id = $1`
+
+	queryVersionAtTimestamp = `SELECT max(version)
+		FROM events
+		WHERE aggregate_id = $1 AND timestamp <= $2`
+
 	queryLoadAll = `SELECT id, aggregate_id, type, version, data, timestamp, position
 		FROM events
 		ORDER BY position`
@@ -98,6 +112,51 @@ func (s *Store) Load(ctx context.Context, aggregateID string) ([]es.RawEvent, er
 // LoadFrom returns events for the given aggregate starting from fromVersion (inclusive).
 func (s *Store) LoadFrom(ctx context.Context, aggregateID string, fromVersion int) ([]es.RawEvent, error) {
 	return s.queryEvents(ctx, queryLoadFrom, aggregateID, fromVersion)
+}
+
+// LoadRange returns events with version in [fromVersion, toVersion].
+// toVersion <= 0 means no upper bound (equivalent to LoadFrom).
+func (s *Store) LoadRange(ctx context.Context, aggregateID string, fromVersion, toVersion int) ([]es.RawEvent, error) {
+	if toVersion <= 0 {
+		return s.queryEvents(ctx, queryLoadFrom, aggregateID, fromVersion)
+	}
+	return s.queryEvents(ctx, queryLoadRange, aggregateID, fromVersion, toVersion)
+}
+
+// VersionAtTimestamp returns the largest version with timestamp <= ts, or 0
+// if no such event exists for the aggregate.
+func (s *Store) VersionAtTimestamp(ctx context.Context, aggregateID string, ts time.Time) (int, error) {
+	var v *int
+	err := s.pool.QueryRow(ctx, queryVersionAtTimestamp, aggregateID, ts).Scan(&v)
+	if err != nil {
+		return 0, fmt.Errorf("query version at timestamp: %w", err)
+	}
+	if v == nil {
+		return 0, nil
+	}
+	return *v, nil
+}
+
+// StreamMetadata returns version and timestamp bounds for the stream.
+// Returns zero values if the aggregate has no events.
+func (s *Store) StreamMetadata(ctx context.Context, aggregateID string) (es.StreamMetadata, error) {
+	var (
+		firstV, lastV   *int
+		firstTS, lastTS *time.Time
+	)
+	err := s.pool.QueryRow(ctx, queryStreamMetadata, aggregateID).Scan(&firstV, &lastV, &firstTS, &lastTS)
+	if err != nil {
+		return es.StreamMetadata{}, fmt.Errorf("query stream metadata: %w", err)
+	}
+	if firstV == nil {
+		return es.StreamMetadata{}, nil
+	}
+	return es.StreamMetadata{
+		FirstVersion:   *firstV,
+		LastVersion:    *lastV,
+		FirstTimestamp: *firstTS,
+		LastTimestamp:  *lastTS,
+	}, nil
 }
 
 // LoadAll returns all events across all aggregates, ordered by position.

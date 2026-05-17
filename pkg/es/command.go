@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 )
@@ -138,6 +139,97 @@ func (h *Handler[A]) Load(ctx context.Context, aggregateID string) (A, error) {
 		return zero, err
 	}
 	return agg, nil
+}
+
+// LoadAt rehydrates the aggregate as it existed at exactly atVersion. It uses
+// the snapshot store as a starting point when the latest snapshot is at or
+// before atVersion; otherwise it replays from the beginning of the stream up
+// to atVersion. Intended for read-only "as-of" queries (e.g. time-machine
+// replay). atVersion must be > 0.
+func (h *Handler[A]) LoadAt(ctx context.Context, aggregateID string, atVersion int) (A, error) {
+	var zero A
+	if atVersion <= 0 {
+		return zero, fmt.Errorf("LoadAt: atVersion must be > 0, got %d", atVersion)
+	}
+
+	agg := h.factory(aggregateID)
+	startFrom := 1
+
+	if h.snapshots != nil {
+		if sa, ok := Aggregate(agg).(Snapshotable); ok {
+			snap, err := h.snapshots.LoadSnapshot(ctx, aggregateID)
+			if err != nil {
+				return zero, fmt.Errorf("load snapshot: %w", err)
+			}
+			if snap != nil && snap.Version <= atVersion {
+				msg, err := h.deserializeSnapshot(sa, snap.Data)
+				if err != nil {
+					return zero, fmt.Errorf("deserialize snapshot: %w", err)
+				}
+				if err := sa.RestoreSnapshot(msg); err != nil {
+					return zero, fmt.Errorf("restore snapshot: %w", err)
+				}
+				if ab, ok := Aggregate(agg).(interface{ SetVersion(int) }); ok {
+					ab.SetVersion(snap.Version)
+				}
+				startFrom = snap.Version + 1
+			}
+		}
+	}
+
+	if startFrom > atVersion {
+		return agg, nil
+	}
+
+	rawEvents, err := h.store.LoadRange(ctx, aggregateID, startFrom, atVersion)
+	if err != nil {
+		return zero, fmt.Errorf("load events range [%d, %d]: %w", startFrom, atVersion, err)
+	}
+
+	for _, raw := range rawEvents {
+		evt, err := h.registry.Deserialize(raw)
+		if err != nil {
+			return zero, fmt.Errorf("deserialize event: %w", err)
+		}
+		if err := agg.Apply(evt); err != nil {
+			return zero, fmt.Errorf("apply event: %w", err)
+		}
+	}
+
+	return agg, nil
+}
+
+// StreamMetadata returns version/timestamp bounds for the aggregate's stream.
+// Pass-through to the underlying EventStore.
+func (h *Handler[A]) StreamMetadata(ctx context.Context, aggregateID string) (StreamMetadata, error) {
+	return h.store.StreamMetadata(ctx, aggregateID)
+}
+
+// VersionAtTimestamp returns the largest version with timestamp <= ts, or 0
+// if no such event exists. Pass-through to the underlying EventStore.
+func (h *Handler[A]) VersionAtTimestamp(ctx context.Context, aggregateID string, ts time.Time) (int, error) {
+	return h.store.VersionAtTimestamp(ctx, aggregateID, ts)
+}
+
+// LoadEvents returns the deserialized events for an aggregate in the version
+// range [fromVersion, toVersion] (inclusive). A toVersion <= 0 means no upper
+// bound. Intended for read-only queries that need to inspect the event stream
+// directly (e.g. extracting trade events for a replay UI).
+func (h *Handler[A]) LoadEvents(ctx context.Context, aggregateID string, fromVersion, toVersion int) ([]Event, error) {
+	rawEvents, err := h.store.LoadRange(ctx, aggregateID, fromVersion, toVersion)
+	if err != nil {
+		return nil, fmt.Errorf("load events range [%d, %d]: %w", fromVersion, toVersion, err)
+	}
+
+	events := make([]Event, 0, len(rawEvents))
+	for _, raw := range rawEvents {
+		evt, err := h.registry.Deserialize(raw)
+		if err != nil {
+			return nil, fmt.Errorf("deserialize event: %w", err)
+		}
+		events = append(events, evt)
+	}
+	return events, nil
 }
 
 // pendingSnapshot holds snapshot data captured under the lock so that the

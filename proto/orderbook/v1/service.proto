@@ -35,6 +35,8 @@ service OrderBookService {
   rpc StreamTrades(StreamTradesRequest) returns (stream Trade);
   rpc GetCandles(GetCandlesRequest) returns (GetCandlesResponse);
   rpc StreamCandles(StreamCandlesRequest) returns (stream Candle);
+  rpc GetReplayBounds(GetReplayBoundsRequest) returns (GetReplayBoundsResponse);
+  rpc ReplayOrderBook(ReplayOrderBookRequest) returns (ReplayOrderBookResponse);
 }
 
 message PlaceOrderRequest {
@@ -283,6 +285,50 @@ message OrderSummary {
   OrderType order_type = 9;
   TimeInForce time_in_force = 10;
   int64 stop_price = 11;
+}
+
+message GetReplayBoundsRequest {
+  string symbol = 1;
+}
+
+message GetReplayBoundsResponse {
+  string symbol = 1;
+  // Inclusive version range of the aggregate's event stream.
+  int32 first_version = 2;
+  int32 last_version = 3;
+  google.protobuf.Timestamp first_timestamp = 4;
+  google.protobuf.Timestamp last_timestamp = 5;
+  // The live phase of the orderbook right now (head of stream).
+  MarketPhase current_phase = 6;
+}
+
+message ReplayOrderBookRequest {
+  string symbol = 1;
+  // Address the replay point by either version or timestamp.
+  oneof at {
+    int32 at_version = 2;
+    google.protobuf.Timestamp at_timestamp = 3;
+  }
+  // Maximum number of recent trades to include in the response.
+  // Defaults to 50 if zero.
+  int32 trade_limit = 4;
+}
+
+message ReplayOrderBookResponse {
+  string symbol = 1;
+  // The resolved version the response reflects.
+  int32 at_version = 2;
+  // Timestamp of the event at at_version (or zero if no events).
+  google.protobuf.Timestamp at_timestamp = 3;
+  MarketPhase phase = 4;
+  // Depth-aggregated bids/asks reconstructed from the replayed aggregate.
+  repeated PriceLevel bids = 5;
+  repeated PriceLevel asks = 6;
+  // Open orders as of at_version.
+  repeated OrderSummary orders = 7;
+  // Most recent trades at or before at_version (oldest-first), up to
+  // trade_limit. Drawn from a bounded look-back window for cheap reads.
+  repeated Trade recent_trades = 8;
 }
 
 // Saga RPCs moved to saga.v1.SagaService.
