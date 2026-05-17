@@ -679,6 +679,10 @@ type IssueMarginCall struct {
 	MarkPrice                     int64
 	EquityAtIssue                 int64
 	MaintenanceRequirementAtIssue int64
+	// GraceExpiresAt freezes the auto-liquidation deadline at the
+	// reactor's grace-window at issue time. Zero means "no grace" —
+	// reactor wires the actual value.
+	GraceExpiresAt time.Time
 }
 
 func (c IssueMarginCall) AggregateID() string {
@@ -695,20 +699,24 @@ func ExecuteIssueMarginCall(p *Portfolio, cmd IssueMarginCall) ([]es.Event, erro
 	}
 
 	now := time.Now()
+	data := &portfoliov1.MarginCallIssued{
+		AccountId:                     cmd.AccountID,
+		CallId:                        cmd.CallID,
+		TriggerTradeId:                cmd.TriggerTradeID,
+		TriggerSymbol:                 cmd.TriggerSymbol,
+		MarkPrice:                     cmd.MarkPrice,
+		EquityAtIssue:                 cmd.EquityAtIssue,
+		MaintenanceRequirementAtIssue: cmd.MaintenanceRequirementAtIssue,
+		IssuedAt:                      timestamppb.New(now),
+	}
+	if !cmd.GraceExpiresAt.IsZero() {
+		data.GraceExpiresAt = timestamppb.New(cmd.GraceExpiresAt)
+	}
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
 		Type:        EventMarginCallIssued,
 		Timestamp:   now,
-		Data: &portfoliov1.MarginCallIssued{
-			AccountId:                     cmd.AccountID,
-			CallId:                        cmd.CallID,
-			TriggerTradeId:                cmd.TriggerTradeID,
-			TriggerSymbol:                 cmd.TriggerSymbol,
-			MarkPrice:                     cmd.MarkPrice,
-			EquityAtIssue:                 cmd.EquityAtIssue,
-			MaintenanceRequirementAtIssue: cmd.MaintenanceRequirementAtIssue,
-			IssuedAt:                      timestamppb.New(now),
-		},
+		Data:        data,
 	}
 	if err := p.Apply(evt); err != nil {
 		return nil, err

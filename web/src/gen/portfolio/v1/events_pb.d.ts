@@ -736,6 +736,16 @@ export declare type MarginCallIssued = Message<"portfolio.v1.MarginCallIssued"> 
    * @generated from field: google.protobuf.Timestamp issued_at = 8;
    */
   issuedAt?: Timestamp | undefined;
+
+  /**
+   * The wall-clock instant at which the user's grace period ends and
+   * auto-liquidation will fire if the breach hasn't been resolved.
+   * Computed at issue time as issued_at + reactor grace duration.
+   * Frozen on the event so replay produces a deterministic timeline.
+   *
+   * @generated from field: google.protobuf.Timestamp grace_expires_at = 9;
+   */
+  graceExpiresAt?: Timestamp | undefined;
 };
 
 /**

@@ -1379,8 +1379,13 @@ type MarginCallIssued struct {
 	EquityAtIssue                 int64                  `protobuf:"varint,6,opt,name=equity_at_issue,json=equityAtIssue,proto3" json:"equity_at_issue,omitempty"`
 	MaintenanceRequirementAtIssue int64                  `protobuf:"varint,7,opt,name=maintenance_requirement_at_issue,json=maintenanceRequirementAtIssue,proto3" json:"maintenance_requirement_at_issue,omitempty"`
 	IssuedAt                      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at,omitempty"`
-	unknownFields                 protoimpl.UnknownFields
-	sizeCache                     protoimpl.SizeCache
+	// The wall-clock instant at which the user's grace period ends and
+	// auto-liquidation will fire if the breach hasn't been resolved.
+	// Computed at issue time as issued_at + reactor grace duration.
+	// Frozen on the event so replay produces a deterministic timeline.
+	GraceExpiresAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=grace_expires_at,json=graceExpiresAt,proto3" json:"grace_expires_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *MarginCallIssued) Reset() {
@@ -1465,6 +1470,13 @@ func (x *MarginCallIssued) GetMaintenanceRequirementAtIssue() int64 {
 func (x *MarginCallIssued) GetIssuedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.IssuedAt
+	}
+	return nil
+}
+
+func (x *MarginCallIssued) GetGraceExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.GraceExpiresAt
 	}
 	return nil
 }
@@ -2479,7 +2491,7 @@ const file_portfolio_v1_events_proto_rawDesc = "" +
 	"\frealized_pnl\x18\n" +
 	" \x01(\x03R\vrealizedPnl\x129\n" +
 	"\n" +
-	"covered_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcoveredAt\"\xe4\x02\n" +
+	"covered_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcoveredAt\"\xaa\x03\n" +
 	"\x10MarginCallIssued\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12\x17\n" +
@@ -2490,7 +2502,8 @@ const file_portfolio_v1_events_proto_rawDesc = "" +
 	"mark_price\x18\x05 \x01(\x03R\tmarkPrice\x12&\n" +
 	"\x0fequity_at_issue\x18\x06 \x01(\x03R\requityAtIssue\x12G\n" +
 	" maintenance_requirement_at_issue\x18\a \x01(\x03R\x1dmaintenanceRequirementAtIssue\x127\n" +
-	"\tissued_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\"\xf7\x01\n" +
+	"\tissued_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\x12D\n" +
+	"\x10grace_expires_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\x0egraceExpiresAt\"\xf7\x01\n" +
 	"\x11MarginCallCovered\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12\x17\n" +
@@ -2640,29 +2653,30 @@ var file_portfolio_v1_events_proto_depIdxs = []int32{
 	28, // 14: portfolio.v1.ShortCoverReleased.released_at:type_name -> google.protobuf.Timestamp
 	28, // 15: portfolio.v1.ShortCovered.covered_at:type_name -> google.protobuf.Timestamp
 	28, // 16: portfolio.v1.MarginCallIssued.issued_at:type_name -> google.protobuf.Timestamp
-	28, // 17: portfolio.v1.MarginCallCovered.covered_at:type_name -> google.protobuf.Timestamp
-	28, // 18: portfolio.v1.MarginInterestAccrued.period_start:type_name -> google.protobuf.Timestamp
-	28, // 19: portfolio.v1.MarginInterestAccrued.period_end:type_name -> google.protobuf.Timestamp
-	28, // 20: portfolio.v1.ShortBorrowFeeAccrued.period_start:type_name -> google.protobuf.Timestamp
-	28, // 21: portfolio.v1.ShortBorrowFeeAccrued.period_end:type_name -> google.protobuf.Timestamp
-	29, // 22: portfolio.v1.OrderSagaStarted.side:type_name -> orderbook.v1.Side
-	30, // 23: portfolio.v1.OrderSagaStarted.order_type:type_name -> orderbook.v1.OrderType
-	31, // 24: portfolio.v1.OrderSagaStarted.time_in_force:type_name -> orderbook.v1.TimeInForce
-	28, // 25: portfolio.v1.OrderSagaStarted.started_at:type_name -> google.protobuf.Timestamp
-	32, // 26: portfolio.v1.OrderSagaStarted.position_side:type_name -> orderbook.v1.PositionSide
-	33, // 27: portfolio.v1.OrderSagaStarted.initiator:type_name -> saga.v1.Initiator
-	28, // 28: portfolio.v1.OrderSagaCashHeld.held_at:type_name -> google.protobuf.Timestamp
-	28, // 29: portfolio.v1.OrderSagaCollateralHeld.held_at:type_name -> google.protobuf.Timestamp
-	28, // 30: portfolio.v1.OrderSagaOrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
-	28, // 31: portfolio.v1.OrderSagaFillRecorded.filled_at:type_name -> google.protobuf.Timestamp
-	28, // 32: portfolio.v1.OrderSagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
-	28, // 33: portfolio.v1.OrderSagaFailed.failed_at:type_name -> google.protobuf.Timestamp
-	28, // 34: portfolio.v1.OrderSagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
-	35, // [35:35] is the sub-list for method output_type
-	35, // [35:35] is the sub-list for method input_type
-	35, // [35:35] is the sub-list for extension type_name
-	35, // [35:35] is the sub-list for extension extendee
-	0,  // [0:35] is the sub-list for field type_name
+	28, // 17: portfolio.v1.MarginCallIssued.grace_expires_at:type_name -> google.protobuf.Timestamp
+	28, // 18: portfolio.v1.MarginCallCovered.covered_at:type_name -> google.protobuf.Timestamp
+	28, // 19: portfolio.v1.MarginInterestAccrued.period_start:type_name -> google.protobuf.Timestamp
+	28, // 20: portfolio.v1.MarginInterestAccrued.period_end:type_name -> google.protobuf.Timestamp
+	28, // 21: portfolio.v1.ShortBorrowFeeAccrued.period_start:type_name -> google.protobuf.Timestamp
+	28, // 22: portfolio.v1.ShortBorrowFeeAccrued.period_end:type_name -> google.protobuf.Timestamp
+	29, // 23: portfolio.v1.OrderSagaStarted.side:type_name -> orderbook.v1.Side
+	30, // 24: portfolio.v1.OrderSagaStarted.order_type:type_name -> orderbook.v1.OrderType
+	31, // 25: portfolio.v1.OrderSagaStarted.time_in_force:type_name -> orderbook.v1.TimeInForce
+	28, // 26: portfolio.v1.OrderSagaStarted.started_at:type_name -> google.protobuf.Timestamp
+	32, // 27: portfolio.v1.OrderSagaStarted.position_side:type_name -> orderbook.v1.PositionSide
+	33, // 28: portfolio.v1.OrderSagaStarted.initiator:type_name -> saga.v1.Initiator
+	28, // 29: portfolio.v1.OrderSagaCashHeld.held_at:type_name -> google.protobuf.Timestamp
+	28, // 30: portfolio.v1.OrderSagaCollateralHeld.held_at:type_name -> google.protobuf.Timestamp
+	28, // 31: portfolio.v1.OrderSagaOrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
+	28, // 32: portfolio.v1.OrderSagaFillRecorded.filled_at:type_name -> google.protobuf.Timestamp
+	28, // 33: portfolio.v1.OrderSagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
+	28, // 34: portfolio.v1.OrderSagaFailed.failed_at:type_name -> google.protobuf.Timestamp
+	28, // 35: portfolio.v1.OrderSagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
+	36, // [36:36] is the sub-list for method output_type
+	36, // [36:36] is the sub-list for method input_type
+	36, // [36:36] is the sub-list for extension type_name
+	36, // [36:36] is the sub-list for extension extendee
+	0,  // [0:36] is the sub-list for field type_name
 }
 
 func init() { file_portfolio_v1_events_proto_init() }

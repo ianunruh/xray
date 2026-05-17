@@ -38,16 +38,20 @@ func (p *PgMarginCallsProjection) HandleEvents(ctx context.Context, events []es.
 	for _, evt := range events {
 		switch data := evt.Data.(type) {
 		case *portfoliov1.MarginCallIssued:
+			var graceExpires any
+			if data.GraceExpiresAt != nil {
+				graceExpires = data.GraceExpiresAt.AsTime()
+			}
 			batch.Queue(
 				`INSERT INTO projection_margin_calls
 				(call_id, account_id, trigger_trade_id, trigger_symbol,
 				 mark_price, equity_at_issue, maintenance_requirement_at_issue,
-				 issued_at)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				 issued_at, grace_expires_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 				ON CONFLICT (call_id) DO NOTHING`,
 				data.CallId, data.AccountId, data.TriggerTradeId, data.TriggerSymbol,
 				data.MarkPrice, data.EquityAtIssue, data.MaintenanceRequirementAtIssue,
-				data.IssuedAt.AsTime(),
+				data.IssuedAt.AsTime(), graceExpires,
 			)
 		case *portfoliov1.MarginCallCovered:
 			batch.Queue(
@@ -95,7 +99,7 @@ func (p *PgMarginCallsProjection) ListMarginCalls(ctx context.Context, accountID
 	q := `SELECT call_id, account_id, trigger_trade_id, trigger_symbol,
 		mark_price, equity_at_issue, maintenance_requirement_at_issue,
 		issued_at, covered_at, equity_at_cover, maintenance_requirement_at_cover,
-		liquidation_saga_ids
+		liquidation_saga_ids, grace_expires_at
 		FROM projection_margin_calls
 		WHERE account_id = $1
 		ORDER BY issued_at DESC`
@@ -113,17 +117,19 @@ func (p *PgMarginCallsProjection) ListMarginCalls(ctx context.Context, accountID
 	var out []*portfoliov1.MarginCallRecord
 	for rows.Next() {
 		var (
-			rec             portfoliov1.MarginCallRecord
-			issuedAt        time.Time
-			coveredAt       *time.Time
-			equityAtCover   *int64
-			maintAtCover    *int64
-			liquidationIDs  []string
+			rec            portfoliov1.MarginCallRecord
+			issuedAt       time.Time
+			coveredAt      *time.Time
+			equityAtCover  *int64
+			maintAtCover   *int64
+			liquidationIDs []string
+			graceExpiresAt *time.Time
 		)
 		if err := rows.Scan(&rec.CallId, &rec.AccountId, &rec.TriggerTradeId,
 			&rec.TriggerSymbol, &rec.MarkPrice, &rec.EquityAtIssue,
 			&rec.MaintenanceRequirementAtIssue, &issuedAt,
-			&coveredAt, &equityAtCover, &maintAtCover, &liquidationIDs); err != nil {
+			&coveredAt, &equityAtCover, &maintAtCover, &liquidationIDs,
+			&graceExpiresAt); err != nil {
 			return nil, fmt.Errorf("scan margin call: %w", err)
 		}
 		rec.IssuedAt = timestamppb.New(issuedAt)
@@ -135,6 +141,9 @@ func (p *PgMarginCallsProjection) ListMarginCalls(ctx context.Context, accountID
 		}
 		if maintAtCover != nil {
 			rec.MaintenanceRequirementAtCover = *maintAtCover
+		}
+		if graceExpiresAt != nil {
+			rec.GraceExpiresAt = timestamppb.New(*graceExpiresAt)
 		}
 		rec.LiquidationSagaIds = liquidationIDs
 		out = append(out, &rec)

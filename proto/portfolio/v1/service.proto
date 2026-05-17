@@ -197,6 +197,11 @@ message GetMarginSnapshotResponse {
   // above; this lets the UI explain where the requirement comes from.
   int64 long_maintenance_requirement = 17;
   int64 short_maintenance_requirement = 18;
+
+  // When margin_call=true, the instant at which the grace period
+  // expires and auto-liquidation will fire. Unset when no call is
+  // active. UI renders this as a countdown in the active-call alert.
+  google.protobuf.Timestamp margin_call_grace_expires_at = 19;
 }
 
 // MarginCallRecord is one row in the audit log: the issued snapshot
@@ -221,6 +226,11 @@ message MarginCallRecord {
   // Saga IDs of every BUY-to-cover the margincall reactor spawned
   // for this call. UI uses these to link to the diagnostics view.
   repeated string liquidation_saga_ids = 12;
+
+  // Wall-clock instant when the user's grace period ends and auto-
+  // liquidation fires. Frozen at issue time on MarginCallIssued; same
+  // value lives on the aggregate's ActiveMarginCall.
+  google.protobuf.Timestamp grace_expires_at = 13;
 }
 
 message ListMarginCallsRequest {

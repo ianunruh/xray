@@ -1217,8 +1217,12 @@ type GetMarginSnapshotResponse struct {
 	// above; this lets the UI explain where the requirement comes from.
 	LongMaintenanceRequirement  int64 `protobuf:"varint,17,opt,name=long_maintenance_requirement,json=longMaintenanceRequirement,proto3" json:"long_maintenance_requirement,omitempty"`
 	ShortMaintenanceRequirement int64 `protobuf:"varint,18,opt,name=short_maintenance_requirement,json=shortMaintenanceRequirement,proto3" json:"short_maintenance_requirement,omitempty"`
-	unknownFields               protoimpl.UnknownFields
-	sizeCache                   protoimpl.SizeCache
+	// When margin_call=true, the instant at which the grace period
+	// expires and auto-liquidation will fire. Unset when no call is
+	// active. UI renders this as a countdown in the active-call alert.
+	MarginCallGraceExpiresAt *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=margin_call_grace_expires_at,json=marginCallGraceExpiresAt,proto3" json:"margin_call_grace_expires_at,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *GetMarginSnapshotResponse) Reset() {
@@ -1377,6 +1381,13 @@ func (x *GetMarginSnapshotResponse) GetShortMaintenanceRequirement() int64 {
 	return 0
 }
 
+func (x *GetMarginSnapshotResponse) GetMarginCallGraceExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.MarginCallGraceExpiresAt
+	}
+	return nil
+}
+
 // MarginCallRecord is one row in the audit log: the issued snapshot
 // plus, when present, the covered snapshot and the liquidation sagas
 // the call spawned. Streamed by PortfolioService.ListMarginCalls,
@@ -1398,8 +1409,12 @@ type MarginCallRecord struct {
 	// Saga IDs of every BUY-to-cover the margincall reactor spawned
 	// for this call. UI uses these to link to the diagnostics view.
 	LiquidationSagaIds []string `protobuf:"bytes,12,rep,name=liquidation_saga_ids,json=liquidationSagaIds,proto3" json:"liquidation_saga_ids,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// Wall-clock instant when the user's grace period ends and auto-
+	// liquidation fires. Frozen at issue time on MarginCallIssued; same
+	// value lives on the aggregate's ActiveMarginCall.
+	GraceExpiresAt *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=grace_expires_at,json=graceExpiresAt,proto3" json:"grace_expires_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *MarginCallRecord) Reset() {
@@ -1512,6 +1527,13 @@ func (x *MarginCallRecord) GetMaintenanceRequirementAtCover() int64 {
 func (x *MarginCallRecord) GetLiquidationSagaIds() []string {
 	if x != nil {
 		return x.LiquidationSagaIds
+	}
+	return nil
+}
+
+func (x *MarginCallRecord) GetGraceExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.GraceExpiresAt
 	}
 	return nil
 }
@@ -2018,7 +2040,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"accountIds\"9\n" +
 	"\x18GetMarginSnapshotRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\"\x9c\x06\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\"\xf8\x06\n" +
 	"\x19GetMarginSnapshotResponse\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12!\n" +
@@ -2041,7 +2063,8 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\vmargin_loan\x18\x10 \x01(\x03R\n" +
 	"marginLoan\x12@\n" +
 	"\x1clong_maintenance_requirement\x18\x11 \x01(\x03R\x1alongMaintenanceRequirement\x12B\n" +
-	"\x1dshort_maintenance_requirement\x18\x12 \x01(\x03R\x1bshortMaintenanceRequirement\"\xc2\x04\n" +
+	"\x1dshort_maintenance_requirement\x18\x12 \x01(\x03R\x1bshortMaintenanceRequirement\x12Z\n" +
+	"\x1cmargin_call_grace_expires_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\x18marginCallGraceExpiresAt\"\x88\x05\n" +
 	"\x10MarginCallRecord\x12\x17\n" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x1d\n" +
 	"\n" +
@@ -2058,7 +2081,8 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\x0fequity_at_cover\x18\n" +
 	" \x01(\x03R\requityAtCover\x12G\n" +
 	" maintenance_requirement_at_cover\x18\v \x01(\x03R\x1dmaintenanceRequirementAtCover\x120\n" +
-	"\x14liquidation_saga_ids\x18\f \x03(\tR\x12liquidationSagaIds\"M\n" +
+	"\x14liquidation_saga_ids\x18\f \x03(\tR\x12liquidationSagaIds\x12D\n" +
+	"\x10grace_expires_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\x0egraceExpiresAt\"M\n" +
 	"\x16ListMarginCallsRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12\x14\n" +
@@ -2176,38 +2200,40 @@ var file_portfolio_v1_service_proto_depIdxs = []int32{
 	29, // 12: portfolio.v1.PnLEntry.settled_at:type_name -> google.protobuf.Timestamp
 	30, // 13: portfolio.v1.PnLEntry.position_side:type_name -> orderbook.v1.PositionSide
 	25, // 14: portfolio.v1.GetMarginSnapshotResponse.positions:type_name -> portfolio.v1.PositionMarginInfo
-	29, // 15: portfolio.v1.MarginCallRecord.issued_at:type_name -> google.protobuf.Timestamp
-	29, // 16: portfolio.v1.MarginCallRecord.covered_at:type_name -> google.protobuf.Timestamp
-	20, // 17: portfolio.v1.ListMarginCallsResponse.calls:type_name -> portfolio.v1.MarginCallRecord
-	26, // 18: portfolio.v1.PreviewOrderImpactRequest.side:type_name -> orderbook.v1.Side
-	30, // 19: portfolio.v1.PreviewOrderImpactRequest.position_side:type_name -> orderbook.v1.PositionSide
-	27, // 20: portfolio.v1.PreviewOrderImpactRequest.order_type:type_name -> orderbook.v1.OrderType
-	30, // 21: portfolio.v1.PositionMarginInfo.side:type_name -> orderbook.v1.PositionSide
-	1,  // 22: portfolio.v1.PortfolioService.Deposit:input_type -> portfolio.v1.DepositRequest
-	3,  // 23: portfolio.v1.PortfolioService.Withdraw:input_type -> portfolio.v1.WithdrawRequest
-	5,  // 24: portfolio.v1.PortfolioService.CreditShares:input_type -> portfolio.v1.CreditSharesRequest
-	7,  // 25: portfolio.v1.PortfolioService.GetPortfolio:input_type -> portfolio.v1.GetPortfolioRequest
-	11, // 26: portfolio.v1.PortfolioService.StreamPortfolio:input_type -> portfolio.v1.StreamPortfolioRequest
-	12, // 27: portfolio.v1.PortfolioService.GetPnL:input_type -> portfolio.v1.GetPnLRequest
-	16, // 28: portfolio.v1.PortfolioService.ListPortfolios:input_type -> portfolio.v1.ListPortfoliosRequest
-	18, // 29: portfolio.v1.PortfolioService.GetMarginSnapshot:input_type -> portfolio.v1.GetMarginSnapshotRequest
-	23, // 30: portfolio.v1.PortfolioService.PreviewOrderImpact:input_type -> portfolio.v1.PreviewOrderImpactRequest
-	21, // 31: portfolio.v1.PortfolioService.ListMarginCalls:input_type -> portfolio.v1.ListMarginCallsRequest
-	2,  // 32: portfolio.v1.PortfolioService.Deposit:output_type -> portfolio.v1.DepositResponse
-	4,  // 33: portfolio.v1.PortfolioService.Withdraw:output_type -> portfolio.v1.WithdrawResponse
-	6,  // 34: portfolio.v1.PortfolioService.CreditShares:output_type -> portfolio.v1.CreditSharesResponse
-	8,  // 35: portfolio.v1.PortfolioService.GetPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
-	8,  // 36: portfolio.v1.PortfolioService.StreamPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
-	13, // 37: portfolio.v1.PortfolioService.GetPnL:output_type -> portfolio.v1.GetPnLResponse
-	17, // 38: portfolio.v1.PortfolioService.ListPortfolios:output_type -> portfolio.v1.ListPortfoliosResponse
-	19, // 39: portfolio.v1.PortfolioService.GetMarginSnapshot:output_type -> portfolio.v1.GetMarginSnapshotResponse
-	24, // 40: portfolio.v1.PortfolioService.PreviewOrderImpact:output_type -> portfolio.v1.PreviewOrderImpactResponse
-	22, // 41: portfolio.v1.PortfolioService.ListMarginCalls:output_type -> portfolio.v1.ListMarginCallsResponse
-	32, // [32:42] is the sub-list for method output_type
-	22, // [22:32] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	29, // 15: portfolio.v1.GetMarginSnapshotResponse.margin_call_grace_expires_at:type_name -> google.protobuf.Timestamp
+	29, // 16: portfolio.v1.MarginCallRecord.issued_at:type_name -> google.protobuf.Timestamp
+	29, // 17: portfolio.v1.MarginCallRecord.covered_at:type_name -> google.protobuf.Timestamp
+	29, // 18: portfolio.v1.MarginCallRecord.grace_expires_at:type_name -> google.protobuf.Timestamp
+	20, // 19: portfolio.v1.ListMarginCallsResponse.calls:type_name -> portfolio.v1.MarginCallRecord
+	26, // 20: portfolio.v1.PreviewOrderImpactRequest.side:type_name -> orderbook.v1.Side
+	30, // 21: portfolio.v1.PreviewOrderImpactRequest.position_side:type_name -> orderbook.v1.PositionSide
+	27, // 22: portfolio.v1.PreviewOrderImpactRequest.order_type:type_name -> orderbook.v1.OrderType
+	30, // 23: portfolio.v1.PositionMarginInfo.side:type_name -> orderbook.v1.PositionSide
+	1,  // 24: portfolio.v1.PortfolioService.Deposit:input_type -> portfolio.v1.DepositRequest
+	3,  // 25: portfolio.v1.PortfolioService.Withdraw:input_type -> portfolio.v1.WithdrawRequest
+	5,  // 26: portfolio.v1.PortfolioService.CreditShares:input_type -> portfolio.v1.CreditSharesRequest
+	7,  // 27: portfolio.v1.PortfolioService.GetPortfolio:input_type -> portfolio.v1.GetPortfolioRequest
+	11, // 28: portfolio.v1.PortfolioService.StreamPortfolio:input_type -> portfolio.v1.StreamPortfolioRequest
+	12, // 29: portfolio.v1.PortfolioService.GetPnL:input_type -> portfolio.v1.GetPnLRequest
+	16, // 30: portfolio.v1.PortfolioService.ListPortfolios:input_type -> portfolio.v1.ListPortfoliosRequest
+	18, // 31: portfolio.v1.PortfolioService.GetMarginSnapshot:input_type -> portfolio.v1.GetMarginSnapshotRequest
+	23, // 32: portfolio.v1.PortfolioService.PreviewOrderImpact:input_type -> portfolio.v1.PreviewOrderImpactRequest
+	21, // 33: portfolio.v1.PortfolioService.ListMarginCalls:input_type -> portfolio.v1.ListMarginCallsRequest
+	2,  // 34: portfolio.v1.PortfolioService.Deposit:output_type -> portfolio.v1.DepositResponse
+	4,  // 35: portfolio.v1.PortfolioService.Withdraw:output_type -> portfolio.v1.WithdrawResponse
+	6,  // 36: portfolio.v1.PortfolioService.CreditShares:output_type -> portfolio.v1.CreditSharesResponse
+	8,  // 37: portfolio.v1.PortfolioService.GetPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
+	8,  // 38: portfolio.v1.PortfolioService.StreamPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
+	13, // 39: portfolio.v1.PortfolioService.GetPnL:output_type -> portfolio.v1.GetPnLResponse
+	17, // 40: portfolio.v1.PortfolioService.ListPortfolios:output_type -> portfolio.v1.ListPortfoliosResponse
+	19, // 41: portfolio.v1.PortfolioService.GetMarginSnapshot:output_type -> portfolio.v1.GetMarginSnapshotResponse
+	24, // 42: portfolio.v1.PortfolioService.PreviewOrderImpact:output_type -> portfolio.v1.PreviewOrderImpactResponse
+	22, // 43: portfolio.v1.PortfolioService.ListMarginCalls:output_type -> portfolio.v1.ListMarginCallsResponse
+	34, // [34:44] is the sub-list for method output_type
+	24, // [24:34] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_portfolio_v1_service_proto_init() }

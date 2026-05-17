@@ -194,6 +194,11 @@ message MarginCallIssued {
   int64 equity_at_issue = 6;
   int64 maintenance_requirement_at_issue = 7;
   google.protobuf.Timestamp issued_at = 8;
+  // The wall-clock instant at which the user's grace period ends and
+  // auto-liquidation will fire if the breach hasn't been resolved.
+  // Computed at issue time as issued_at + reactor grace duration.
+  // Frozen on the event so replay produces a deterministic timeline.
+  google.protobuf.Timestamp grace_expires_at = 9;
 }
 
 // MarginCallCovered records that the breach was remediated, either by

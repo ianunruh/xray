@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import {
   ActionIcon,
   Alert,
@@ -23,6 +24,36 @@ import { usePortfolio } from "../hooks/usePortfolio";
 import { useMarginCalls } from "../hooks/useMarginCalls";
 import { useMarginSnapshot } from "../hooks/useMarginSnapshot";
 import { portfolioClient, sagaClient } from "../client";
+
+function timestampToMillis(ts: Timestamp | undefined): number | null {
+  if (!ts) return null;
+  return Number(ts.seconds) * 1000 + Math.floor(ts.nanos / 1_000_000);
+}
+
+// formatRemaining renders a coarse "in 27s" / "in 3m12s" / "expired"
+// string for a future or past instant.
+function formatRemaining(deadlineMs: number, nowMs: number): string {
+  const diffSec = Math.round((deadlineMs - nowMs) / 1000);
+  if (diffSec <= 0) return "expired";
+  if (diffSec < 60) return `in ${diffSec}s`;
+  const mins = Math.floor(diffSec / 60);
+  const secs = diffSec % 60;
+  return `in ${mins}m${secs.toString().padStart(2, "0")}s`;
+}
+
+// GraceCountdown self-ticks every second to refresh the rendered
+// remaining time. Renders nothing when deadline is null.
+function GraceCountdown({ deadline }: { deadline: Timestamp | undefined }) {
+  const deadlineMs = timestampToMillis(deadline);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (deadlineMs === null) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [deadlineMs]);
+  if (deadlineMs === null) return null;
+  return <>{formatRemaining(deadlineMs, now)}</>;
+}
 
 function sideName(side: Side): string {
   switch (side) {
@@ -368,8 +399,15 @@ export function PortfolioPanel({
         {margin?.marginCall && (
           <Alert color="red" title="Margin call active">
             Equity {formatMoney(margin.equity)} below maintenance
-            requirement {formatMoney(margin.maintenanceRequirement)}.
-            Auto-liquidation in progress.
+            requirement {formatMoney(margin.maintenanceRequirement)}.{" "}
+            {margin.marginCallGraceExpiresAt ? (
+              <>
+                Auto-liquidation{" "}
+                <GraceCountdown deadline={margin.marginCallGraceExpiresAt} />.
+              </>
+            ) : (
+              <>Auto-liquidation in progress.</>
+            )}
           </Alert>
         )}
 
@@ -672,6 +710,7 @@ export function PortfolioPanel({
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Issued</Table.Th>
+                  <Table.Th>Grace expires</Table.Th>
                   <Table.Th>Trigger</Table.Th>
                   <Table.Th ta="right">Mark</Table.Th>
                   <Table.Th ta="right">Equity at issue</Table.Th>
@@ -686,10 +725,25 @@ export function PortfolioPanel({
                   const issued = c.issuedAt
                     ? new Date(Number(c.issuedAt.seconds) * 1000).toLocaleString()
                     : "";
+                  const graceMs = timestampToMillis(c.graceExpiresAt);
+                  const graceLabel = graceMs
+                    ? new Date(graceMs).toLocaleTimeString()
+                    : "—";
                   return (
                     <Table.Tr key={c.callId}>
                       <Table.Td>
                         <Text size="xs">{issued}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap={6} wrap="nowrap">
+                          <Text size="xs">{graceLabel}</Text>
+                          {isActive && c.graceExpiresAt && (
+                            <Text size="xs" c="dimmed">
+                              (
+                              <GraceCountdown deadline={c.graceExpiresAt} />)
+                            </Text>
+                          )}
+                        </Group>
                       </Table.Td>
                       <Table.Td>{c.triggerSymbol}</Table.Td>
                       <Table.Td ta="right">{formatMoney(c.markPrice)}</Table.Td>

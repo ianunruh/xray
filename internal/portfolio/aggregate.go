@@ -50,13 +50,17 @@ type CollateralHold struct {
 // per account — the reactor only emits MarginCallIssued when none is
 // open, and emits MarginCallCovered to clear it.
 type MarginCall struct {
-	CallID                  string
-	TriggerTradeID          string
-	TriggerSymbol           string
-	MarkPrice               int64
-	EquityAtIssue           int64
-	RequirementAtIssue      int64
-	IssuedAt                time.Time
+	CallID             string
+	TriggerTradeID     string
+	TriggerSymbol      string
+	MarkPrice          int64
+	EquityAtIssue      int64
+	RequirementAtIssue int64
+	IssuedAt           time.Time
+	// GraceExpiresAt is when auto-liquidation fires if the breach
+	// isn't resolved beforehand. Computed at issue time by the
+	// reactor as IssuedAt + grace and frozen on the event.
+	GraceExpiresAt time.Time
 }
 
 type Portfolio struct {
@@ -439,7 +443,7 @@ func (p *Portfolio) applyShortCovered(data *portfoliov1.ShortCovered) {
 
 func (p *Portfolio) applyMarginCallIssued(data *portfoliov1.MarginCallIssued) {
 	p.AccountID = data.AccountId
-	p.ActiveMarginCall = &MarginCall{
+	call := &MarginCall{
 		CallID:             data.CallId,
 		TriggerTradeID:     data.TriggerTradeId,
 		TriggerSymbol:      data.TriggerSymbol,
@@ -448,6 +452,10 @@ func (p *Portfolio) applyMarginCallIssued(data *portfoliov1.MarginCallIssued) {
 		RequirementAtIssue: data.MaintenanceRequirementAtIssue,
 		IssuedAt:           data.IssuedAt.AsTime(),
 	}
+	if data.GraceExpiresAt != nil {
+		call.GraceExpiresAt = data.GraceExpiresAt.AsTime()
+	}
+	p.ActiveMarginCall = call
 }
 
 func (p *Portfolio) applyMarginCallCovered(_ *portfoliov1.MarginCallCovered) {

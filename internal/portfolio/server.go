@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
@@ -426,6 +427,9 @@ func buildMarginSnapshot(accountID string, p *Portfolio, marker Marker) *portfol
 	resp.MaintenanceRequirement = resp.LongMaintenanceRequirement + resp.ShortMaintenanceRequirement
 	resp.MarginExcess = resp.Equity - resp.MaintenanceRequirement
 	resp.MarginCall = resp.MarginExcess < 0
+	if p.ActiveMarginCall != nil && !p.ActiveMarginCall.GraceExpiresAt.IsZero() {
+		resp.MarginCallGraceExpiresAt = timestamppb.New(p.ActiveMarginCall.GraceExpiresAt)
+	}
 	// Leveraged buying power: how much new exposure the user can add
 	// before hitting the maintenance floor. Real brokers cap at 2:1
 	// for Reg-T accounts; we use margin.BuyingPower as the policy.

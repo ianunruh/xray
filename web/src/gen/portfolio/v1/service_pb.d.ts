@@ -622,6 +622,15 @@ export declare type GetMarginSnapshotResponse = Message<"portfolio.v1.GetMarginS
    * @generated from field: int64 short_maintenance_requirement = 18;
    */
   shortMaintenanceRequirement: bigint;
+
+  /**
+   * When margin_call=true, the instant at which the grace period
+   * expires and auto-liquidation will fire. Unset when no call is
+   * active. UI renders this as a countdown in the active-call alert.
+   *
+   * @generated from field: google.protobuf.Timestamp margin_call_grace_expires_at = 19;
+   */
+  marginCallGraceExpiresAt?: Timestamp | undefined;
 };
 
 /**
@@ -703,6 +712,15 @@ export declare type MarginCallRecord = Message<"portfolio.v1.MarginCallRecord"> 
    * @generated from field: repeated string liquidation_saga_ids = 12;
    */
   liquidationSagaIds: string[];
+
+  /**
+   * Wall-clock instant when the user's grace period ends and auto-
+   * liquidation fires. Frozen at issue time on MarginCallIssued; same
+   * value lives on the aggregate's ActiveMarginCall.
+   *
+   * @generated from field: google.protobuf.Timestamp grace_expires_at = 13;
+   */
+  graceExpiresAt?: Timestamp | undefined;
 };
 
 /**

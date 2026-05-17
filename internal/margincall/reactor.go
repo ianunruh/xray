@@ -297,6 +297,9 @@ func (r *Reactor) issueCall(ctx context.Context, accountID, callID, triggerID, t
 		EquityAtIssue:                 status.Equity,
 		MaintenanceRequirementAtIssue: status.MaintenanceRequirement,
 	}
+	if r.grace > 0 {
+		cmd.GraceExpiresAt = time.Now().Add(r.grace)
+	}
 	if err := r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
 		return portfolio.ExecuteIssueMarginCall(p, cmd)
 	}); err != nil {
