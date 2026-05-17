@@ -115,8 +115,14 @@ func (r *Reconciler) reconcileSaga(ctx context.Context, s *sagasvc.SagaRow) erro
 	// kicked off this saga is lost (we don't persist correlations on
 	// saga rows yet), so any events the reconciler emits start a new chain
 	// tagged by saga ID in logs.
+	//
+	// Debug-level on purpose: this fires once per active saga per tick
+	// even when the reactor's retry is a no-op (e.g., a limit order
+	// resting on the book). The reactor itself logs at INFO whenever it
+	// actually transitions state, so DEBUG here keeps the heartbeat
+	// available without spamming a quiet system.
 	ctx, correlationID := es.NewCorrelation(ctx)
-	r.log.Info("reconcile saga", "saga_id", s.SagaID, "kind", s.Kind, "correlation_id", correlationID)
+	r.log.Debug("reconcile saga", "saga_id", s.SagaID, "kind", s.Kind, "correlation_id", correlationID)
 	switch s.Kind {
 	case sagav1.SagaKind_SAGA_KIND_SINGLE_ORDER:
 		return r.reconcileOrderSaga(ctx, s)
