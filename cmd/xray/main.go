@@ -197,6 +197,17 @@ func main() {
 		natsstore.NewProjectionConsumer(js, registry, log, "daily-close-projection").
 			WithPersistent(store, dailyCloseProjection),
 	}
+	// Bootstrap broker's saga→account routing map BEFORE consumers
+	// start. The consumer resumes from checkpoint so OrderSagaStarted
+	// for in-flight sagas won't replay; without this snapshot, their
+	// later lifecycle events couldn't route to a subscriber.
+	if activeSagas, err := activeUserSagasProjection.AllActiveSagas(ctx); err != nil {
+		log.Error("failed to bootstrap portfolio broker saga map", "error", err)
+		os.Exit(1)
+	} else {
+		portfolioBroker.BootstrapSagas(activeSagas)
+	}
+
 	for _, c := range consumers {
 		if err := c.Start(ctx); err != nil {
 			log.Error("failed to start projection consumer", "error", err)

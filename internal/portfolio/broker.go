@@ -34,6 +34,22 @@ func (b *PortfolioBroker) SetReady() {
 	b.mu.Unlock()
 }
 
+// BootstrapSagas pre-populates the saga→account routing map from a
+// persisted snapshot so that saga lifecycle events (OrderSagaCashHeld,
+// OrderSagaFillRecorded, etc.) for sagas in flight across a restart
+// still route to the right subscriber. Without this, the persistent
+// consumer resumes from checkpoint with an empty map — the only saga
+// events that route would be ones for sagas STARTED after the
+// restart, leaving in-flight users with a stale UI until the next
+// event with an explicit AccountId field.
+func (b *PortfolioBroker) BootstrapSagas(sagas []ActiveSaga) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, s := range sagas {
+		b.sagaAccount[s.SagaID] = s.AccountID
+	}
+}
+
 func (b *PortfolioBroker) HandleEvents(_ context.Context, events []es.Event) error {
 	b.mu.Lock()
 	if !b.ready {

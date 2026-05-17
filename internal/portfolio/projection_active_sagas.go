@@ -77,6 +77,28 @@ func (p *PgActiveUserSagasProjection) HandleEvents(ctx context.Context, events [
 	return nil
 }
 
+// AllActiveSagas returns every active single-order saga across all
+// accounts. Used by PortfolioBroker.BootstrapSagas to recover the
+// in-memory saga→account routing map after a restart.
+func (p *PgActiveUserSagasProjection) AllActiveSagas(ctx context.Context) ([]ActiveSaga, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT saga_id, account_id FROM projection_active_user_sagas`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query all active sagas: %w", err)
+	}
+	defer rows.Close()
+	var out []ActiveSaga
+	for rows.Next() {
+		var s ActiveSaga
+		if err := rows.Scan(&s.SagaID, &s.AccountID); err != nil {
+			return nil, fmt.Errorf("scan saga: %w", err)
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 func (p *PgActiveUserSagasProjection) ActiveSingleOrderSagas(ctx context.Context, accountID string) ([]ActiveSaga, error) {
 	rows, err := p.pool.Query(ctx,
 		`SELECT saga_id, account_id FROM projection_active_user_sagas
