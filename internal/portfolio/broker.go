@@ -97,6 +97,10 @@ func (b *PortfolioBroker) HandleEvents(_ context.Context, events []es.Event) err
 			accountIDs[data.AccountId] = true
 		case *portfoliov1.MarginCallCovered:
 			accountIDs[data.AccountId] = true
+		case *portfoliov1.MarginInterestAccrued:
+			accountIDs[data.AccountId] = true
+		case *portfoliov1.ShortBorrowFeeAccrued:
+			accountIDs[data.AccountId] = true
 		case *portfoliov1.OrderSagaStarted:
 			b.sagaAccount[data.SagaId] = data.AccountId
 			accountIDs[data.AccountId] = true

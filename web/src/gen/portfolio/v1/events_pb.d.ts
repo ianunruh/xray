@@ -785,6 +785,114 @@ export declare type MarginCallCovered = Message<"portfolio.v1.MarginCallCovered"
 export declare const MarginCallCoveredSchema: GenMessage<MarginCallCovered>;
 
 /**
+ * MarginInterestAccrued records one cycle of interest charged on the
+ * outstanding margin loan. amount may be zero — the event still fires
+ * on every cycle to advance the accrual clock (LastAccruedAt), so the
+ * next cycle can compute elapsed correctly. Periodic, emitted by the
+ * fees accruer.
+ *
+ * @generated from message portfolio.v1.MarginInterestAccrued
+ */
+export declare type MarginInterestAccrued = Message<"portfolio.v1.MarginInterestAccrued"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp period_start = 2;
+   */
+  periodStart?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp period_end = 3;
+   */
+  periodEnd?: Timestamp | undefined;
+
+  /**
+   * Loan principal at the time of accrual (snapshot of MarginLoan()).
+   *
+   * @generated from field: int64 principal = 4;
+   */
+  principal: bigint;
+
+  /**
+   * Annual rate in bps used for this charge (audit).
+   *
+   * @generated from field: int64 rate_bps = 5;
+   */
+  rateBps: bigint;
+
+  /**
+   * Cash debited. Always >= 0; zero when there's no outstanding loan.
+   *
+   * @generated from field: int64 amount = 6;
+   */
+  amount: bigint;
+};
+
+/**
+ * Describes the message portfolio.v1.MarginInterestAccrued.
+ * Use `create(MarginInterestAccruedSchema)` to create a new message.
+ */
+export declare const MarginInterestAccruedSchema: GenMessage<MarginInterestAccrued>;
+
+/**
+ * ShortBorrowFeeAccrued records one cycle of borrow fee charged on
+ * one open short position. One event per (account, symbol) per cycle,
+ * emitted only when amount > 0.
+ *
+ * @generated from message portfolio.v1.ShortBorrowFeeAccrued
+ */
+export declare type ShortBorrowFeeAccrued = Message<"portfolio.v1.ShortBorrowFeeAccrued"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp period_start = 2;
+   */
+  periodStart?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp period_end = 3;
+   */
+  periodEnd?: Timestamp | undefined;
+
+  /**
+   * @generated from field: string symbol = 4;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: int64 mark_price = 5;
+   */
+  markPrice: bigint;
+
+  /**
+   * @generated from field: int64 qty = 6;
+   */
+  qty: bigint;
+
+  /**
+   * @generated from field: int64 rate_bps = 7;
+   */
+  rateBps: bigint;
+
+  /**
+   * @generated from field: int64 amount = 8;
+   */
+  amount: bigint;
+};
+
+/**
+ * Describes the message portfolio.v1.ShortBorrowFeeAccrued.
+ * Use `create(ShortBorrowFeeAccruedSchema)` to create a new message.
+ */
+export declare const ShortBorrowFeeAccruedSchema: GenMessage<ShortBorrowFeeAccrued>;
+
+/**
  * @generated from message portfolio.v1.OrderSagaStarted
  */
 export declare type OrderSagaStarted = Message<"portfolio.v1.OrderSagaStarted"> & {
