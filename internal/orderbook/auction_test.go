@@ -396,6 +396,198 @@ func TestUncross_FlipsBackToContinuous_ThenMatchesNormally(t *testing.T) {
 		"continuous trades carry cross_type=NONE")
 }
 
+// -- AT_OPEN order type ---------------------------------------------------
+
+func placeLOO(t *testing.T, book *orderbook.OrderBook, account string, side orderbook.Side, price, quantity int64) {
+	t.Helper()
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        side,
+		Price:       price,
+		Quantity:    quantity,
+		TimeInForce: orderbook.AtOpen,
+		AccountID:   account,
+	})
+	require.NoError(t, err)
+}
+
+func placeMOO(t *testing.T, book *orderbook.OrderBook, account string, side orderbook.Side, quantity int64) {
+	t.Helper()
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        side,
+		Quantity:    quantity,
+		OrderType:   orderbook.Market,
+		TimeInForce: orderbook.AtOpen,
+		AccountID:   account,
+	})
+	require.NoError(t, err)
+}
+
+func TestAtOpen_RejectedOutsideAuction(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        orderbook.Buy,
+		Price:       1500000,
+		Quantity:    100,
+		TimeInForce: orderbook.AtOpen,
+	})
+	assert.ErrorIs(t, err, orderbook.ErrAtOpenOutsideAuction)
+}
+
+func TestAtOpen_StopRejected(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	openAuction(t, book)
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        orderbook.Sell,
+		StopPrice:   1480000,
+		Quantity:    50,
+		OrderType:   orderbook.StopMarket,
+		TimeInForce: orderbook.AtOpen,
+	})
+	assert.ErrorIs(t, err, orderbook.ErrAuctionStopNotAllowed)
+}
+
+func TestAtOpen_RoutedToOpeningBook_NotInContinuousDepth(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	openAuction(t, book)
+	placeLOO(t, book, "acct-1", orderbook.Buy, 1500000, 100)
+
+	// Bids side should be empty — AT_OPEN orders stay in the auction book.
+	assert.Equal(t, 0, book.Bids.Len(), "AT_OPEN limit must not appear in continuous bids")
+	assert.Equal(t, 1, book.OpeningBook.Len(), "AT_OPEN should be parked in OpeningBook")
+}
+
+func TestUncross_MOO_FillsAgainstResting(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	openAuction(t, book)
+	placeLOO(t, book, "acct-1", orderbook.Sell, 1500000, 100) // LOO sell @ $150
+	placeMOO(t, book, "acct-2", orderbook.Buy, 100)           // MOO buy
+
+	events := runUncross(t, book)
+	header := events[0].Data.(*orderbookv1.AuctionUncrossed)
+	assert.Equal(t, int64(1500000), header.ClearingPrice)
+	assert.Equal(t, int64(100), header.MatchedQty)
+}
+
+func TestUncross_LOO_PriorityMergedWithRegularLimits(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	openAuction(t, book)
+	placeLOO(t, book, "acct-1", orderbook.Buy, 1500000, 50) // LOO
+	placeBid(t, book, 1500000, 50)                          // regular limit @ same price
+	placeAsk(t, book, 1500000, 100)                         // regular limit sell
+
+	events := runUncross(t, book)
+	header := events[0].Data.(*orderbookv1.AuctionUncrossed)
+	assert.Equal(t, int64(1500000), header.ClearingPrice)
+	assert.Equal(t, int64(100), header.MatchedQty)
+
+	var trades []*orderbookv1.TradeExecuted
+	for _, evt := range events {
+		if t, ok := evt.Data.(*orderbookv1.TradeExecuted); ok {
+			trades = append(trades, t)
+		}
+	}
+	assert.Len(t, trades, 2, "both buy-side orders should fill")
+}
+
+func TestUncross_UnfilledLOO_CancelledMissedAuction(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	openAuction(t, book)
+	// LOO buy at $148 — won't clear because no sells exist at $148.
+	placeLOO(t, book, "acct-1", orderbook.Buy, 1480000, 50)
+	placeAsk(t, book, 1500000, 50) // regular sell at $150
+
+	events := runUncross(t, book)
+
+	// Find the cancellation for the LOO.
+	var cancelReason string
+	for _, evt := range events {
+		if c, ok := evt.Data.(*orderbookv1.OrderCancelled); ok {
+			cancelReason = c.Reason
+		}
+	}
+	assert.Equal(t, "missed_auction", cancelReason)
+	assert.Equal(t, 0, book.OpeningBook.Len(), "OpeningBook should be empty after uncross")
+}
+
+func TestUncross_UnfilledMOO_NoLiquidity_Cancelled(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	openAuction(t, book)
+	// MOO buy with nothing to fill against.
+	placeMOO(t, book, "acct-1", orderbook.Buy, 50)
+
+	events := runUncross(t, book)
+
+	header := events[0].Data.(*orderbookv1.AuctionUncrossed)
+	assert.Equal(t, int64(0), header.MatchedQty)
+
+	var sawCancel bool
+	for _, evt := range events {
+		if c, ok := evt.Data.(*orderbookv1.OrderCancelled); ok {
+			assert.Equal(t, "missed_auction", c.Reason)
+			sawCancel = true
+		}
+	}
+	assert.True(t, sawCancel, "unfilled MOO should be cancelled")
+}
+
+func TestUncross_PureMarketCross_UsesLastTradePrice(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	// Establish a prior continuous trade at $150 to seed LastTradePrice.
+	placeBid(t, book, 1500000, 10)
+	placeAskAccount(t, book, "acct-x", 1500000, 10)
+	require.Equal(t, int64(1500000), book.LastTradePrice)
+
+	openAuction(t, book)
+	placeMOO(t, book, "acct-1", orderbook.Buy, 100)
+	placeMOO(t, book, "acct-2", orderbook.Sell, 100)
+
+	events := runUncross(t, book)
+	header := events[0].Data.(*orderbookv1.AuctionUncrossed)
+	assert.Equal(t, int64(1500000), header.ClearingPrice,
+		"pure-market cross uses LastTradePrice as the reference")
+	assert.Equal(t, int64(100), header.MatchedQty)
+}
+
+func TestUncross_PureMarketCross_NoLastTrade_NoClearing(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	openAuction(t, book)
+	placeMOO(t, book, "acct-1", orderbook.Buy, 50)
+	placeMOO(t, book, "acct-2", orderbook.Sell, 50)
+
+	events := runUncross(t, book)
+	header := events[0].Data.(*orderbookv1.AuctionUncrossed)
+	assert.Equal(t, int64(0), header.MatchedQty, "no reference price → no clearing")
+	assert.Equal(t, int64(0), header.ClearingPrice)
+}
+
+func TestAtOpen_CancellableDuringAuction(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	openAuction(t, book)
+
+	events, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        orderbook.Buy,
+		Price:       1500000,
+		Quantity:    100,
+		TimeInForce: orderbook.AtOpen,
+		OrderID:     "loo-1",
+	})
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	assert.Equal(t, 1, book.OpeningBook.Len())
+
+	_, err = orderbook.ExecuteCancelOrder(book, orderbook.CancelOrder{
+		Symbol:  "AAPL",
+		OrderID: "loo-1",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 0, book.OpeningBook.Len(), "cancelled AT_OPEN should leave the auction book")
+}
+
 func TestUncross_TriggersPreExistingStop(t *testing.T) {
 	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
 

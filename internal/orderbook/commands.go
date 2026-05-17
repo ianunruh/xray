@@ -30,6 +30,8 @@ var (
 	ErrAlreadyInAuction            = errors.New("market is already in an auction phase")
 	ErrNotInAuction                = errors.New("uncross requires the market to be in an auction phase")
 	ErrCannotOpenAuction           = errors.New("opening auction can only be entered from CONTINUOUS or CLOSED")
+	ErrAtOpenOutsideAuction        = errors.New("AT_OPEN orders are only accepted during the opening auction")
+	ErrAuctionStopNotAllowed       = errors.New("stop orders cannot be combined with AT_OPEN/AT_CLOSE")
 )
 
 // PlaceOrder is a command to place a new order on the book.
@@ -124,10 +126,22 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 
 	tif := cmd.TimeInForce
 
+	// AT_OPEN orders bind to the opening auction. Reject outside that
+	// phase and reject in combination with stops (no last-trade reference
+	// to trigger from). Market orders are explicitly allowed only when
+	// bound via AT_OPEN.
+	if tif == AtOpen {
+		if book.Phase != PhaseAuction {
+			return nil, ErrAtOpenOutsideAuction
+		}
+		if cmd.OrderType == StopMarket || cmd.OrderType == StopLimit {
+			return nil, ErrAuctionStopNotAllowed
+		}
+	}
+
 	// Phase-aware validation. Auction phases reject orders that need
-	// immediate liquidity (IOC/FOK/Market without an auction binding) —
-	// AT_OPEN/AT_CLOSE bindings are added in later steps. CLOSED rejects
-	// everything except cancels.
+	// immediate liquidity (IOC/FOK/Market without an auction binding).
+	// CLOSED rejects everything except cancels.
 	switch book.Phase {
 	case PhaseClosed:
 		return nil, ErrMarketClosed
@@ -135,7 +149,7 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 		if tif == IOC || tif == FOK {
 			return nil, ErrAuctionRejectsIOC
 		}
-		if cmd.OrderType == Market {
+		if cmd.OrderType == Market && tif != AtOpen {
 			return nil, ErrAuctionRejectsMarket
 		}
 	}

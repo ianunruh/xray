@@ -29,6 +29,10 @@ type OrderBook struct {
 	// Used by the matching engine to cancel siblings when any member
 	// of the group trades.
 	OCOGroups map[string]map[string]struct{}
+	// OpeningBook holds AT_OPEN orders (MOO/LOO). Kept separate from
+	// the continuous Bids/Asks so depth streams stay clean — the uncross
+	// algorithm merges them in at clearing time.
+	OpeningBook *auctionBook
 	// LastTradePrice tracks the most recent continuous-trade print; the
 	// uncross algorithm uses it as the tie-break reference when the
 	// matched range is balanced and brackets the prior print.
@@ -38,13 +42,14 @@ type OrderBook struct {
 // NewOrderBook creates a new OrderBook aggregate with the given ID.
 func NewOrderBook(id string) *OrderBook {
 	ob := &OrderBook{
-		PriceScale: 4,
-		Bids:       newBidSide(),
-		Asks:       newAskSide(),
-		Orders:     make(map[string]*Order),
-		BuyStops:   newBuyStopSide(),
-		SellStops:  newSellStopSide(),
-		OCOGroups:  make(map[string]map[string]struct{}),
+		PriceScale:  4,
+		Bids:        newBidSide(),
+		Asks:        newAskSide(),
+		Orders:      make(map[string]*Order),
+		BuyStops:    newBuyStopSide(),
+		SellStops:   newSellStopSide(),
+		OCOGroups:   make(map[string]map[string]struct{}),
+		OpeningBook: newAuctionBook(),
 	}
 	ob.SetID(id)
 	return ob
@@ -131,6 +136,13 @@ func (ob *OrderBook) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 		group[order.ID] = struct{}{}
 	}
 
+	// AT_OPEN/AT_CLOSE route to the auction book partition; they never
+	// participate in continuous matching.
+	if order.TimeInForce == AtOpen {
+		ob.OpeningBook.Insert(order)
+		return
+	}
+
 	if order.OrderType == StopMarket || order.OrderType == StopLimit {
 		switch order.Side {
 		case Buy:
@@ -176,14 +188,17 @@ func (ob *OrderBook) applyOrderCancelled(data *orderbookv1.OrderCancelled) {
 		return
 	}
 
-	if order.OrderType == StopMarket || order.OrderType == StopLimit {
+	switch {
+	case order.TimeInForce == AtOpen:
+		ob.OpeningBook.Remove(order.ID, order.Side)
+	case order.OrderType == StopMarket || order.OrderType == StopLimit:
 		switch order.Side {
 		case Buy:
 			ob.BuyStops.Remove(order.ID)
 		case Sell:
 			ob.SellStops.Remove(order.ID)
 		}
-	} else {
+	default:
 		switch order.Side {
 		case Buy:
 			ob.Bids.Remove(order)

@@ -24,10 +24,12 @@ const (
 type TimeInForce int
 
 const (
-	GTC TimeInForce = 0
-	IOC TimeInForce = 1
-	FOK TimeInForce = 2
-	Day TimeInForce = 3
+	GTC     TimeInForce = 0
+	IOC     TimeInForce = 1
+	FOK     TimeInForce = 2
+	Day     TimeInForce = 3
+	AtOpen  TimeInForce = 4
+	AtClose TimeInForce = 5
 )
 
 // MarketPhase gates how the orderbook handles incoming orders. The zero

@@ -128,10 +128,11 @@ type auctionResult struct {
 
 // uncross produces the events for an auction uncross: an AuctionUncrossed
 // header, then per-pair TradeExecuted events at the clearing price, then
-// any OCO sibling cancellations. Allocation walks both sides in
-// price-time priority and skips self-trade pairs.
+// any OCO sibling cancellations, then "missed_auction" cancellations for
+// AT_OPEN/AT_CLOSE orders that didn't fill. Allocation walks both sides
+// in price-time priority and skips self-trade pairs.
 func uncross(book *OrderBook, ct CrossType, now time.Time) ([]es.Event, auctionResult) {
-	res := computeClearing(book)
+	res := computeClearing(book, ct)
 
 	auctionEvt := es.Event{
 		AggregateID: book.AggregateID(),
@@ -150,12 +151,59 @@ func uncross(book *OrderBook, ct CrossType, now time.Time) ([]es.Event, auctionR
 	_ = book.Apply(auctionEvt)
 	events := []es.Event{auctionEvt}
 
-	if res.MatchedQty == 0 {
-		return events, res
+	if res.MatchedQty > 0 {
+		events = allocateUncross(book, res.ClearingPrice, ct, events, now)
 	}
 
-	events = allocateUncross(book, res.ClearingPrice, ct, events, now)
+	// Sweep any AT_OPEN/AT_CLOSE orders that didn't fill. They're bound
+	// to this single auction and don't carry over.
+	events = cancelMissedAuctionOrders(book, ct, events, now)
+
 	return events, res
+}
+
+// cancelMissedAuctionOrders emits OrderCancelled{reason:"missed_auction"}
+// for AT_OPEN/AT_CLOSE orders still resting on their auction book. Run
+// after allocation so any orders that filled (and were removed from the
+// auction book by applyOrderCancelled / applyTradeExecuted bookkeeping)
+// are skipped.
+func cancelMissedAuctionOrders(book *OrderBook, ct CrossType, events []es.Event, now time.Time) []es.Event {
+	var ab *auctionBook
+	switch ct {
+	case CrossOpening:
+		ab = book.OpeningBook
+	}
+	if ab == nil {
+		return events
+	}
+
+	// Snapshot first: cancelling each order mutates the slice via
+	// applyOrderCancelled.
+	pending := make([]*Order, 0, len(ab.BuyOrders)+len(ab.SellOrders))
+	pending = append(pending, ab.BuyOrders...)
+	pending = append(pending, ab.SellOrders...)
+
+	for _, o := range pending {
+		if _, ok := book.Orders[o.ID]; !ok {
+			continue
+		}
+		if o.RemainingQty <= 0 {
+			continue
+		}
+		cancelEvt := es.Event{
+			AggregateID: book.AggregateID(),
+			Type:        EventOrderCancelled,
+			Timestamp:   now,
+			Data: &orderbookv1.OrderCancelled{
+				OrderId: o.ID,
+				Symbol:  book.Symbol,
+				Reason:  "missed_auction",
+			},
+		}
+		_ = book.Apply(cancelEvt)
+		events = append(events, cancelEvt)
+	}
+	return events
 }
 
 // allocateUncross walks the bid and ask books at and through the
@@ -167,19 +215,7 @@ func uncross(book *OrderBook, ct CrossType, now time.Time) ([]es.Event, auctionR
 // The realized matched quantity may be less than the headline
 // matched_qty when self-trade prevention blocks some pairings.
 func allocateUncross(book *OrderBook, clearing int64, ct CrossType, events []es.Event, now time.Time) []es.Event {
-	// Snapshot pointers before mutating the priceSide index.
-	var buys []*Order
-	for o := range book.Bids.All() {
-		if o.Price >= clearing {
-			buys = append(buys, o)
-		}
-	}
-	var sells []*Order
-	for o := range book.Asks.All() {
-		if o.Price <= clearing {
-			sells = append(sells, o)
-		}
-	}
+	buys, sells := eligibleAuctionOrders(book, clearing, ct)
 
 	for i := 0; i < len(buys); i++ {
 		b := buys[i]
@@ -245,45 +281,75 @@ func allocateUncross(book *OrderBook, clearing int64, ct CrossType, events []es.
 }
 
 // computeClearing finds the equilibrium clearing price using cumulative
-// supply/demand curves over the regular limit book.
+// supply/demand curves. It merges the continuous limit book with the
+// auction-only AT_OPEN/AT_CLOSE book for the current cross type.
 //
 // Algorithm:
 //  1. Candidate prices = all distinct limit prices on either side.
-//  2. For each candidate p, matched(p) = min(buyQty≥p, sellQty≤p).
+//  2. For each candidate p, matched(p) = min(buyQty≥p+marketBuyQty,
+//     sellQty≤p+marketSellQty).
 //  3. Take candidates with max matched.
 //  4. Among those, take candidates with min |imbalance|.
 //  5. Tie-break by imbalance direction: buy-heavy → highest price,
 //     sell-heavy → lowest price, balanced → reference (last trade) if
 //     within range, else midpoint.
-func computeClearing(book *OrderBook) auctionResult {
-	bids := collectLevels(book.Bids)
-	asks := collectLevels(book.Asks)
+//
+// Edge case: when only market orders exist (no limit prices on either
+// side), fall back to LastTradePrice as the clearing price. With no
+// reference at all, no clearing is possible — emit zero matched and
+// the caller will cancel market orders as "missed_auction".
+func computeClearing(book *OrderBook, ct CrossType) auctionResult {
+	inp := collectUncrossInputs(book, ct)
+
+	totalBuy := totalLevelQty(inp.bidLevels) + inp.marketBuyQty
+	totalSell := totalLevelQty(inp.askLevels) + inp.marketSellQty
 
 	// One-sided or empty book: no crossing possible, but report the
 	// standing imbalance so consumers can see how lopsided things are.
-	if len(bids) == 0 || len(asks) == 0 {
+	if totalBuy == 0 || totalSell == 0 {
 		var r auctionResult
 		switch {
-		case len(bids) > 0:
+		case totalBuy > 0:
 			r.ImbalanceSide = Buy
-			r.ImbalanceQty = totalLevelQty(bids)
-		case len(asks) > 0:
+			r.ImbalanceQty = totalBuy
+		case totalSell > 0:
 			r.ImbalanceSide = Sell
-			r.ImbalanceQty = totalLevelQty(asks)
+			r.ImbalanceQty = totalSell
 		}
 		return r
 	}
 
-	// Distinct candidate prices across both sides.
-	seen := make(map[int64]struct{}, len(bids)+len(asks))
-	candidates := make([]int64, 0, len(bids)+len(asks))
-	for _, l := range bids {
+	// Pure-market crosses use LastTradePrice as the reference. If we've
+	// never traded, there's no fair reference — bail out.
+	if len(inp.bidLevels) == 0 && len(inp.askLevels) == 0 {
+		if book.LastTradePrice == 0 {
+			return auctionResult{}
+		}
+		matched := minInt64(inp.marketBuyQty, inp.marketSellQty)
+		imb := inp.marketBuyQty - inp.marketSellQty
+		res := auctionResult{ClearingPrice: book.LastTradePrice, MatchedQty: matched}
+		switch {
+		case imb > 0:
+			res.ImbalanceQty = imb
+			res.ImbalanceSide = Buy
+		case imb < 0:
+			res.ImbalanceQty = -imb
+			res.ImbalanceSide = Sell
+		}
+		return res
+	}
+
+	// Distinct candidate prices across both sides. Markets contribute
+	// quantity but no price candidates.
+	seen := make(map[int64]struct{}, len(inp.bidLevels)+len(inp.askLevels))
+	candidates := make([]int64, 0, len(inp.bidLevels)+len(inp.askLevels))
+	for _, l := range inp.bidLevels {
 		if _, ok := seen[l.price]; !ok {
 			seen[l.price] = struct{}{}
 			candidates = append(candidates, l.price)
 		}
 	}
-	for _, l := range asks {
+	for _, l := range inp.askLevels {
 		if _, ok := seen[l.price]; !ok {
 			seen[l.price] = struct{}{}
 			candidates = append(candidates, l.price)
@@ -299,8 +365,8 @@ func computeClearing(book *OrderBook) auctionResult {
 	cs := make([]cand, 0, len(candidates))
 	var best int64
 	for _, p := range candidates {
-		bq := cumulativeAtOrBetter(bids, p, true)
-		sq := cumulativeAtOrBetter(asks, p, false)
+		bq := cumulativeAtOrBetter(inp.bidLevels, p, true) + inp.marketBuyQty
+		sq := cumulativeAtOrBetter(inp.askLevels, p, false) + inp.marketSellQty
 		m := minInt64(bq, sq)
 		cs = append(cs, cand{price: p, matched: m, imbalance: bq - sq})
 		if m > best {
@@ -455,6 +521,142 @@ func cumulativeAtOrBetter(levels []priceLevel, p int64, isBuy bool) int64 {
 		}
 	}
 	return sum
+}
+
+// uncrossInputs is the merged view of continuous + auction-only orders
+// that the equilibrium-price algorithm operates on.
+type uncrossInputs struct {
+	bidLevels     []priceLevel // aggregated limit bids, highest first
+	askLevels     []priceLevel // aggregated limit asks, lowest first
+	marketBuyQty  int64        // total qty of market AT_OPEN/AT_CLOSE buys
+	marketSellQty int64
+}
+
+// collectUncrossInputs merges the continuous Bids/Asks with the
+// AT_OPEN/AT_CLOSE orders in the appropriate auction book, aggregating
+// by price level and separating market orders (which fill at any price).
+func collectUncrossInputs(book *OrderBook, ct CrossType) uncrossInputs {
+	var ab *auctionBook
+	switch ct {
+	case CrossOpening:
+		ab = book.OpeningBook
+	}
+
+	inp := uncrossInputs{}
+	bidsByPrice := make(map[int64]int64)
+	for o := range book.Bids.All() {
+		bidsByPrice[o.Price] += o.RemainingQty
+	}
+	if ab != nil {
+		for _, o := range ab.BuyOrders {
+			switch o.OrderType {
+			case Limit:
+				bidsByPrice[o.Price] += o.RemainingQty
+			case Market:
+				inp.marketBuyQty += o.RemainingQty
+			}
+		}
+	}
+	for p, q := range bidsByPrice {
+		inp.bidLevels = append(inp.bidLevels, priceLevel{price: p, qty: q})
+	}
+	sort.Slice(inp.bidLevels, func(i, j int) bool {
+		return inp.bidLevels[i].price > inp.bidLevels[j].price
+	})
+
+	asksByPrice := make(map[int64]int64)
+	for o := range book.Asks.All() {
+		asksByPrice[o.Price] += o.RemainingQty
+	}
+	if ab != nil {
+		for _, o := range ab.SellOrders {
+			switch o.OrderType {
+			case Limit:
+				asksByPrice[o.Price] += o.RemainingQty
+			case Market:
+				inp.marketSellQty += o.RemainingQty
+			}
+		}
+	}
+	for p, q := range asksByPrice {
+		inp.askLevels = append(inp.askLevels, priceLevel{price: p, qty: q})
+	}
+	sort.Slice(inp.askLevels, func(i, j int) bool {
+		return inp.askLevels[i].price < inp.askLevels[j].price
+	})
+
+	return inp
+}
+
+// eligibleAuctionOrders returns the buys and sells eligible to trade
+// at the clearing price, in priority order: market AT_OPEN/AT_CLOSE
+// first (by placement time), then limits in price-time priority
+// (continuous and auction-only limits merged).
+func eligibleAuctionOrders(book *OrderBook, clearing int64, ct CrossType) (buys, sells []*Order) {
+	var ab *auctionBook
+	switch ct {
+	case CrossOpening:
+		ab = book.OpeningBook
+	}
+
+	var marketBuys, marketSells []*Order
+	var auctionLimitBuys, auctionLimitSells []*Order
+	if ab != nil {
+		for _, o := range ab.BuyOrders {
+			switch {
+			case o.OrderType == Market:
+				marketBuys = append(marketBuys, o)
+			case o.OrderType == Limit && o.Price >= clearing:
+				auctionLimitBuys = append(auctionLimitBuys, o)
+			}
+		}
+		for _, o := range ab.SellOrders {
+			switch {
+			case o.OrderType == Market:
+				marketSells = append(marketSells, o)
+			case o.OrderType == Limit && o.Price <= clearing:
+				auctionLimitSells = append(auctionLimitSells, o)
+			}
+		}
+	}
+	sort.SliceStable(marketBuys, func(i, j int) bool {
+		return marketBuys[i].PlacedAt.Before(marketBuys[j].PlacedAt)
+	})
+	sort.SliceStable(marketSells, func(i, j int) bool {
+		return marketSells[i].PlacedAt.Before(marketSells[j].PlacedAt)
+	})
+
+	limitBuys := make([]*Order, 0)
+	for o := range book.Bids.All() {
+		if o.Price >= clearing {
+			limitBuys = append(limitBuys, o)
+		}
+	}
+	limitBuys = append(limitBuys, auctionLimitBuys...)
+	sort.SliceStable(limitBuys, func(i, j int) bool {
+		if limitBuys[i].Price != limitBuys[j].Price {
+			return limitBuys[i].Price > limitBuys[j].Price
+		}
+		return limitBuys[i].PlacedAt.Before(limitBuys[j].PlacedAt)
+	})
+
+	limitSells := make([]*Order, 0)
+	for o := range book.Asks.All() {
+		if o.Price <= clearing {
+			limitSells = append(limitSells, o)
+		}
+	}
+	limitSells = append(limitSells, auctionLimitSells...)
+	sort.SliceStable(limitSells, func(i, j int) bool {
+		if limitSells[i].Price != limitSells[j].Price {
+			return limitSells[i].Price < limitSells[j].Price
+		}
+		return limitSells[i].PlacedAt.Before(limitSells[j].PlacedAt)
+	})
+
+	buys = append(marketBuys, limitBuys...)
+	sells = append(marketSells, limitSells...)
+	return buys, sells
 }
 
 func minInt64(a, b int64) int64 {

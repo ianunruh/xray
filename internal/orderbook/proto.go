@@ -60,6 +60,10 @@ func TimeInForceFromProto(tif orderbookv1.TimeInForce) TimeInForce {
 		return FOK
 	case orderbookv1.TimeInForce_TIME_IN_FORCE_DAY:
 		return Day
+	case orderbookv1.TimeInForce_TIME_IN_FORCE_AT_OPEN:
+		return AtOpen
+	case orderbookv1.TimeInForce_TIME_IN_FORCE_AT_CLOSE:
+		return AtClose
 	default:
 		return GTC
 	}
@@ -75,6 +79,10 @@ func TimeInForceToProto(tif TimeInForce) orderbookv1.TimeInForce {
 		return orderbookv1.TimeInForce_TIME_IN_FORCE_GTC
 	case Day:
 		return orderbookv1.TimeInForce_TIME_IN_FORCE_DAY
+	case AtOpen:
+		return orderbookv1.TimeInForce_TIME_IN_FORCE_AT_OPEN
+	case AtClose:
+		return orderbookv1.TimeInForce_TIME_IN_FORCE_AT_CLOSE
 	default:
 		return orderbookv1.TimeInForce_TIME_IN_FORCE_UNSPECIFIED
 	}
