@@ -118,7 +118,7 @@ function MarketTicker({
         price={ask?.price}
         quantity={ask?.quantity}
       />
-      <div>
+      <div style={{ minWidth: 80 }}>
         <Text size="xs" c="dimmed">
           Spread
         </Text>
@@ -149,11 +149,11 @@ function TickerCell({
   quantity: bigint | undefined;
 }) {
   return (
-    <div>
+    <div style={{ minWidth: 170 }}>
       <Text size="xs" c="dimmed">
         {label}
       </Text>
-      <Group gap={6} align="baseline">
+      <Group gap={6} align="baseline" wrap="nowrap">
         <Text fw={700} c={color} ff="monospace">
           {price === undefined ? "—" : formatPrice(price)}
         </Text>
