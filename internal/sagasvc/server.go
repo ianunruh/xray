@@ -9,12 +9,14 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
 	"github.com/ianunruh/xray/gen/saga/v1/sagav1connect"
 	"github.com/ianunruh/xray/internal/bracket"
 	"github.com/ianunruh/xray/internal/ocosaga"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
+	"github.com/ianunruh/xray/internal/portfolio"
 	"github.com/ianunruh/xray/pkg/es"
 )
 
@@ -28,6 +30,7 @@ type Server struct {
 	bracketHandler   *es.Handler[*bracket.BracketSaga]
 	ocoSagaHandler   *es.Handler[*ocosaga.OCOSaga]
 	orderbookHandler *es.Handler[*orderbook.OrderBook]
+	portfolioHandler *es.Handler[*portfolio.Portfolio]
 	projection       *PgProjection
 	log              *slog.Logger
 }
@@ -37,6 +40,7 @@ func NewServer(
 	bracketHandler *es.Handler[*bracket.BracketSaga],
 	ocoSagaHandler *es.Handler[*ocosaga.OCOSaga],
 	orderbookHandler *es.Handler[*orderbook.OrderBook],
+	portfolioHandler *es.Handler[*portfolio.Portfolio],
 	projection *PgProjection,
 	log *slog.Logger,
 ) *Server {
@@ -45,6 +49,7 @@ func NewServer(
 		bracketHandler:   bracketHandler,
 		ocoSagaHandler:   ocoSagaHandler,
 		orderbookHandler: orderbookHandler,
+		portfolioHandler: portfolioHandler,
 		projection:       projection,
 		log:              log,
 	}
@@ -110,7 +115,31 @@ func (s *Server) placeOCO(ctx context.Context, accountID string, plan *sagav1.OC
 	return sagaID, nil
 }
 
+// guardMarginCall blocks user-initiated orders that would grow
+// exposure (BUY+LONG or SELL+SHORT) while the account has an active
+// margin call. Reducing-exposure orders pass through — the user
+// should still be able to sell longs or cover shorts to fix the
+// breach themselves. Liquidation sagas don't hit this path; they
+// don't go through Place.
+func (s *Server) guardMarginCall(ctx context.Context, accountID string, side orderbookv1.Side, ps orderbookv1.PositionSide) error {
+	if !portfolio.IsExposureAdding(side, ps) {
+		return nil
+	}
+	p, err := s.portfolioHandler.Load(ctx, portfolio.AggregateID(accountID))
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("load portfolio: %w", err))
+	}
+	if p.ActiveMarginCall == nil {
+		return nil
+	}
+	return connect.NewError(connect.CodeFailedPrecondition,
+		errors.New("account is in margin call; only reducing-exposure orders allowed (sell long, cover short)"))
+}
+
 func (s *Server) placeSingleOrder(ctx context.Context, accountID string, plan *sagav1.SingleOrderPlan) (string, error) {
+	if err := s.guardMarginCall(ctx, accountID, plan.Side, plan.PositionSide); err != nil {
+		return "", err
+	}
 	sagaID := ordersaga.NewSagaID()
 	cmd := ordersaga.StartOrderSaga{
 		SagaID:         sagaID,
@@ -141,6 +170,9 @@ func (s *Server) placeBracket(ctx context.Context, accountID string, plan *sagav
 	}
 	if plan.EntryQuantity <= 0 {
 		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("entry_quantity must be positive"))
+	}
+	if err := s.guardMarginCall(ctx, accountID, plan.EntrySide, plan.PositionSide); err != nil {
+		return "", err
 	}
 
 	sagaID := bracket.NewSagaID()

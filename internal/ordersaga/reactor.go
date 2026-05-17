@@ -8,6 +8,7 @@ import (
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
+	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
 	"github.com/ianunruh/xray/internal/margin"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/portfolio"
@@ -88,6 +89,25 @@ func (r *Reactor) holdResources(ctx context.Context, sagaID string) error {
 	}
 	if saga.Status != Started {
 		return nil
+	}
+
+	// Defensive margin-call gate. sagasvc.Place enforces the same
+	// rule at submit time, but a call can fire between Place and
+	// here (e.g. a trade trigger lands in the gap). The saga has
+	// to either run or fail with a clean reason — silently
+	// proceeding would compound the breach. MARGIN_CALL-initiated
+	// sagas (the liquidations themselves) skip the check.
+	if saga.Initiator != sagav1.Initiator_INITIATOR_MARGIN_CALL &&
+		portfolio.IsExposureAdding(orderbook.SideToProto(saga.Side), saga.PositionSide) {
+		p, err := r.portfolioHandler.Load(ctx, portfolio.AggregateID(saga.AccountID))
+		if err != nil {
+			r.log.Error("hold_resources: load portfolio", "saga_id", sagaID, "error", err)
+			return r.emitActionFailed(ctx, sagaID, "hold_resources", err.Error())
+		}
+		if p.ActiveMarginCall != nil {
+			return r.emitActionFailed(ctx, sagaID, "in_margin_call",
+				"account in margin call; cannot add exposure")
+		}
 	}
 
 	switch {

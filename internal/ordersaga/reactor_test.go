@@ -309,6 +309,63 @@ func TestReactor_OrderCancelled_CashReleased(t *testing.T) {
 	assert.Equal(t, int64(0), p.CashHeld)
 }
 
+// seedActiveMarginCall puts the portfolio aggregate into the
+// in-call state directly via IssueMarginCall — used by the
+// in-call guard tests to avoid having to run the full margin
+// reactor chain to provoke a call.
+func seedActiveMarginCall(t *testing.T, env *reactorTestEnv, accountID string) {
+	t.Helper()
+	cmd := portfolio.IssueMarginCall{
+		AccountID:                     accountID,
+		CallID:                        "test-call:" + accountID,
+		TriggerTradeID:                "test-trade",
+		TriggerSymbol:                 "AAPL",
+		MarkPrice:                     8_000_000,
+		EquityAtIssue:                 100_000_000,
+		MaintenanceRequirementAtIssue: 240_000_000,
+	}
+	require.NoError(t, env.portfolioHandler.Handle(env.ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteIssueMarginCall(p, cmd)
+	}))
+}
+
+func TestReactor_InMarginCall_RejectsExposureAddingBuy(t *testing.T) {
+	env := setupReactorTest(t)
+	depositCash(t, env, "acct-1", 100_000_000_000)
+	seedActiveMarginCall(t, env, "acct-1")
+	env.pub.events = nil
+
+	startOrderSaga(t, env, "user-buy", "acct-1", "AAPL",
+		orderbookv1.Side_SIDE_BUY, 1_500_000, 100)
+	env.flush()
+
+	s := loadSaga(t, env, "user-buy")
+	assert.Equal(t, ordersaga.Failed, s.Status, "exposure-adding buy must fail when in margin call")
+}
+
+func TestReactor_InMarginCall_AllowsExposureReducingSell(t *testing.T) {
+	env := setupReactorTest(t)
+	depositCash(t, env, "acct-1", 100_000_000_000)
+	// Need a long holding to sell.
+	require.NoError(t, env.portfolioHandler.Handle(env.ctx,
+		portfolio.CreditShares{AccountID: "acct-1", Symbol: "AAPL", Quantity: 100, CostPerShare: 1_500_000},
+		func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteCreditShares(p,
+				portfolio.CreditShares{AccountID: "acct-1", Symbol: "AAPL", Quantity: 100, CostPerShare: 1_500_000})
+		}))
+	seedActiveMarginCall(t, env, "acct-1")
+	// Resting bid so the sell can fill.
+	placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1_500_000, 100)
+	env.pub.events = nil
+
+	startOrderSaga(t, env, "user-sell", "acct-1", "AAPL",
+		orderbookv1.Side_SIDE_SELL, 1_500_000, 100)
+	env.flush()
+
+	s := loadSaga(t, env, "user-sell")
+	assert.Equal(t, ordersaga.Completed, s.Status, "reducing-exposure sell must proceed even when in margin call")
+}
+
 func TestReactor_BuyExceedsCash_GoesOnMargin(t *testing.T) {
 	// Buying more than cash no longer fails the saga — the deficit
 	// becomes margin loan. (Saga-level / margin-snapshot over-
