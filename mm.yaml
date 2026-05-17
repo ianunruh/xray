@@ -6,13 +6,14 @@ symbols:
     account_id: mm-AAPL
     initial_deposit: 100000000000 # $10M — deposited on first startup
     initial_shares: 10000 # credited on first startup for sell-side quotes
-    spread: 10000 # $1.00 total spread
-    quantity: 50 # shares per level
+    spread: 30000 # $3.00 total spread
+    quantity: 20 # shares per level
     levels: 3
     level_spacing: 10000 # $1.00 between levels (defaults to spread)
     max_position: 30000
     requote_interval: 30s
-    price_move_threshold: 5000 # $0.50
+    price_move_threshold: 20000 # $2.00
+    max_skew: 10000 # $1.00 midprice shift at |position| == max_position
 
 polygon:
   base_url: "https://api.massive.com"

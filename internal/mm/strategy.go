@@ -22,6 +22,7 @@ type SpreadStrategy struct {
 	Levels       int
 	LevelSpacing int64
 	Quantity     int64
+	MaxSkew      int64
 }
 
 func NewSpreadStrategy(cfg SymbolConfig) *SpreadStrategy {
@@ -30,17 +31,26 @@ func NewSpreadStrategy(cfg SymbolConfig) *SpreadStrategy {
 		Levels:       cfg.Levels,
 		LevelSpacing: cfg.LevelSpacing,
 		Quantity:     cfg.Quantity,
+		MaxSkew:      cfg.MaxSkew,
 	}
 }
 
 func (s *SpreadStrategy) ComputeQuotes(refPrice int64, inv InventoryState) []QuoteLevel {
+	// Long position shifts mid down (cheapen asks, lower bids → encourage
+	// selling); short position shifts mid up. Scales linearly with
+	// position/MaxPosition.
+	mid := refPrice
+	if s.MaxSkew > 0 && inv.MaxPosition > 0 {
+		mid = refPrice - (inv.Position*s.MaxSkew)/inv.MaxPosition
+	}
+
 	halfSpread := s.Spread / 2
 	var quotes []QuoteLevel
 
 	if inv.Position < inv.MaxPosition {
 		for i := range s.Levels {
 			offset := halfSpread + int64(i)*s.LevelSpacing
-			price := refPrice - offset
+			price := mid - offset
 			if price <= 0 {
 				continue
 			}
@@ -55,7 +65,7 @@ func (s *SpreadStrategy) ComputeQuotes(refPrice int64, inv InventoryState) []Quo
 	if inv.Position > -inv.MaxPosition {
 		for i := range s.Levels {
 			offset := halfSpread + int64(i)*s.LevelSpacing
-			price := refPrice + offset
+			price := mid + offset
 			quotes = append(quotes, QuoteLevel{
 				Side:     orderbookv1.Side_SIDE_SELL,
 				Price:    price,

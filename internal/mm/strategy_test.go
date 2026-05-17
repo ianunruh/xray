@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 )
@@ -111,6 +112,62 @@ func TestSpreadStrategy_SkipsNegativePrices(t *testing.T) {
 	}
 	assert.Len(t, bids, 1)
 	assert.Equal(t, int64(5000), bids[0].Price)
+}
+
+func TestSpreadStrategy_LongSkewsDown(t *testing.T) {
+	s := &SpreadStrategy{
+		Spread:       10000, // $1.00
+		Levels:       1,
+		LevelSpacing: 10000,
+		Quantity:     10,
+		MaxSkew:      10000, // $1.00 at full inventory
+	}
+
+	// Half-long: mid shifts down $0.50 → bid $149.00, ask $150.00
+	inv := InventoryState{Position: 50, MaxPosition: 100}
+	quotes := s.ComputeQuotes(1500000, inv)
+
+	require.Len(t, quotes, 2)
+	assert.Equal(t, orderbookv1.Side_SIDE_BUY, quotes[0].Side)
+	assert.Equal(t, int64(1490000), quotes[0].Price)
+	assert.Equal(t, orderbookv1.Side_SIDE_SELL, quotes[1].Side)
+	assert.Equal(t, int64(1500000), quotes[1].Price)
+}
+
+func TestSpreadStrategy_ShortSkewsUp(t *testing.T) {
+	s := &SpreadStrategy{
+		Spread:       10000,
+		Levels:       1,
+		LevelSpacing: 10000,
+		Quantity:     10,
+		MaxSkew:      10000,
+	}
+
+	// Half-short: mid shifts up $0.50 → bid $150.00, ask $151.00
+	inv := InventoryState{Position: -50, MaxPosition: 100}
+	quotes := s.ComputeQuotes(1500000, inv)
+
+	require.Len(t, quotes, 2)
+	assert.Equal(t, int64(1500000), quotes[0].Price)
+	assert.Equal(t, int64(1510000), quotes[1].Price)
+}
+
+func TestSpreadStrategy_ZeroSkewIgnoresPosition(t *testing.T) {
+	s := &SpreadStrategy{
+		Spread:       10000,
+		Levels:       1,
+		LevelSpacing: 10000,
+		Quantity:     10,
+		// MaxSkew: 0 — disabled
+	}
+
+	inv := InventoryState{Position: 50, MaxPosition: 100}
+	quotes := s.ComputeQuotes(1500000, inv)
+
+	require.Len(t, quotes, 2)
+	// Unchanged from neutral position: bid $149.50, ask $150.50
+	assert.Equal(t, int64(1495000), quotes[0].Price)
+	assert.Equal(t, int64(1505000), quotes[1].Price)
 }
 
 func TestSpreadStrategy_EmptyWhenFullyLimited(t *testing.T) {

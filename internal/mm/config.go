@@ -33,6 +33,7 @@ type SymbolConfig struct {
 	MaxPosition        int64         `yaml:"max_position"`
 	RequoteInterval    time.Duration `yaml:"requote_interval"`
 	PriceMoveThreshold int64         `yaml:"price_move_threshold"`
+	MaxSkew            int64         `yaml:"max_skew"`
 }
 
 func LoadConfig(path string) (*Config, error) {

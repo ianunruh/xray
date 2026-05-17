@@ -11,8 +11,8 @@ symbols:
     order_interval: 3s
     min_quantity: 1
     max_quantity: 10
-    price_jitter: 50000 # $5.00 — limit orders land in [ref-$5, ref+$5]
-    market_order_pct: 0.3 # 30% market orders, 70% limit
+    price_jitter: 200000 # $20.00 — limit orders land in [ref-$20, ref+$20]
+    market_order_pct: 0.5 # 50% market orders, 50% limit
     max_position: 1000
     buy_bias: 0.5 # neutral — 50/50 buy/sell
 
