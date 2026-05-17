@@ -77,7 +77,7 @@ func (p *PgProjection) HandleEvents(ctx context.Context, events []es.Event) erro
 		case *orderbookv1.SagaFailed:
 			batch.Queue(
 				`UPDATE projection_sagas SET status = $1, fail_reason = $2, ended_at = $3 WHERE saga_id = $4`,
-				int32(sagav1.SagaStatus_SAGA_STATUS_FAILED),
+				int32(sagaStatusForFailure(data.Reason)),
 				data.Reason, data.FailedAt.AsTime(), data.SagaId,
 			)
 
@@ -102,7 +102,7 @@ func (p *PgProjection) HandleEvents(ctx context.Context, events []es.Event) erro
 		case *orderbookv1.OCOSagaFailed:
 			batch.Queue(
 				`UPDATE projection_sagas SET status = $1, fail_reason = $2, ended_at = $3 WHERE saga_id = $4`,
-				int32(sagav1.SagaStatus_SAGA_STATUS_FAILED),
+				int32(sagaStatusForFailure(data.Reason)),
 				data.Reason, data.FailedAt.AsTime(), data.SagaId,
 			)
 		}
@@ -168,21 +168,33 @@ func sagaStatusForFailure(reason string) sagav1.SagaStatus {
 	return sagav1.SagaStatus_SAGA_STATUS_FAILED
 }
 
-// ActiveSingleOrderSagas is a convenience over List() used by the
-// margincall reactor — returns (saga_id, account_id) pairs for ACTIVE
-// single-order sagas of one account. Implements margincall.SagaLookup.
+// ActiveSingleOrderSagas returns (saga_id, account_id) pairs for
+// ACTIVE single-order sagas of one account. Unlike List(), this
+// INCLUDES bracket-entry child sagas — cancelling them is the
+// mechanism by which a bracket parent in PendingEntry gets failed
+// during a margin call (the bracket reactor's onEntryOrderSagaFailed
+// cascades the failure up). Implements margincall.SagaLookup.
 func (p *PgProjection) ActiveSingleOrderSagas(ctx context.Context, accountID string) ([]margincall.SagaSummary, error) {
-	rows, err := p.List(ctx, accountID, "",
-		sagav1.SagaKind_SAGA_KIND_SINGLE_ORDER,
-		sagav1.SagaStatus_SAGA_STATUS_ACTIVE)
+	rows, err := p.pool.Query(ctx,
+		`SELECT saga_id, account_id FROM projection_sagas
+		WHERE account_id = $1 AND kind = $2 AND status = $3`,
+		accountID,
+		int32(sagav1.SagaKind_SAGA_KIND_SINGLE_ORDER),
+		int32(sagav1.SagaStatus_SAGA_STATUS_ACTIVE),
+	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query active single-order sagas: %w", err)
 	}
-	out := make([]margincall.SagaSummary, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, margincall.SagaSummary{SagaID: r.SagaID, AccountID: r.AccountID})
+	defer rows.Close()
+	var out []margincall.SagaSummary
+	for rows.Next() {
+		var s margincall.SagaSummary
+		if err := rows.Scan(&s.SagaID, &s.AccountID); err != nil {
+			return nil, fmt.Errorf("scan saga: %w", err)
+		}
+		out = append(out, s)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 // List returns sagas matching the given filters. Zero-valued filters are
