@@ -15,6 +15,7 @@ import { Side, OrderType, PositionSide, TimeInForce } from "../gen/orderbook/v1/
 import { sagaClient } from "../client";
 import { formatMoney, moneyToPrice } from "../format";
 import { useMarginSnapshot } from "../hooks/useMarginSnapshot";
+import { usePreviewOrderImpact } from "../hooks/usePreviewOrderImpact";
 
 const ORDER_TYPES: Record<string, OrderType> = {
   LIMIT: OrderType.LIMIT,
@@ -48,50 +49,6 @@ const MARKET_TIF_OPTIONS = [
 
 type Mode = "SINGLE" | "BRACKET" | "OCO";
 
-// estimateBuyingPowerReduction mirrors the server-side hold the
-// matching saga would create. Returns the bigint reduction, 0n when
-// the order doesn't touch cash (long sell, short cover, OCO), or
-// null when the inputs aren't ready to estimate (no price for a
-// limit order, missing margin rate). Market orders are estimated
-// from the typed price as a placeholder; the server walks the book
-// for the real hold, so the displayed number will be conservative
-// for market BUYs that sweep up.
-function estimateBuyingPowerReduction(args: {
-  mode: Mode;
-  isMarket: boolean;
-  side: string;
-  positionSide: string;
-  price: number | string;
-  quantity: number | string;
-  marginBps: bigint | null;
-}): bigint | null {
-  const { mode, side, positionSide, price, quantity, marginBps } = args;
-
-  // Cash-neutral cases first — these don't need a price.
-  if (mode === "OCO") return 0n;
-  if (side === "SELL" && positionSide === "LONG") return 0n;
-  if (side === "BUY" && positionSide === "SHORT") return 0n;
-
-  const qty = typeof quantity === "number" ? quantity : parseInt(quantity, 10);
-  if (!qty || qty <= 0) return null;
-
-  const prc = typeof price === "number" ? price : parseFloat(price);
-  if (!Number.isFinite(prc) || prc <= 0) return null;
-
-  const notional = moneyToPrice(prc) * BigInt(qty);
-
-  // Long buy: cash hold = notional. Market BUY without a typed price
-  // returns null above; once the user types one the estimate sticks.
-  if (side === "BUY" && positionSide === "LONG") return notional;
-
-  // Short open: collateral = initial_margin_bps * notional / 10000.
-  if (side === "SELL" && positionSide === "SHORT") {
-    if (marginBps === null) return null;
-    return (notional * marginBps) / 10_000n;
-  }
-  return null;
-}
-
 export function OrderForm({
   accountId,
   symbol,
@@ -120,25 +77,26 @@ export function OrderForm({
     ? PositionSide.SHORT
     : PositionSide.LONG;
 
-  // Estimated buying-power impact for the order being typed.
-  // Returns null if it can't be computed (missing price for a limit,
-  // unknown margin rate, etc.). Bracket entry uses the same hold as
-  // a single order; OCO doesn't take cash (exits an existing position).
-  const estImpact = estimateBuyingPowerReduction({
-    mode,
-    isMarket,
-    side,
-    positionSide,
-    // Bracket entry uses the entry price field; OCO and single
-    // orders use the same `price` state field.
-    price,
-    quantity,
-    marginBps: margin?.initialMarginBps ?? null,
-  });
-  const insufficient =
-    estImpact !== null &&
-    margin !== null &&
-    estImpact > margin.buyingPower;
+  // Server-side preview of the order's hold + margin impact. OCO
+  // mode doesn't request a preview — exits don't take cash, and the
+  // preview's side/position_side don't map cleanly onto an OCO plan.
+  const qtyNum = Number(quantity);
+  const prcNum = Number(price);
+  const previewParams =
+    !isOCO && qtyNum > 0 && (isMarket || prcNum > 0)
+      ? {
+          accountId,
+          symbol,
+          side: side === "BUY" ? Side.BUY : Side.SELL,
+          positionSide: ps,
+          orderType: ORDER_TYPES[orderType] ?? OrderType.MARKET,
+          price: isMarket ? 0n : moneyToPrice(prcNum),
+          quantity: BigInt(qtyNum),
+        }
+      : null;
+  const preview = usePreviewOrderImpact(previewParams);
+  const insufficient = preview ? !preview.sufficientBuyingPower : false;
+  const wouldCauseCall = preview ? preview.projectedInCall : false;
 
   function handleOrderTypeChange(v: string | null) {
     const next = v ?? "MARKET";
@@ -416,27 +374,54 @@ export function OrderForm({
             />
           </Group>
         )}
-        {estImpact !== null && (
-          <Group justify="space-between" gap="xs">
-            <Text size="xs" c="dimmed">
-              Buying power impact
-            </Text>
-            <Text size="xs" c={insufficient ? "red" : undefined} fw={600}>
-              {estImpact === 0n
-                ? "—"
-                : `-${formatMoney(estImpact)}`}
-              {margin && (
-                <Text component="span" size="xs" c="dimmed" ml={6}>
-                  (avail {formatMoney(margin.buyingPower)})
+        {preview && (
+          <Stack gap={4}>
+            <Group justify="space-between" gap="xs">
+              <Text size="xs" c="dimmed">
+                Buying power impact
+              </Text>
+              <Text size="xs" c={insufficient ? "red" : undefined} fw={600}>
+                {preview.buyingPowerImpact === 0n
+                  ? "—"
+                  : `-${formatMoney(preview.buyingPowerImpact)}`}
+                {margin && (
+                  <Text component="span" size="xs" c="dimmed" ml={6}>
+                    (avail {formatMoney(margin.buyingPower)})
+                  </Text>
+                )}
+              </Text>
+            </Group>
+            {margin && (
+              <Group justify="space-between" gap="xs">
+                <Text size="xs" c="dimmed">
+                  Equity after fill
                 </Text>
-              )}
-            </Text>
-          </Group>
-        )}
-        {insufficient && (
-          <Text size="xs" c="red">
-            Insufficient buying power.
-          </Text>
+                <Text size="xs" fw={600}>
+                  {formatMoney(preview.projectedEquity)}
+                  <Text component="span" size="xs" c="dimmed" ml={6}>
+                    ({margin.equity === preview.projectedEquity
+                      ? "no change"
+                      : `${preview.projectedEquity > margin.equity ? "+" : ""}${formatMoney(preview.projectedEquity - margin.equity)}`})
+                  </Text>
+                </Text>
+              </Group>
+            )}
+            {preview.projectedMaintenanceRequirement > 0n && (
+              <Group justify="space-between" gap="xs">
+                <Text size="xs" c="dimmed">
+                  Maint. req. after fill
+                </Text>
+                <Text size="xs" fw={600} c={wouldCauseCall ? "red" : undefined}>
+                  {formatMoney(preview.projectedMaintenanceRequirement)}
+                </Text>
+              </Group>
+            )}
+            {preview.warnings.map((w) => (
+              <Text key={w} size="xs" c="red">
+                ⚠ {w}
+              </Text>
+            ))}
+          </Stack>
         )}
         <Button
           fullWidth

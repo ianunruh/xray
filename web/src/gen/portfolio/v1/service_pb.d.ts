@@ -610,6 +610,123 @@ export declare type GetMarginSnapshotResponse = Message<"portfolio.v1.GetMarginS
 export declare const GetMarginSnapshotResponseSchema: GenMessage<GetMarginSnapshotResponse>;
 
 /**
+ * PreviewOrderImpact simulates the hold + fill an order would create
+ * and returns the resulting margin state. Used by the UI to surface
+ * "would this put me in margin call" before the user submits.
+ *
+ * @generated from message portfolio.v1.PreviewOrderImpactRequest
+ */
+export declare type PreviewOrderImpactRequest = Message<"portfolio.v1.PreviewOrderImpactRequest"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string symbol = 2;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: orderbook.v1.Side side = 3;
+   */
+  side: Side;
+
+  /**
+   * @generated from field: orderbook.v1.PositionSide position_side = 4;
+   */
+  positionSide: PositionSide;
+
+  /**
+   * @generated from field: orderbook.v1.OrderType order_type = 5;
+   */
+  orderType: OrderType;
+
+  /**
+   * @generated from field: int64 price = 6;
+   */
+  price: bigint;
+
+  /**
+   * @generated from field: int64 quantity = 7;
+   */
+  quantity: bigint;
+};
+
+/**
+ * Describes the message portfolio.v1.PreviewOrderImpactRequest.
+ * Use `create(PreviewOrderImpactRequestSchema)` to create a new message.
+ */
+export declare const PreviewOrderImpactRequestSchema: GenMessage<PreviewOrderImpactRequest>;
+
+/**
+ * @generated from message portfolio.v1.PreviewOrderImpactResponse
+ */
+export declare type PreviewOrderImpactResponse = Message<"portfolio.v1.PreviewOrderImpactResponse"> & {
+  /**
+   * buying_power_impact is what would be deducted from cash on hold.
+   * Always >= 0. Long sells, short covers, and OCOs report 0.
+   *
+   * @generated from field: int64 buying_power_impact = 1;
+   */
+  buyingPowerImpact: bigint;
+
+  /**
+   * Projected snapshot AFTER the order has filled (using the order
+   * price as the fill price; market orders walk the book server-side).
+   *
+   * @generated from field: int64 projected_equity = 2;
+   */
+  projectedEquity: bigint;
+
+  /**
+   * @generated from field: int64 projected_maintenance_requirement = 3;
+   */
+  projectedMaintenanceRequirement: bigint;
+
+  /**
+   * @generated from field: int64 projected_margin_excess = 4;
+   */
+  projectedMarginExcess: bigint;
+
+  /**
+   * @generated from field: bool projected_in_call = 5;
+   */
+  projectedInCall: boolean;
+
+  /**
+   * sufficient_buying_power = current buying_power >= buying_power_impact.
+   *
+   * @generated from field: bool sufficient_buying_power = 6;
+   */
+  sufficientBuyingPower: boolean;
+
+  /**
+   * estimated_fill_price is the actual cost-per-share the server
+   * expects (limit = the typed price; market = book-walk average).
+   * Zero if not estimable (e.g. market BUY with no ask liquidity).
+   *
+   * @generated from field: int64 estimated_fill_price = 7;
+   */
+  estimatedFillPrice: bigint;
+
+  /**
+   * Human-readable warnings, e.g. "would breach maintenance margin"
+   * or "no ask liquidity for market buy". Empty when the preview is
+   * clean.
+   *
+   * @generated from field: repeated string warnings = 8;
+   */
+  warnings: string[];
+};
+
+/**
+ * Describes the message portfolio.v1.PreviewOrderImpactResponse.
+ * Use `create(PreviewOrderImpactResponseSchema)` to create a new message.
+ */
+export declare const PreviewOrderImpactResponseSchema: GenMessage<PreviewOrderImpactResponse>;
+
+/**
  * @generated from message portfolio.v1.PositionMarginInfo
  */
 export declare type PositionMarginInfo = Message<"portfolio.v1.PositionMarginInfo"> & {
@@ -780,6 +897,14 @@ export declare const PortfolioService: GenService<{
     methodKind: "unary";
     input: typeof GetMarginSnapshotRequestSchema;
     output: typeof GetMarginSnapshotResponseSchema;
+  },
+  /**
+   * @generated from rpc portfolio.v1.PortfolioService.PreviewOrderImpact
+   */
+  previewOrderImpact: {
+    methodKind: "unary";
+    input: typeof PreviewOrderImpactRequestSchema;
+    output: typeof PreviewOrderImpactResponseSchema;
   },
 }>;
 

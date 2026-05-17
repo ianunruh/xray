@@ -202,7 +202,7 @@ func main() {
 	go rec.Run(ctx)
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, dailyCloseProjection, broker)
-	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, pnlProjection, markProjection, portfolioBroker, log)
+	portfolioSrv := portfolio.NewServer(portfolioHandler, obHandler, portfolioProjection, pnlProjection, markProjection, portfolioBroker, log)
 	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, ocoSagaHandler, obHandler, sagaProjection, log)
 	diagnosticsSrv := diagnostics.NewServer(store, registry, log)
 

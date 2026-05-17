@@ -13,6 +13,7 @@ import (
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
 	"github.com/ianunruh/xray/internal/margin"
+	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/pkg/es"
 )
 
@@ -38,6 +39,7 @@ type Server struct {
 	portfoliov1connect.UnimplementedPortfolioServiceHandler
 
 	portfolioHandler *es.Handler[*Portfolio]
+	orderbookHandler *es.Handler[*orderbook.OrderBook]
 	reader           PortfolioReader
 	pnlReader        PnLReader
 	marker           Marker
@@ -45,9 +47,18 @@ type Server struct {
 	log              *slog.Logger
 }
 
-func NewServer(portfolioHandler *es.Handler[*Portfolio], reader PortfolioReader, pnlReader PnLReader, marker Marker, broker *PortfolioBroker, log *slog.Logger) *Server {
+func NewServer(
+	portfolioHandler *es.Handler[*Portfolio],
+	orderbookHandler *es.Handler[*orderbook.OrderBook],
+	reader PortfolioReader,
+	pnlReader PnLReader,
+	marker Marker,
+	broker *PortfolioBroker,
+	log *slog.Logger,
+) *Server {
 	return &Server{
 		portfolioHandler: portfolioHandler,
+		orderbookHandler: orderbookHandler,
 		reader:           reader,
 		pnlReader:        pnlReader,
 		marker:           marker,
@@ -196,6 +207,119 @@ func (s *Server) GetMarginSnapshot(ctx context.Context, req *connect.Request[por
 	return connect.NewResponse(resp), nil
 }
 
+func (s *Server) PreviewOrderImpact(ctx context.Context, req *connect.Request[portfoliov1.PreviewOrderImpactRequest]) (*connect.Response[portfoliov1.PreviewOrderImpactResponse], error) {
+	msg := req.Msg
+	if msg.AccountId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("account_id required"))
+	}
+	if msg.Quantity <= 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("quantity must be positive"))
+	}
+	p, err := s.portfolioHandler.Load(ctx, AggregateID(msg.AccountId))
+	if err != nil {
+		s.log.Error("PreviewOrderImpact load failed", "account_id", msg.AccountId, "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	resp := s.buildPreview(ctx, p, msg)
+	return connect.NewResponse(resp), nil
+}
+
+// buildPreview computes deltas directly off the order parameters
+// rather than cloning the aggregate — same result, less plumbing.
+func (s *Server) buildPreview(ctx context.Context, p *Portfolio, req *portfoliov1.PreviewOrderImpactRequest) *portfoliov1.PreviewOrderImpactResponse {
+	resp := &portfoliov1.PreviewOrderImpactResponse{}
+	current := ComputeMarginStatus(p, s.marker)
+
+	fillPrice, fillWarn := s.estimateFillPrice(ctx, req)
+	if fillWarn != "" {
+		resp.Warnings = append(resp.Warnings, fillWarn)
+	}
+	resp.EstimatedFillPrice = fillPrice
+
+	// Use current mark if available; fall back to fill price as the
+	// "this is the only price signal we have" assumption.
+	mark, _, hasMark := lookupMark(s.marker, req.Symbol)
+	if !hasMark {
+		mark = fillPrice
+	}
+
+	qty := req.Quantity
+	isShort := req.PositionSide == orderbookv1.PositionSide_POSITION_SIDE_SHORT
+	switch {
+	case req.Side == orderbookv1.Side_SIDE_BUY && !isShort:
+		if fillPrice > 0 {
+			resp.BuyingPowerImpact = fillPrice * qty
+		}
+		// Acquiring at fillPrice, immediately marked at mark.
+		resp.ProjectedEquity = current.Equity + qty*(mark-fillPrice)
+		resp.ProjectedMaintenanceRequirement = current.MaintenanceRequirement
+	case req.Side == orderbookv1.Side_SIDE_SELL && !isShort:
+		resp.BuyingPowerImpact = 0
+		// Selling at fillPrice, releasing position marked at mark.
+		resp.ProjectedEquity = current.Equity + qty*(fillPrice-mark)
+		resp.ProjectedMaintenanceRequirement = current.MaintenanceRequirement
+	case req.Side == orderbookv1.Side_SIDE_SELL && isShort:
+		if fillPrice > 0 {
+			resp.BuyingPowerImpact = margin.CollateralForShortOpen(fillPrice, qty)
+		}
+		resp.ProjectedEquity = current.Equity + qty*(fillPrice-mark)
+		resp.ProjectedMaintenanceRequirement = current.MaintenanceRequirement + margin.MaintenanceRequirement(mark, qty)
+	case req.Side == orderbookv1.Side_SIDE_BUY && isShort:
+		resp.BuyingPowerImpact = 0
+		short := p.ShortPositions[req.Symbol]
+		if short != nil {
+			// Realized PnL from covering at fillPrice vs avg open.
+			resp.ProjectedEquity = current.Equity + qty*(short.AvgOpenPrice-fillPrice)
+			resp.ProjectedMaintenanceRequirement = current.MaintenanceRequirement - margin.MaintenanceRequirement(mark, qty)
+		} else {
+			resp.Warnings = append(resp.Warnings, "no open short in this symbol to cover")
+			resp.ProjectedEquity = current.Equity
+			resp.ProjectedMaintenanceRequirement = current.MaintenanceRequirement
+		}
+	}
+
+	resp.ProjectedMarginExcess = resp.ProjectedEquity - resp.ProjectedMaintenanceRequirement
+	resp.ProjectedInCall = resp.ProjectedMarginExcess < 0
+	resp.SufficientBuyingPower = p.CashBalance >= resp.BuyingPowerImpact
+
+	if !resp.SufficientBuyingPower {
+		resp.Warnings = append(resp.Warnings, "insufficient buying power")
+	}
+	if resp.ProjectedInCall && !current.InCall {
+		resp.Warnings = append(resp.Warnings, "this order would put the account in margin call")
+	}
+	return resp
+}
+
+// estimateFillPrice returns the price the server expects this order
+// to clear at. For limit orders, that's the typed price. For market
+// orders, walk the relevant side of the book and average. Returns 0
+// (with a warning) when there's no liquidity to walk.
+func (s *Server) estimateFillPrice(ctx context.Context, req *portfoliov1.PreviewOrderImpactRequest) (int64, string) {
+	if req.OrderType != orderbookv1.OrderType_ORDER_TYPE_MARKET {
+		return req.Price, ""
+	}
+	if s.orderbookHandler == nil {
+		return req.Price, "market order preview needs orderbook access"
+	}
+	book, err := s.orderbookHandler.Load(ctx, orderbook.AggregateID(req.Symbol))
+	if err != nil {
+		return 0, "failed to load orderbook for preview"
+	}
+	if req.Side == orderbookv1.Side_SIDE_BUY {
+		cost, ok := book.EstimateMarketBuyCost(req.Quantity)
+		if !ok {
+			return 0, "no ask liquidity for market buy"
+		}
+		return cost / req.Quantity, ""
+	}
+	proceeds, ok := book.EstimateMarketSellProceeds(req.Quantity)
+	if !ok {
+		return 0, "no bid liquidity for market sell"
+	}
+	return proceeds / req.Quantity, ""
+}
+
 // MarginStatus is the slim view of the margin computation used by
 // the margin-call reactor — full mark/PnL detail lives in
 // buildMarginSnapshot, but the reactor only needs equity, requirement,
@@ -266,8 +390,7 @@ func buildMarginSnapshot(accountID string, p *Portfolio, marker Marker) *portfol
 		// CashBalance is already net of every kind of hold (long buy,
 		// short collateral, etc.) — the aggregate decrements it
 		// whenever cash is locked. So buying power is just CashBalance.
-		BuyingPower:      p.CashBalance,
-		InitialMarginBps: margin.InitialMarginBps,
+		BuyingPower: p.CashBalance,
 	}
 	for _, h := range p.CollateralHeldBySaga {
 		resp.CollateralHeldPreFill += h.Amount

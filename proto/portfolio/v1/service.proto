@@ -16,6 +16,7 @@ service PortfolioService {
   rpc GetPnL(GetPnLRequest) returns (GetPnLResponse);
   rpc ListPortfolios(ListPortfoliosRequest) returns (ListPortfoliosResponse);
   rpc GetMarginSnapshot(GetMarginSnapshotRequest) returns (GetMarginSnapshotResponse);
+  rpc PreviewOrderImpact(PreviewOrderImpactRequest) returns (PreviewOrderImpactResponse);
 }
 
 message DepositRequest {
@@ -182,10 +183,45 @@ message GetMarginSnapshotResponse {
   // and pool allocation. Distinct from equity: equity counts locked
   // cash too (it's still yours, just earmarked).
   int64 buying_power = 15;
-  // initial_margin_bps echoes the server's collateral policy so the
-  // client can estimate buying-power impact of a pending order
-  // without hard-coding the rate.
-  int64 initial_margin_bps = 16;
+}
+
+// PreviewOrderImpact simulates the hold + fill an order would create
+// and returns the resulting margin state. Used by the UI to surface
+// "would this put me in margin call" before the user submits.
+message PreviewOrderImpactRequest {
+  string account_id = 1;
+  string symbol = 2;
+  orderbook.v1.Side side = 3;
+  orderbook.v1.PositionSide position_side = 4;
+  orderbook.v1.OrderType order_type = 5;
+  int64 price = 6;
+  int64 quantity = 7;
+}
+
+message PreviewOrderImpactResponse {
+  // buying_power_impact is what would be deducted from cash on hold.
+  // Always >= 0. Long sells, short covers, and OCOs report 0.
+  int64 buying_power_impact = 1;
+
+  // Projected snapshot AFTER the order has filled (using the order
+  // price as the fill price; market orders walk the book server-side).
+  int64 projected_equity = 2;
+  int64 projected_maintenance_requirement = 3;
+  int64 projected_margin_excess = 4;
+  bool projected_in_call = 5;
+
+  // sufficient_buying_power = current buying_power >= buying_power_impact.
+  bool sufficient_buying_power = 6;
+
+  // estimated_fill_price is the actual cost-per-share the server
+  // expects (limit = the typed price; market = book-walk average).
+  // Zero if not estimable (e.g. market BUY with no ask liquidity).
+  int64 estimated_fill_price = 7;
+
+  // Human-readable warnings, e.g. "would breach maintenance margin"
+  // or "no ask liquidity for market buy". Empty when the preview is
+  // clean.
+  repeated string warnings = 8;
 }
 
 message PositionMarginInfo {

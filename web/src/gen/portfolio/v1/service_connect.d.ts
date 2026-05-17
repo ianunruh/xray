@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CreditSharesRequest, CreditSharesResponse, DepositRequest, DepositResponse, GetMarginSnapshotRequest, GetMarginSnapshotResponse, GetPnLRequest, GetPnLResponse, GetPortfolioRequest, GetPortfolioResponse, ListPortfoliosRequest, ListPortfoliosResponse, StreamPortfolioRequest, WithdrawRequest, WithdrawResponse } from "./service_pb.js";
+import { CreditSharesRequest, CreditSharesResponse, DepositRequest, DepositResponse, GetMarginSnapshotRequest, GetMarginSnapshotResponse, GetPnLRequest, GetPnLResponse, GetPortfolioRequest, GetPortfolioResponse, ListPortfoliosRequest, ListPortfoliosResponse, PreviewOrderImpactRequest, PreviewOrderImpactResponse, StreamPortfolioRequest, WithdrawRequest, WithdrawResponse } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -82,6 +82,15 @@ export declare const PortfolioService: {
       readonly name: "GetMarginSnapshot",
       readonly I: typeof GetMarginSnapshotRequest,
       readonly O: typeof GetMarginSnapshotResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc portfolio.v1.PortfolioService.PreviewOrderImpact
+     */
+    readonly previewOrderImpact: {
+      readonly name: "PreviewOrderImpact",
+      readonly I: typeof PreviewOrderImpactRequest,
+      readonly O: typeof PreviewOrderImpactResponse,
       readonly kind: MethodKind.Unary,
     },
   }
