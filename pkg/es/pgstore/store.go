@@ -53,6 +53,11 @@ const (
 		ORDER BY position
 		LIMIT $2`
 
+	queryLoadByCorrelation = `SELECT id, causation_id, correlation_id, aggregate_id, type, version, data, timestamp, position
+		FROM events
+		WHERE correlation_id = $1::uuid
+		ORDER BY timestamp, position`
+
 	queryAppend = `INSERT INTO events (id, causation_id, correlation_id, aggregate_id, type, version, data, timestamp)
 		VALUES ($1, NULLIF($2, '')::uuid, NULLIF($3, '')::uuid, $4, $5, $6, $7, $8)`
 
@@ -167,6 +172,14 @@ func (s *Store) LoadAll(ctx context.Context) ([]es.RawEvent, error) {
 // LoadAfter returns up to limit events with position > afterPosition, ordered by position.
 func (s *Store) LoadAfter(ctx context.Context, afterPosition int64, limit int) ([]es.RawEvent, error) {
 	return s.queryEvents(ctx, queryLoadAfter, afterPosition, limit)
+}
+
+// LoadByCorrelationID returns every event tagged with the given correlation
+// ID, ordered by timestamp (ties broken by global position). Used by the
+// diagnostics service to render the full causal chain triggered by one root
+// command.
+func (s *Store) LoadByCorrelationID(ctx context.Context, correlationID string) ([]es.RawEvent, error) {
+	return s.queryEvents(ctx, queryLoadByCorrelation, correlationID)
 }
 
 func (s *Store) queryEvents(ctx context.Context, query string, args ...any) ([]es.RawEvent, error) {

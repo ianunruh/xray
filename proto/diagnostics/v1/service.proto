@@ -9,6 +9,10 @@ import "google/protobuf/timestamp.proto";
 service DiagnosticsService {
   rpc ListAggregates(ListAggregatesRequest) returns (ListAggregatesResponse);
   rpc GetAggregateEvents(GetAggregateEventsRequest) returns (GetAggregateEventsResponse);
+  // GetEventChain returns every event sharing the given correlation_id,
+  // ordered by timestamp. The reactor's ctx-propagation guarantees that a
+  // single user action and all its downstream effects share one correlation.
+  rpc GetEventChain(GetEventChainRequest) returns (GetEventChainResponse);
 }
 
 message ListAggregatesRequest {
@@ -41,8 +45,22 @@ message DiagnosticEvent {
   google.protobuf.Timestamp timestamp = 6;
   // JSON-encoded event payload (protojson).
   string data_json = 7;
+  // Parent event ID (the event that caused the command that produced this
+  // event). Empty for origin events.
+  string causation_id = 8;
+  // Root of the causation chain — every event triggered by the same user
+  // action shares this ID.
+  string correlation_id = 9;
 }
 
 message GetAggregateEventsResponse {
+  repeated DiagnosticEvent events = 1;
+}
+
+message GetEventChainRequest {
+  string correlation_id = 1;
+}
+
+message GetEventChainResponse {
   repeated DiagnosticEvent events = 1;
 }

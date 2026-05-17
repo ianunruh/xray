@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { GetAggregateEventsRequest, GetAggregateEventsResponse, ListAggregatesRequest, ListAggregatesResponse } from "./service_pb.js";
+import { GetAggregateEventsRequest, GetAggregateEventsResponse, GetEventChainRequest, GetEventChainResponse, ListAggregatesRequest, ListAggregatesResponse } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -28,6 +28,19 @@ export declare const DiagnosticsService: {
       readonly name: "GetAggregateEvents",
       readonly I: typeof GetAggregateEventsRequest,
       readonly O: typeof GetAggregateEventsResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * GetEventChain returns every event sharing the given correlation_id,
+     * ordered by timestamp. The reactor's ctx-propagation guarantees that a
+     * single user action and all its downstream effects share one correlation.
+     *
+     * @generated from rpc diagnostics.v1.DiagnosticsService.GetEventChain
+     */
+    readonly getEventChain: {
+      readonly name: "GetEventChain",
+      readonly I: typeof GetEventChainRequest,
+      readonly O: typeof GetEventChainResponse,
       readonly kind: MethodKind.Unary,
     },
   }

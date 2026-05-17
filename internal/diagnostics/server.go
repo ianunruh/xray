@@ -78,22 +78,49 @@ func (s *Server) GetAggregateEvents(ctx context.Context, req *connect.Request[di
 		Events: make([]*diagnosticsv1.DiagnosticEvent, 0, len(raws)),
 	}
 	for _, raw := range raws {
-		jsonStr, err := s.encodeEvent(raw)
-		if err != nil {
-			s.log.Warn("encode event failed", "aggregate_id", aggregateID, "event_id", raw.ID, "type", raw.Type, "error", err)
-			jsonStr = fmt.Sprintf("{\"_error\": %q}", err.Error())
-		}
-		resp.Events = append(resp.Events, &diagnosticsv1.DiagnosticEvent{
-			Id:          raw.ID,
-			AggregateId: raw.AggregateID,
-			Type:        raw.Type,
-			Version:     int32(raw.Version),
-			Position:    raw.Position,
-			Timestamp:   timestamppb.New(raw.Timestamp),
-			DataJson:    jsonStr,
-		})
+		resp.Events = append(resp.Events, s.toDiagnosticEvent(raw))
 	}
 	return connect.NewResponse(resp), nil
+}
+
+func (s *Server) GetEventChain(ctx context.Context, req *connect.Request[diagnosticsv1.GetEventChainRequest]) (*connect.Response[diagnosticsv1.GetEventChainResponse], error) {
+	correlationID := strings.TrimSpace(req.Msg.CorrelationId)
+	if correlationID == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("correlation_id is required"))
+	}
+
+	raws, err := s.store.LoadByCorrelationID(ctx, correlationID)
+	if err != nil {
+		s.log.Warn("GetEventChain load failed", "correlation_id", correlationID, "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	resp := &diagnosticsv1.GetEventChainResponse{
+		Events: make([]*diagnosticsv1.DiagnosticEvent, 0, len(raws)),
+	}
+	for _, raw := range raws {
+		resp.Events = append(resp.Events, s.toDiagnosticEvent(raw))
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *Server) toDiagnosticEvent(raw es.RawEvent) *diagnosticsv1.DiagnosticEvent {
+	jsonStr, err := s.encodeEvent(raw)
+	if err != nil {
+		s.log.Warn("encode event failed", "aggregate_id", raw.AggregateID, "event_id", raw.ID, "type", raw.Type, "error", err)
+		jsonStr = fmt.Sprintf("{\"_error\": %q}", err.Error())
+	}
+	return &diagnosticsv1.DiagnosticEvent{
+		Id:            raw.ID,
+		AggregateId:   raw.AggregateID,
+		Type:          raw.Type,
+		Version:       int32(raw.Version),
+		Position:      raw.Position,
+		Timestamp:     timestamppb.New(raw.Timestamp),
+		DataJson:      jsonStr,
+		CausationId:   raw.CausationID,
+		CorrelationId: raw.CorrelationID,
+	}
 }
 
 func (s *Server) encodeEvent(raw es.RawEvent) (string, error) {

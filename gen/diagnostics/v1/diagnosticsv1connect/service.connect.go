@@ -39,12 +39,19 @@ const (
 	// DiagnosticsServiceGetAggregateEventsProcedure is the fully-qualified name of the
 	// DiagnosticsService's GetAggregateEvents RPC.
 	DiagnosticsServiceGetAggregateEventsProcedure = "/diagnostics.v1.DiagnosticsService/GetAggregateEvents"
+	// DiagnosticsServiceGetEventChainProcedure is the fully-qualified name of the DiagnosticsService's
+	// GetEventChain RPC.
+	DiagnosticsServiceGetEventChainProcedure = "/diagnostics.v1.DiagnosticsService/GetEventChain"
 )
 
 // DiagnosticsServiceClient is a client for the diagnostics.v1.DiagnosticsService service.
 type DiagnosticsServiceClient interface {
 	ListAggregates(context.Context, *connect.Request[v1.ListAggregatesRequest]) (*connect.Response[v1.ListAggregatesResponse], error)
 	GetAggregateEvents(context.Context, *connect.Request[v1.GetAggregateEventsRequest]) (*connect.Response[v1.GetAggregateEventsResponse], error)
+	// GetEventChain returns every event sharing the given correlation_id,
+	// ordered by timestamp. The reactor's ctx-propagation guarantees that a
+	// single user action and all its downstream effects share one correlation.
+	GetEventChain(context.Context, *connect.Request[v1.GetEventChainRequest]) (*connect.Response[v1.GetEventChainResponse], error)
 }
 
 // NewDiagnosticsServiceClient constructs a client for the diagnostics.v1.DiagnosticsService
@@ -70,6 +77,12 @@ func NewDiagnosticsServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(diagnosticsServiceMethods.ByName("GetAggregateEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		getEventChain: connect.NewClient[v1.GetEventChainRequest, v1.GetEventChainResponse](
+			httpClient,
+			baseURL+DiagnosticsServiceGetEventChainProcedure,
+			connect.WithSchema(diagnosticsServiceMethods.ByName("GetEventChain")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -77,6 +90,7 @@ func NewDiagnosticsServiceClient(httpClient connect.HTTPClient, baseURL string, 
 type diagnosticsServiceClient struct {
 	listAggregates     *connect.Client[v1.ListAggregatesRequest, v1.ListAggregatesResponse]
 	getAggregateEvents *connect.Client[v1.GetAggregateEventsRequest, v1.GetAggregateEventsResponse]
+	getEventChain      *connect.Client[v1.GetEventChainRequest, v1.GetEventChainResponse]
 }
 
 // ListAggregates calls diagnostics.v1.DiagnosticsService.ListAggregates.
@@ -89,10 +103,19 @@ func (c *diagnosticsServiceClient) GetAggregateEvents(ctx context.Context, req *
 	return c.getAggregateEvents.CallUnary(ctx, req)
 }
 
+// GetEventChain calls diagnostics.v1.DiagnosticsService.GetEventChain.
+func (c *diagnosticsServiceClient) GetEventChain(ctx context.Context, req *connect.Request[v1.GetEventChainRequest]) (*connect.Response[v1.GetEventChainResponse], error) {
+	return c.getEventChain.CallUnary(ctx, req)
+}
+
 // DiagnosticsServiceHandler is an implementation of the diagnostics.v1.DiagnosticsService service.
 type DiagnosticsServiceHandler interface {
 	ListAggregates(context.Context, *connect.Request[v1.ListAggregatesRequest]) (*connect.Response[v1.ListAggregatesResponse], error)
 	GetAggregateEvents(context.Context, *connect.Request[v1.GetAggregateEventsRequest]) (*connect.Response[v1.GetAggregateEventsResponse], error)
+	// GetEventChain returns every event sharing the given correlation_id,
+	// ordered by timestamp. The reactor's ctx-propagation guarantees that a
+	// single user action and all its downstream effects share one correlation.
+	GetEventChain(context.Context, *connect.Request[v1.GetEventChainRequest]) (*connect.Response[v1.GetEventChainResponse], error)
 }
 
 // NewDiagnosticsServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -114,12 +137,20 @@ func NewDiagnosticsServiceHandler(svc DiagnosticsServiceHandler, opts ...connect
 		connect.WithSchema(diagnosticsServiceMethods.ByName("GetAggregateEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	diagnosticsServiceGetEventChainHandler := connect.NewUnaryHandler(
+		DiagnosticsServiceGetEventChainProcedure,
+		svc.GetEventChain,
+		connect.WithSchema(diagnosticsServiceMethods.ByName("GetEventChain")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/diagnostics.v1.DiagnosticsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DiagnosticsServiceListAggregatesProcedure:
 			diagnosticsServiceListAggregatesHandler.ServeHTTP(w, r)
 		case DiagnosticsServiceGetAggregateEventsProcedure:
 			diagnosticsServiceGetAggregateEventsHandler.ServeHTTP(w, r)
+		case DiagnosticsServiceGetEventChainProcedure:
+			diagnosticsServiceGetEventChainHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -135,4 +166,8 @@ func (UnimplementedDiagnosticsServiceHandler) ListAggregates(context.Context, *c
 
 func (UnimplementedDiagnosticsServiceHandler) GetAggregateEvents(context.Context, *connect.Request[v1.GetAggregateEventsRequest]) (*connect.Response[v1.GetAggregateEventsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("diagnostics.v1.DiagnosticsService.GetAggregateEvents is not implemented"))
+}
+
+func (UnimplementedDiagnosticsServiceHandler) GetEventChain(context.Context, *connect.Request[v1.GetEventChainRequest]) (*connect.Response[v1.GetEventChainResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("diagnostics.v1.DiagnosticsService.GetEventChain is not implemented"))
 }

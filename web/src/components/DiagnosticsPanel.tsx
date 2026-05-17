@@ -41,9 +41,11 @@ function prettyJson(s: string): string {
 export function DiagnosticsPanel({
   initialAggregateId = "",
   onAggregateChange,
+  onJumpToChain,
 }: {
   initialAggregateId?: string;
   onAggregateChange?: (id: string) => void;
+  onJumpToChain?: (correlationId: string) => void;
 }) {
   const [filter, setFilter] = useState("");
   const [aggregates, setAggregates] = useState<AggregateSummary[]>([]);
@@ -337,6 +339,7 @@ export function DiagnosticsPanel({
                     onToggle={() =>
                       toggleExpanded(e.id || `${e.aggregateId}-${e.version}`)
                     }
+                    onJumpToChain={onJumpToChain}
                   />
                 ))}
               </Table.Tbody>
@@ -352,10 +355,12 @@ function RowGroup({
   event,
   expanded,
   onToggle,
+  onJumpToChain,
 }: {
   event: DiagnosticEvent;
   expanded: boolean;
   onToggle: () => void;
+  onJumpToChain?: (correlationId: string) => void;
 }) {
   return (
     <>
@@ -381,28 +386,55 @@ function RowGroup({
           </Text>
         </Table.Td>
         <Table.Td>
-          <ActionIcon
-            variant="subtle"
-            size="xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle();
-            }}
-            aria-label={expanded ? "Collapse" : "Expand"}
-          >
-            {expanded ? "−" : "+"}
-          </ActionIcon>
+          <Group gap={4} wrap="nowrap" justify="flex-end">
+            {event.correlationId && onJumpToChain && (
+              <ActionIcon
+                variant="subtle"
+                color="grape"
+                size="xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onJumpToChain(event.correlationId);
+                }}
+                title={`View causal chain (${event.correlationId.slice(0, 8)}…)`}
+                aria-label="View causal chain"
+              >
+                ⇢
+              </ActionIcon>
+            )}
+            <ActionIcon
+              variant="subtle"
+              size="xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle();
+              }}
+              aria-label={expanded ? "Collapse" : "Expand"}
+            >
+              {expanded ? "−" : "+"}
+            </ActionIcon>
+          </Group>
         </Table.Td>
       </Table.Tr>
       {expanded && (
         <Table.Tr>
           <Table.Td colSpan={5}>
             <Box p="xs">
-              <Group gap="xs" mb="xs">
-                <Text size="xs" c="dimmed">
-                  id:
-                </Text>
+              <Group gap="xs" mb="xs" wrap="wrap">
+                <Text size="xs" c="dimmed">id:</Text>
                 <Code>{event.id}</Code>
+                {event.causationId && (
+                  <>
+                    <Text size="xs" c="dimmed">causation:</Text>
+                    <Code>{event.causationId}</Code>
+                  </>
+                )}
+                {event.correlationId && (
+                  <>
+                    <Text size="xs" c="dimmed">correlation:</Text>
+                    <Code>{event.correlationId}</Code>
+                  </>
+                )}
               </Group>
               <Code block style={{ whiteSpace: "pre", fontSize: 12 }}>
                 {prettyJson(event.dataJson)}

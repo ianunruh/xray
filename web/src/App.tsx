@@ -20,6 +20,7 @@ import { OcosPanel } from "./components/OcosPanel";
 import { MarketPanel } from "./components/MarketPanel";
 import { OrderForm } from "./components/OrderForm";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
+import { ChainPanel } from "./components/ChainPanel";
 import { orderBookClient, portfolioClient } from "./client";
 import { moneyToPrice } from "./format";
 
@@ -38,10 +39,13 @@ function setParam(key: string, value: string) {
   history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
 }
 
-type View = "trading" | "diagnostics";
+type View = "trading" | "diagnostics" | "chain";
 
 function getViewParam(): View {
-  return getParam("view") === "diagnostics" ? "diagnostics" : "trading";
+  const v = getParam("view");
+  if (v === "diagnostics") return "diagnostics";
+  if (v === "chain") return "chain";
+  return "trading";
 }
 
 export function App() {
@@ -49,6 +53,7 @@ export function App() {
   const [account, setAccount] = useState(getParam("account"));
   const [symbol, setSymbol] = useState(getParam("symbol"));
   const [aggregate, setAggregate] = useState(getParam("aggregate"));
+  const [correlation, setCorrelation] = useState(getParam("correlation"));
   const [accounts, setAccounts] = useState<string[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [newAccOpened, newAccHandlers] = useDisclosure(false);
@@ -114,6 +119,7 @@ export function App() {
             data={[
               { label: "Trading", value: "trading" },
               { label: "Diagnostics", value: "diagnostics" },
+              { label: "Chain", value: "chain" },
             ]}
           />
           {view === "trading" && (
@@ -153,12 +159,26 @@ export function App() {
       </AppShell.Header>
 
       <AppShell.Main>
-        {view === "diagnostics" ? (
+        {view === "chain" ? (
+          <ChainPanel
+            initialCorrelationId={correlation}
+            onCorrelationChange={(id) => {
+              setCorrelation(id);
+              setParam("correlation", id);
+            }}
+          />
+        ) : view === "diagnostics" ? (
           <DiagnosticsPanel
             initialAggregateId={aggregate}
             onAggregateChange={(id) => {
               setAggregate(id);
               setParam("aggregate", id);
+            }}
+            onJumpToChain={(id) => {
+              setCorrelation(id);
+              setParam("correlation", id);
+              setView("chain");
+              setParam("view", "chain");
             }}
           />
         ) : account && symbol ? (

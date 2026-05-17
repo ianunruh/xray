@@ -240,7 +240,13 @@ type DiagnosticEvent struct {
 	Position    int64                  `protobuf:"varint,5,opt,name=position,proto3" json:"position,omitempty"`
 	Timestamp   *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	// JSON-encoded event payload (protojson).
-	DataJson      string `protobuf:"bytes,7,opt,name=data_json,json=dataJson,proto3" json:"data_json,omitempty"`
+	DataJson string `protobuf:"bytes,7,opt,name=data_json,json=dataJson,proto3" json:"data_json,omitempty"`
+	// Parent event ID (the event that caused the command that produced this
+	// event). Empty for origin events.
+	CausationId string `protobuf:"bytes,8,opt,name=causation_id,json=causationId,proto3" json:"causation_id,omitempty"`
+	// Root of the causation chain — every event triggered by the same user
+	// action shares this ID.
+	CorrelationId string `protobuf:"bytes,9,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -324,6 +330,20 @@ func (x *DiagnosticEvent) GetDataJson() string {
 	return ""
 }
 
+func (x *DiagnosticEvent) GetCausationId() string {
+	if x != nil {
+		return x.CausationId
+	}
+	return ""
+}
+
+func (x *DiagnosticEvent) GetCorrelationId() string {
+	if x != nil {
+		return x.CorrelationId
+	}
+	return ""
+}
+
 type GetAggregateEventsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Events        []*DiagnosticEvent     `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
@@ -368,6 +388,94 @@ func (x *GetAggregateEventsResponse) GetEvents() []*DiagnosticEvent {
 	return nil
 }
 
+type GetEventChainRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CorrelationId string                 `protobuf:"bytes,1,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetEventChainRequest) Reset() {
+	*x = GetEventChainRequest{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetEventChainRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetEventChainRequest) ProtoMessage() {}
+
+func (x *GetEventChainRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetEventChainRequest.ProtoReflect.Descriptor instead.
+func (*GetEventChainRequest) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *GetEventChainRequest) GetCorrelationId() string {
+	if x != nil {
+		return x.CorrelationId
+	}
+	return ""
+}
+
+type GetEventChainResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Events        []*DiagnosticEvent     `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetEventChainResponse) Reset() {
+	*x = GetEventChainResponse{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetEventChainResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetEventChainResponse) ProtoMessage() {}
+
+func (x *GetEventChainResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetEventChainResponse.ProtoReflect.Descriptor instead.
+func (*GetEventChainResponse) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GetEventChainResponse) GetEvents() []*DiagnosticEvent {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
 var File_diagnostics_v1_service_proto protoreflect.FileDescriptor
 
 const file_diagnostics_v1_service_proto_rawDesc = "" +
@@ -387,7 +495,7 @@ const file_diagnostics_v1_service_proto_rawDesc = "" +
 	"aggregates\x18\x01 \x03(\v2 .diagnostics.v1.AggregateSummaryR\n" +
 	"aggregates\">\n" +
 	"\x19GetAggregateEventsRequest\x12!\n" +
-	"\faggregate_id\x18\x01 \x01(\tR\vaggregateId\"\xe5\x01\n" +
+	"\faggregate_id\x18\x01 \x01(\tR\vaggregateId\"\xaf\x02\n" +
 	"\x0fDiagnosticEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\faggregate_id\x18\x02 \x01(\tR\vaggregateId\x12\x12\n" +
@@ -395,12 +503,19 @@ const file_diagnostics_v1_service_proto_rawDesc = "" +
 	"\aversion\x18\x04 \x01(\x05R\aversion\x12\x1a\n" +
 	"\bposition\x18\x05 \x01(\x03R\bposition\x128\n" +
 	"\ttimestamp\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1b\n" +
-	"\tdata_json\x18\a \x01(\tR\bdataJson\"U\n" +
+	"\tdata_json\x18\a \x01(\tR\bdataJson\x12!\n" +
+	"\fcausation_id\x18\b \x01(\tR\vcausationId\x12%\n" +
+	"\x0ecorrelation_id\x18\t \x01(\tR\rcorrelationId\"U\n" +
 	"\x1aGetAggregateEventsResponse\x127\n" +
-	"\x06events\x18\x01 \x03(\v2\x1f.diagnostics.v1.DiagnosticEventR\x06events2\xe2\x01\n" +
+	"\x06events\x18\x01 \x03(\v2\x1f.diagnostics.v1.DiagnosticEventR\x06events\"=\n" +
+	"\x14GetEventChainRequest\x12%\n" +
+	"\x0ecorrelation_id\x18\x01 \x01(\tR\rcorrelationId\"P\n" +
+	"\x15GetEventChainResponse\x127\n" +
+	"\x06events\x18\x01 \x03(\v2\x1f.diagnostics.v1.DiagnosticEventR\x06events2\xc0\x02\n" +
 	"\x12DiagnosticsService\x12_\n" +
 	"\x0eListAggregates\x12%.diagnostics.v1.ListAggregatesRequest\x1a&.diagnostics.v1.ListAggregatesResponse\x12k\n" +
-	"\x12GetAggregateEvents\x12).diagnostics.v1.GetAggregateEventsRequest\x1a*.diagnostics.v1.GetAggregateEventsResponseB;Z9github.com/ianunruh/xray/gen/diagnostics/v1;diagnosticsv1b\x06proto3"
+	"\x12GetAggregateEvents\x12).diagnostics.v1.GetAggregateEventsRequest\x1a*.diagnostics.v1.GetAggregateEventsResponse\x12\\\n" +
+	"\rGetEventChain\x12$.diagnostics.v1.GetEventChainRequest\x1a%.diagnostics.v1.GetEventChainResponseB;Z9github.com/ianunruh/xray/gen/diagnostics/v1;diagnosticsv1b\x06proto3"
 
 var (
 	file_diagnostics_v1_service_proto_rawDescOnce sync.Once
@@ -414,7 +529,7 @@ func file_diagnostics_v1_service_proto_rawDescGZIP() []byte {
 	return file_diagnostics_v1_service_proto_rawDescData
 }
 
-var file_diagnostics_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_diagnostics_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_diagnostics_v1_service_proto_goTypes = []any{
 	(*ListAggregatesRequest)(nil),      // 0: diagnostics.v1.ListAggregatesRequest
 	(*AggregateSummary)(nil),           // 1: diagnostics.v1.AggregateSummary
@@ -422,23 +537,28 @@ var file_diagnostics_v1_service_proto_goTypes = []any{
 	(*GetAggregateEventsRequest)(nil),  // 3: diagnostics.v1.GetAggregateEventsRequest
 	(*DiagnosticEvent)(nil),            // 4: diagnostics.v1.DiagnosticEvent
 	(*GetAggregateEventsResponse)(nil), // 5: diagnostics.v1.GetAggregateEventsResponse
-	(*timestamppb.Timestamp)(nil),      // 6: google.protobuf.Timestamp
+	(*GetEventChainRequest)(nil),       // 6: diagnostics.v1.GetEventChainRequest
+	(*GetEventChainResponse)(nil),      // 7: diagnostics.v1.GetEventChainResponse
+	(*timestamppb.Timestamp)(nil),      // 8: google.protobuf.Timestamp
 }
 var file_diagnostics_v1_service_proto_depIdxs = []int32{
-	6, // 0: diagnostics.v1.AggregateSummary.first_event_at:type_name -> google.protobuf.Timestamp
-	6, // 1: diagnostics.v1.AggregateSummary.last_event_at:type_name -> google.protobuf.Timestamp
+	8, // 0: diagnostics.v1.AggregateSummary.first_event_at:type_name -> google.protobuf.Timestamp
+	8, // 1: diagnostics.v1.AggregateSummary.last_event_at:type_name -> google.protobuf.Timestamp
 	1, // 2: diagnostics.v1.ListAggregatesResponse.aggregates:type_name -> diagnostics.v1.AggregateSummary
-	6, // 3: diagnostics.v1.DiagnosticEvent.timestamp:type_name -> google.protobuf.Timestamp
+	8, // 3: diagnostics.v1.DiagnosticEvent.timestamp:type_name -> google.protobuf.Timestamp
 	4, // 4: diagnostics.v1.GetAggregateEventsResponse.events:type_name -> diagnostics.v1.DiagnosticEvent
-	0, // 5: diagnostics.v1.DiagnosticsService.ListAggregates:input_type -> diagnostics.v1.ListAggregatesRequest
-	3, // 6: diagnostics.v1.DiagnosticsService.GetAggregateEvents:input_type -> diagnostics.v1.GetAggregateEventsRequest
-	2, // 7: diagnostics.v1.DiagnosticsService.ListAggregates:output_type -> diagnostics.v1.ListAggregatesResponse
-	5, // 8: diagnostics.v1.DiagnosticsService.GetAggregateEvents:output_type -> diagnostics.v1.GetAggregateEventsResponse
-	7, // [7:9] is the sub-list for method output_type
-	5, // [5:7] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	4, // 5: diagnostics.v1.GetEventChainResponse.events:type_name -> diagnostics.v1.DiagnosticEvent
+	0, // 6: diagnostics.v1.DiagnosticsService.ListAggregates:input_type -> diagnostics.v1.ListAggregatesRequest
+	3, // 7: diagnostics.v1.DiagnosticsService.GetAggregateEvents:input_type -> diagnostics.v1.GetAggregateEventsRequest
+	6, // 8: diagnostics.v1.DiagnosticsService.GetEventChain:input_type -> diagnostics.v1.GetEventChainRequest
+	2, // 9: diagnostics.v1.DiagnosticsService.ListAggregates:output_type -> diagnostics.v1.ListAggregatesResponse
+	5, // 10: diagnostics.v1.DiagnosticsService.GetAggregateEvents:output_type -> diagnostics.v1.GetAggregateEventsResponse
+	7, // 11: diagnostics.v1.DiagnosticsService.GetEventChain:output_type -> diagnostics.v1.GetEventChainResponse
+	9, // [9:12] is the sub-list for method output_type
+	6, // [6:9] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_diagnostics_v1_service_proto_init() }
@@ -452,7 +572,7 @@ func file_diagnostics_v1_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_diagnostics_v1_service_proto_rawDesc), len(file_diagnostics_v1_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

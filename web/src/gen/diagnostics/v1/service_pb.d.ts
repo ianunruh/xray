@@ -137,6 +137,22 @@ export declare type DiagnosticEvent = Message<"diagnostics.v1.DiagnosticEvent"> 
    * @generated from field: string data_json = 7;
    */
   dataJson: string;
+
+  /**
+   * Parent event ID (the event that caused the command that produced this
+   * event). Empty for origin events.
+   *
+   * @generated from field: string causation_id = 8;
+   */
+  causationId: string;
+
+  /**
+   * Root of the causation chain — every event triggered by the same user
+   * action shares this ID.
+   *
+   * @generated from field: string correlation_id = 9;
+   */
+  correlationId: string;
 };
 
 /**
@@ -162,6 +178,38 @@ export declare type GetAggregateEventsResponse = Message<"diagnostics.v1.GetAggr
 export declare const GetAggregateEventsResponseSchema: GenMessage<GetAggregateEventsResponse>;
 
 /**
+ * @generated from message diagnostics.v1.GetEventChainRequest
+ */
+export declare type GetEventChainRequest = Message<"diagnostics.v1.GetEventChainRequest"> & {
+  /**
+   * @generated from field: string correlation_id = 1;
+   */
+  correlationId: string;
+};
+
+/**
+ * Describes the message diagnostics.v1.GetEventChainRequest.
+ * Use `create(GetEventChainRequestSchema)` to create a new message.
+ */
+export declare const GetEventChainRequestSchema: GenMessage<GetEventChainRequest>;
+
+/**
+ * @generated from message diagnostics.v1.GetEventChainResponse
+ */
+export declare type GetEventChainResponse = Message<"diagnostics.v1.GetEventChainResponse"> & {
+  /**
+   * @generated from field: repeated diagnostics.v1.DiagnosticEvent events = 1;
+   */
+  events: DiagnosticEvent[];
+};
+
+/**
+ * Describes the message diagnostics.v1.GetEventChainResponse.
+ * Use `create(GetEventChainResponseSchema)` to create a new message.
+ */
+export declare const GetEventChainResponseSchema: GenMessage<GetEventChainResponse>;
+
+/**
  * @generated from service diagnostics.v1.DiagnosticsService
  */
 export declare const DiagnosticsService: GenService<{
@@ -180,6 +228,18 @@ export declare const DiagnosticsService: GenService<{
     methodKind: "unary";
     input: typeof GetAggregateEventsRequestSchema;
     output: typeof GetAggregateEventsResponseSchema;
+  },
+  /**
+   * GetEventChain returns every event sharing the given correlation_id,
+   * ordered by timestamp. The reactor's ctx-propagation guarantees that a
+   * single user action and all its downstream effects share one correlation.
+   *
+   * @generated from rpc diagnostics.v1.DiagnosticsService.GetEventChain
+   */
+  getEventChain: {
+    methodKind: "unary";
+    input: typeof GetEventChainRequestSchema;
+    output: typeof GetEventChainResponseSchema;
   },
 }>;
 
