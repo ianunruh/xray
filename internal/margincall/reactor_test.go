@@ -22,11 +22,13 @@ import (
 )
 
 type collectingPublisher struct {
-	events []es.Event
+	events []es.Event // queue drained each batch
+	all    []es.Event // never cleared; used by integration tests for replay
 }
 
 func (p *collectingPublisher) Publish(_ context.Context, events []es.Event) error {
 	p.events = append(p.events, events...)
+	p.all = append(p.all, events...)
 	return nil
 }
 
