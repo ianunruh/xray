@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { notifications } from "@mantine/notifications";
+import { playFillDing } from "../audio";
 import { formatPrice, formatQuantity } from "../format";
 import { Side } from "../gen/orderbook/v1/events_pb";
 import {
@@ -13,6 +14,7 @@ function sideVerb(side: Side): string {
 }
 
 function showFilled(o: PendingOrder) {
+  playFillDing();
   notifications.show({
     title: `${sideVerb(o.side)} ${o.symbol} filled`,
     message: `${formatQuantity(o.filledQuantity)} @ ${formatPrice(o.price)}`,
