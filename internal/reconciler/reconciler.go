@@ -24,6 +24,7 @@ import (
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
 	"github.com/ianunruh/xray/internal/bracket"
+	"github.com/ianunruh/xray/internal/margincall"
 	"github.com/ianunruh/xray/internal/ocosaga"
 	"github.com/ianunruh/xray/internal/ordersaga"
 	"github.com/ianunruh/xray/internal/portfolio"
@@ -51,6 +52,9 @@ type Reconciler struct {
 	orderSagaReactor *ordersaga.Reactor
 	bracketReactor   *bracket.Reactor
 	ocoSagaReactor   *ocosaga.Reactor
+	marginReactor    *margincall.Reactor
+	activeCalls      portfolio.ActiveMarginCallsTracker
+	now              func() time.Time
 	log              *slog.Logger
 }
 
@@ -62,6 +66,8 @@ func New(
 	orderSagaReactor *ordersaga.Reactor,
 	bracketReactor *bracket.Reactor,
 	ocoSagaReactor *ocosaga.Reactor,
+	marginReactor *margincall.Reactor,
+	activeCalls portfolio.ActiveMarginCallsTracker,
 	log *slog.Logger,
 ) *Reconciler {
 	return &Reconciler{
@@ -72,6 +78,9 @@ func New(
 		orderSagaReactor: orderSagaReactor,
 		bracketReactor:   bracketReactor,
 		ocoSagaReactor:   ocoSagaReactor,
+		marginReactor:    marginReactor,
+		activeCalls:      activeCalls,
+		now:              time.Now,
 		log:              log,
 	}
 }
@@ -93,7 +102,9 @@ func (r *Reconciler) Run(ctx context.Context) {
 	}
 }
 
-// ReconcileOnce makes a single sweep over all active sagas.
+// ReconcileOnce makes a single sweep: reconcile every active saga,
+// then evaluate every open margin call for grace expiry. Errors are
+// logged per-item so one bad saga doesn't block the rest of the pass.
 func (r *Reconciler) ReconcileOnce(ctx context.Context) error {
 	sagas, err := r.sagaLookup.List(ctx, "", "",
 		sagav1.SagaKind_SAGA_KIND_UNSPECIFIED,
@@ -107,7 +118,21 @@ func (r *Reconciler) ReconcileOnce(ctx context.Context) error {
 				"saga_id", s.SagaID, "kind", s.Kind, "error", err)
 		}
 	}
+	r.reconcileMarginCalls(ctx)
 	return nil
+}
+
+func (r *Reconciler) reconcileMarginCalls(ctx context.Context) {
+	if r.marginReactor == nil || r.activeCalls == nil {
+		return
+	}
+	now := r.now()
+	for _, call := range r.activeCalls.ListOpenCalls(ctx) {
+		if err := r.marginReactor.EvaluateGraceExpiry(ctx, call.AccountID, now); err != nil {
+			r.log.Warn("reconcile margin call failed",
+				"account_id", call.AccountID, "call_id", call.CallID, "error", err)
+		}
+	}
 }
 
 func (r *Reconciler) reconcileSaga(ctx context.Context, s *sagasvc.SagaRow) error {

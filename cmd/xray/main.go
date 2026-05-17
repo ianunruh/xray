@@ -146,12 +146,14 @@ func main() {
 	candleProjection := orderbook.NewCandleProjection()
 	markProjection := orderbook.NewMarkProjection()
 	shortsProjection := portfolio.NewPgShortsBySymbolProjection(pool)
+	activeCallsProjection := portfolio.NewInMemoryActiveMarginCalls()
 	broker := orderbook.NewBroker()
 	portfolioBroker := portfolio.NewPortfolioBroker()
 	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, ocoSagaHandler, obHandler, log)
 	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
 	ocoSagaReactor := ocosaga.NewReactor(ocoSagaHandler, portfolioHandler, obHandler, log)
-	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shortsProjection, sagaProjection, markProjection, log)
+	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shortsProjection, sagaProjection, markProjection,
+		margincall.Config{Grace: 30 * time.Second}, log)
 
 	// One consumer per persistent projection so each one's cursor advances
 	// independently. Ephemeral projections (in-memory) share a single
@@ -159,7 +161,7 @@ func main() {
 	// state rebuilds from the start of the stream.
 	consumers := []*natsstore.ProjectionConsumer{
 		natsstore.NewProjectionConsumer(js, registry, log, "ephemeral").
-			WithEphemeral(depthProjection, candleProjection, markProjection, broker, portfolioBroker),
+			WithEphemeral(depthProjection, candleProjection, markProjection, activeCallsProjection, broker, portfolioBroker),
 		// shortsProjection MUST precede marginReactor here: the
 		// reactor queries the shorts table the projection writes,
 		// and the consumer dispatches projections in slice order
@@ -196,7 +198,7 @@ func main() {
 	broker.SetReady()
 	portfolioBroker.SetReady()
 
-	rec := reconciler.New(30*time.Second, sagaProjection, tradeProjection, portfolioHandler, orderSagaReactor, bracketReactor, ocoSagaReactor, log)
+	rec := reconciler.New(30*time.Second, sagaProjection, tradeProjection, portfolioHandler, orderSagaReactor, bracketReactor, ocoSagaReactor, marginReactor, activeCallsProjection, log)
 	go rec.Run(ctx)
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, dailyCloseProjection, broker)

@@ -2,6 +2,7 @@ package margincall_test
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -92,7 +93,8 @@ func newEnv(t *testing.T) *env {
 	shorts := portfolio.NewInMemoryShortsBySymbol()
 	marker := &fakeMarker{prices: make(map[string]int64)}
 	sagas := &stubSagaLookup{}
-	reactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shorts, sagas, marker, log)
+	reactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shorts, sagas, marker,
+		margincall.Config{Grace: 0}, log)
 
 	return &env{
 		ctx: ctx, pub: pub,
@@ -361,6 +363,89 @@ func TestReactor_SkipsMarginCallSagasOnCancel(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, ordersaga.Failed, mcSaga.Status,
 		"margin-call-initiated saga must be left alone")
+}
+
+// newEnvWithGrace mirrors newEnv but lets the test pick a grace
+// window. Used for the grace-period tests; everything else uses the
+// zero-grace default (immediate liquidation, simpler to assert).
+func newEnvWithGrace(t *testing.T, grace time.Duration) *env {
+	t.Helper()
+	e := newEnv(t)
+	e.reactor = margincall.NewReactor(e.portfolioHandler, e.orderSagaHandler, e.obHandler,
+		e.shorts, e.sagas, e.marker, margincall.Config{Grace: grace}, slog.Default())
+	return e
+}
+
+func TestReactor_DefersLiquidationWhenGraceConfigured(t *testing.T) {
+	e := newEnvWithGrace(t, 30*time.Second)
+	seedShort(t, e, "acct-1", "AAPL", 100, 1_500_000, 75_000_000)
+	e.flush()
+
+	fireTrade(t, e, "AAPL", "trade-up", 8_000_000)
+
+	// Call is open but no liquidation saga should exist yet.
+	p := loadPortfolio(t, e, "acct-1")
+	require.NotNil(t, p.ActiveMarginCall)
+
+	_, err := e.orderSagaHandler.Load(e.ctx, ordersaga.AggregateID("liquidation:acct-1:trade-up"))
+	require.NoError(t, err)
+	// Aggregate Load returns a fresh empty saga for a missing ID;
+	// verify Version() is 0 to confirm it doesn't exist.
+	saga, _ := e.orderSagaHandler.Load(e.ctx, ordersaga.AggregateID("liquidation:acct-1:trade-up"))
+	assert.Equal(t, 0, saga.Version(), "liquidation saga should NOT have spawned yet")
+}
+
+func TestReactor_GraceExpiry_SpawnsLiquidation(t *testing.T) {
+	e := newEnvWithGrace(t, 30*time.Second)
+	seedShort(t, e, "acct-1", "AAPL", 100, 1_500_000, 75_000_000)
+	e.flush()
+
+	fireTrade(t, e, "AAPL", "trade-up", 8_000_000)
+	p := loadPortfolio(t, e, "acct-1")
+	require.NotNil(t, p.ActiveMarginCall)
+	issuedAt := p.ActiveMarginCall.IssuedAt
+
+	// Tick before grace expires — no-op.
+	require.NoError(t, e.reactor.EvaluateGraceExpiry(e.ctx, "acct-1", issuedAt.Add(10*time.Second)))
+	saga, _ := e.orderSagaHandler.Load(e.ctx, ordersaga.AggregateID(
+		"liquidation:acct-1:"+graceTriggerID(issuedAt)))
+	assert.Equal(t, 0, saga.Version(), "no spawn before grace")
+
+	// Tick after grace expires — liquidation should spawn.
+	require.NoError(t, e.reactor.EvaluateGraceExpiry(e.ctx, "acct-1", issuedAt.Add(45*time.Second)))
+	saga, err := e.orderSagaHandler.Load(e.ctx, ordersaga.AggregateID(
+		"liquidation:acct-1:"+graceTriggerID(issuedAt)))
+	require.NoError(t, err)
+	assert.NotEqual(t, 0, saga.Version(), "liquidation saga spawned after grace")
+}
+
+func TestReactor_GraceExpiry_CoversWhenBreachResolved(t *testing.T) {
+	e := newEnvWithGrace(t, 30*time.Second)
+	seedShort(t, e, "acct-1", "AAPL", 100, 1_500_000, 75_000_000)
+	e.flush()
+
+	fireTrade(t, e, "AAPL", "trade-up", 8_000_000)
+	p := loadPortfolio(t, e, "acct-1")
+	require.NotNil(t, p.ActiveMarginCall)
+
+	// Mark snaps back below the call threshold before grace expires.
+	e.marker.set("AAPL", 1_500_000)
+
+	require.NoError(t, e.reactor.EvaluateGraceExpiry(e.ctx, "acct-1",
+		p.ActiveMarginCall.IssuedAt.Add(45*time.Second)))
+
+	p = loadPortfolio(t, e, "acct-1")
+	assert.Nil(t, p.ActiveMarginCall, "call cleared by grace-expiry recheck")
+}
+
+// graceTriggerID mirrors the reactor's deterministic ID derivation
+// for grace-expiry liquidations.
+func graceTriggerID(issuedAt time.Time) string {
+	return "grace:" + strconvI64(issuedAt.UnixNano())
+}
+
+func strconvI64(n int64) string {
+	return fmt.Sprintf("%d", n)
 }
 
 func TestReactor_CashWithdrawal_TriggersCall(t *testing.T) {

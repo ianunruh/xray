@@ -64,6 +64,20 @@ type Reactor struct {
 	sagas            SagaLookup
 	marker           portfolio.Marker
 	log              *slog.Logger
+	// grace is the delay between MarginCallIssued and the first
+	// liquidation. The reconciler picks up expired calls and runs
+	// liquidation then. User-saga cancellation still fires immediately
+	// on call issue regardless of grace — the grace is only for the
+	// auto-liquidation step.
+	grace time.Duration
+}
+
+// Config bundles tunables for the margin-call reactor.
+type Config struct {
+	// Grace is the delay between issuing a call and auto-liquidating.
+	// Must be > 0 in production wiring; tests may pass 0 to exercise
+	// the immediate path directly without involving the reconciler.
+	Grace time.Duration
 }
 
 func NewReactor(
@@ -73,6 +87,7 @@ func NewReactor(
 	shorts portfolio.ShortsTracker,
 	sagas SagaLookup,
 	marker portfolio.Marker,
+	cfg Config,
 	log *slog.Logger,
 ) *Reactor {
 	return &Reactor{
@@ -83,6 +98,7 @@ func NewReactor(
 		sagas:            sagas,
 		marker:           marker,
 		log:              log,
+		grace:            cfg.Grace,
 	}
 }
 
@@ -160,12 +176,20 @@ func (r *Reactor) recheckAccount(ctx context.Context, accountID, triggerID, trig
 		if err := r.issueCall(ctx, accountID, callID, triggerID, triggerSymbol, triggerMark, status); err != nil {
 			return err
 		}
-		// Cancel user-initiated sagas before liquidating so no fresh
-		// buys or shorts compound the breach while we're working on it.
-		// Errors here are logged-and-continued — failing to cancel one
-		// saga shouldn't stop the liquidation that follows.
+		// Cancel user-initiated sagas immediately, regardless of
+		// grace. Stops the bleeding (no fresh buys / shorts) while
+		// the user has a chance to add cash. Errors are logged but
+		// don't abort the call flow.
 		if err := r.cancelUserSagas(ctx, accountID); err != nil {
 			r.log.Error("margincall: failed to cancel user sagas", "account_id", accountID, "error", err)
+		}
+		// Liquidation defers until grace expires when grace > 0.
+		// The reconciler calls EvaluateGraceExpiry on each tick to
+		// pick up calls whose grace window has passed.
+		if r.grace > 0 {
+			r.log.Info("margincall: liquidation deferred",
+				"account_id", accountID, "grace", r.grace)
+			return nil
 		}
 		return r.spawnLiquidation(ctx, accountID, triggerID, callID, status)
 
@@ -177,13 +201,48 @@ func (r *Reactor) recheckAccount(ctx context.Context, accountID, triggerID, trig
 		// actually reduced something. Skip if no short remains
 		// (status.LargestShortQty == 0 means we've covered them all
 		// but equity is still below requirement; nothing more we can
-		// liquidate on our own).
-		if status.LargestShortQty == 0 {
+		// liquidate on our own). Skipped under grace too — the
+		// reconciler decides when to act.
+		if status.LargestShortQty == 0 || r.grace > 0 {
 			return nil
 		}
 		return r.spawnLiquidation(ctx, accountID, triggerID, p.ActiveMarginCall.CallID, status)
 	}
 	return nil
+}
+
+// EvaluateGraceExpiry is called by the reconciler for each account
+// with an open margin call. If the grace window has passed and the
+// breach is still active, it spawns liquidation; if the breach has
+// already resolved on its own (e.g. user added cash), it emits
+// MarginCallCovered. No-op when grace hasn't expired yet.
+func (r *Reactor) EvaluateGraceExpiry(ctx context.Context, accountID string, now time.Time) error {
+	p, err := r.portfolioHandler.Load(ctx, portfolio.AggregateID(accountID))
+	if err != nil {
+		return fmt.Errorf("load portfolio %s: %w", accountID, err)
+	}
+	if p.ActiveMarginCall == nil {
+		return nil
+	}
+	if now.Sub(p.ActiveMarginCall.IssuedAt) < r.grace {
+		return nil
+	}
+
+	status := portfolio.ComputeMarginStatus(p, r.marker)
+	if !status.InCall {
+		return r.coverCall(ctx, accountID, status)
+	}
+	if status.LargestShortQty == 0 {
+		return nil
+	}
+	// triggerID encodes that this liquidation came from grace
+	// expiry. Including the issuedAt makes the sagaID stable across
+	// reconciler ticks so we don't double-spawn.
+	triggerID := fmt.Sprintf("grace:%d", p.ActiveMarginCall.IssuedAt.UnixNano())
+	r.log.Warn("margincall: grace expired, liquidating",
+		"account_id", accountID, "call_id", p.ActiveMarginCall.CallID,
+		"age", now.Sub(p.ActiveMarginCall.IssuedAt))
+	return r.spawnLiquidation(ctx, accountID, triggerID, p.ActiveMarginCall.CallID, status)
 }
 
 func (r *Reactor) issueCall(ctx context.Context, accountID, callID, triggerID, triggerSymbol string, triggerMark int64, status portfolio.MarginStatus) error {
