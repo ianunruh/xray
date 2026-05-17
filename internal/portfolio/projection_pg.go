@@ -153,14 +153,14 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 				data.Amount, data.AccountId,
 			)
 		case *portfoliov1.ShortOpened:
-			// Aggregate consumes the pre-fill collateral hold into the
-			// short's locked pool — cash-neutral when the hold matched
-			// the execution. Any overflow (executed collateral above
-			// the pre-held estimate) is taken straight from cash.
-			// Without the prior CollateralHeld amount in scope, treat
-			// the common case (overflow = 0) as cash-neutral. The rare
-			// overflow path will show up later as a margin-snapshot
-			// vs cash_balance discrepancy.
+			// Cash-neutral by construction: the pre-fill collateral
+			// was already debited from cash_balance by CollateralHeld;
+			// the aggregate just moves it from the per-saga bucket
+			// into the short's locked pool (which the streamed view
+			// doesn't track). ShortCovered later returns pool money
+			// to cash. If policy ever changes to take additional
+			// cash at fill time, ShortOpened should grow an explicit
+			// overflow field so the projection stays in sync.
 		case *portfoliov1.ShortCovered:
 			// Net cash impact: pools (proceeds_released +
 			// collateral_released) return to cash; cost is paid.

@@ -305,18 +305,15 @@ func (p *Portfolio) applyCollateralReleased(data *portfoliov1.CollateralReleased
 func (p *Portfolio) applyShortOpened(data *portfoliov1.ShortOpened) {
 	p.AccountID = data.AccountId
 
-	// Consume the pre-fill collateral hold if present. Any executed
-	// collateral above the pre-held amount is debited straight from
-	// CashBalance — mirrors the CashSettled overflow pattern.
+	// Consume the pre-fill collateral hold. By construction
+	// (ExecuteOpenShort sets data.CollateralHeld == hold.Amount),
+	// the consumed amount equals the entire held amount, so we drop
+	// the entry. If/when policy changes to require additional cash
+	// at fill time (overflow), add an explicit field to ShortOpened
+	// rather than rederiving it here — keeps the projection in sync.
 	hold := p.CollateralHeldBySaga[data.OrderSagaId]
-	fromHold := int64(0)
 	if hold != nil {
-		fromHold = min(hold.Amount, data.CollateralHeld)
-	}
-	overflow := data.CollateralHeld - fromHold
-	p.CashBalance -= overflow
-	if hold != nil {
-		hold.Amount -= fromHold
+		hold.Amount -= data.CollateralHeld
 		if hold.Amount <= 0 {
 			delete(p.CollateralHeldBySaga, data.OrderSagaId)
 		}
