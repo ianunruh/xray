@@ -30,6 +30,7 @@ import (
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
 	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
+	"github.com/ianunruh/xray/internal/margin"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
 	"github.com/ianunruh/xray/internal/portfolio"
@@ -332,7 +333,10 @@ func hasLiquidatable(status portfolio.MarginStatus) bool {
 
 // spawnLiquidation issues a liquidation saga for whichever position
 // has the larger market value at mark — a market BUY-to-cover for a
-// short or a market SELL for a long. SagaID is deterministic from
+// short or a market SELL for a long. Sizes the order to the minimum
+// qty that cures the breach plus a buffer; if even the whole
+// position isn't enough, takes the whole position and lets the next
+// reactor pass tackle the rest. SagaID is deterministic from
 // (account, triggerID) so replays produce no-ops. Returns nil if
 // there's nothing to liquidate (no open positions with marks).
 func (r *Reactor) spawnLiquidation(ctx context.Context, accountID, triggerID, callID string, status portfolio.MarginStatus) error {
@@ -342,22 +346,28 @@ func (r *Reactor) spawnLiquidation(ctx context.Context, accountID, triggerID, ca
 		return nil
 	}
 
+	breach := status.MaintenanceRequirement - status.Equity
+
 	var symbol string
-	var qty int64
+	var available, qty int64
 	var side orderbookv1.Side
 	var ps orderbookv1.PositionSide
 	if shortMV >= longMV {
-		// Cover the largest short.
 		symbol = status.LargestShortSymbol
-		qty = status.LargestShortQty
+		available = status.LargestShortQty
 		side = orderbookv1.Side_SIDE_BUY
 		ps = orderbookv1.PositionSide_POSITION_SIDE_SHORT
+		needed := margin.QtyToCureBreach(breach, status.MaintenanceRequirement,
+			status.LargestShortMark, margin.MaintenanceMarginBps)
+		qty = capQty(needed, available)
 	} else {
-		// Sell the largest long.
 		symbol = status.LargestLongSymbol
-		qty = status.LargestLongQty
+		available = status.LargestLongQty
 		side = orderbookv1.Side_SIDE_SELL
 		ps = orderbookv1.PositionSide_POSITION_SIDE_LONG
+		needed := margin.QtyToCureBreach(breach, status.MaintenanceRequirement,
+			status.LargestLongMark, margin.MaintenanceMarginLongBps)
+		qty = capQty(needed, available)
 	}
 
 	sagaID := fmt.Sprintf("liquidation:%s:%s", accountID, triggerID)
@@ -387,8 +397,24 @@ func (r *Reactor) spawnLiquidation(ctx context.Context, accountID, triggerID, ca
 	}
 	r.log.Warn("margincall: liquidation spawned",
 		"account_id", accountID, "saga_id", sagaID,
-		"symbol", status.LargestShortSymbol, "qty", status.LargestShortQty)
+		"symbol", symbol, "qty", qty, "available", available,
+		"breach", breach)
 	return nil
+}
+
+// capQty floors qty at 1 (no point spawning a zero-quantity saga)
+// and ceilings it at the available position size. needed == 0 only
+// happens when there's no real breach; the spawnLiquidation caller
+// already filters that case via status.InCall, so promote zero to
+// one share as a safety net rather than returning a no-op saga.
+func capQty(needed, available int64) int64 {
+	if needed <= 0 {
+		needed = 1
+	}
+	if needed > available {
+		return available
+	}
+	return needed
 }
 
 // Tick is exposed for the periodic reconciler to drive a fresh

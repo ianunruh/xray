@@ -67,3 +67,37 @@ func BuyingPower(equity, maintenance int64) int64 {
 	}
 	return excess * LeverageBps / bpsScale
 }
+
+// LiquidationBufferBps is the headroom above maintenance the auto-
+// liquidator targets, in bps of the pre-liquidation maintenance
+// requirement. 1000 = 10%. Larger than zero so a small mark wobble
+// doesn't re-breach the account on the next tick and trigger another
+// liquidation immediately.
+const LiquidationBufferBps int64 = 1000
+
+// QtyToCureBreach returns the minimum number of shares the auto-
+// liquidator should close at markPrice so the account exits the
+// breach with LiquidationBufferBps of headroom. maintRateBps is the
+// position side's maintenance rate (MaintenanceMarginBps for shorts,
+// MaintenanceMarginLongBps for longs). Returns 0 when there's no
+// breach to cure. Callers cap the result at the available position
+// size.
+//
+// Derivation: liquidating qty shares leaves equity unchanged in mark
+// terms (cash in == market value out, ignoring slippage) but reduces
+// maintenance by maintRateBps/bpsScale * markPrice * qty. Solving
+// E >= (M - rate*P*qty) + buffer gives qty >= (breach + buffer) / (rate*P).
+func QtyToCureBreach(breach, maint, markPrice, maintRateBps int64) int64 {
+	if breach <= 0 || markPrice <= 0 || maintRateBps <= 0 {
+		return 0
+	}
+	target := breach + maint*LiquidationBufferBps/bpsScale
+	perShareCure := markPrice * maintRateBps / bpsScale
+	if perShareCure <= 0 {
+		// Sub-cent prices fall below bps precision; return a
+		// sentinel large enough that the caller's cap-at-available
+		// step picks the whole position.
+		return target
+	}
+	return (target + perShareCure - 1) / perShareCure
+}

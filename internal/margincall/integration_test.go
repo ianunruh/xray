@@ -258,14 +258,18 @@ func TestIntegration_MarginCallEndToEnd(t *testing.T) {
 	liqSaga := findLiquidationSaga(t, e)
 	require.NotNil(t, liqSaga, "liquidation saga should have been spawned")
 	assert.Equal(t, symbol, liqSaga.Symbol)
-	assert.Equal(t, int64(100), liqSaga.Quantity)
+	// Partial liquidation: 69 of the 100-share short is enough to
+	// cure the breach plus the 10% buffer. Remaining 31 shares stay
+	// open — only the call is resolved.
+	assert.Equal(t, int64(69), liqSaga.Quantity)
 	assert.Equal(t, sagav1.Initiator_INITIATOR_MARGIN_CALL, liqSaga.Initiator)
 	assert.Equal(t, ordersaga.Completed, liqSaga.Status, "liquidation saga should have completed")
 
-	// === Phase 6: short is gone, call is cleared ===
+	// === Phase 6: short partially covered, call is cleared ===
 	p = e.loadPortfolio(t, acct)
-	assert.Empty(t, p.ShortPositions, "short fully covered")
-	assert.Nil(t, p.ActiveMarginCall, "call resolved after cover")
+	require.NotNil(t, p.ShortPositions[symbol], "remaining short still open after partial cover")
+	assert.Equal(t, int64(31), p.ShortPositions[symbol].Quantity, "100 - 69 partial cover")
+	assert.Nil(t, p.ActiveMarginCall, "call resolved after partial cover")
 
 	// Loss is large enough that final cash should be deeply negative
 	// (we shorted at $150 and covered around $810). Verify

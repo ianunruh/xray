@@ -201,12 +201,57 @@ func TestReactor_TradeBreach_IssuesCallAndSpawnsLiquidation(t *testing.T) {
 	assert.Equal(t, "AAPL", p.ActiveMarginCall.TriggerSymbol)
 	assert.Equal(t, int64(8_000_000), p.ActiveMarginCall.MarkPrice)
 
-	// Liquidation saga should be spawned with deterministic ID.
+	// Liquidation saga should be spawned with deterministic ID. Qty is
+	// the partial amount needed to cover the breach plus the 10% buffer
+	// (not the entire 100-share position): equity=100M, maint=240M,
+	// breach=140M. Target=140M + 24M buffer = 164M. Per-share cure at
+	// $800 mark * 30% = $240. ceil(164M / 2.4M) = 69 shares.
 	saga := loadSaga(t, e, "liquidation:acct-1:trade-1")
 	assert.Equal(t, "AAPL", saga.Symbol)
-	assert.Equal(t, int64(100), saga.Quantity)
+	assert.Equal(t, int64(69), saga.Quantity)
 	assert.Equal(t, orderbookv1.PositionSide_POSITION_SIDE_SHORT, saga.PositionSide)
 	assert.Equal(t, orderbook.Buy, saga.Side)
+}
+
+func TestReactor_TradeBreach_LiquidatesPartialOnlyForSmallBreach(t *testing.T) {
+	// Mild breach should liquidate only as many shares as needed to
+	// restore equity > maintenance + 10% buffer, NOT the entire short.
+	e := newEnv(t)
+	seedShort(t, e, "acct-1", "AAPL", 100, 1_500_000, 75_000_000)
+	e.flush()
+
+	// Cash after seedShort: $750M deposit - 75M collateral = 675M.
+	// CollateralPool=75M, ProceedsPool=150M. With mark $7.6M:
+	// liability = 760M, equity = 675 + 75 + 150 - 760 = 140M.
+	// Maintenance = 30% * 760M = 228M. Breach = 88M.
+	fireTrade(t, e, "AAPL", "trade-mild", 7_600_000)
+
+	p := loadPortfolio(t, e, "acct-1")
+	require.NotNil(t, p.ActiveMarginCall, "mild breach should still trigger call")
+
+	saga := loadSaga(t, e, "liquidation:acct-1:trade-mild")
+	// Target = breach 88M + 10% buffer of maint (22.8M) = 110.8M.
+	// Per-share cure: 7_600_000 * 30% = 2_280_000.
+	// ceil(110_800_000 / 2_280_000) = ceil(48.6) = 49 shares.
+	assert.Equal(t, int64(49), saga.Quantity, "partial — only enough to cover breach + buffer")
+	assert.Less(t, saga.Quantity, int64(100), "should NOT liquidate the whole position")
+}
+
+func TestReactor_TradeBreach_LiquidatesEntirePositionWhenInsufficient(t *testing.T) {
+	// Crater the mark hard enough that even the full position can't
+	// cover the breach + buffer — verify we cap at the available qty
+	// rather than overshooting.
+	e := newEnv(t)
+	seedShort(t, e, "acct-1", "AAPL", 100, 1_500_000, 75_000_000)
+	e.flush()
+
+	// Mark spikes to $50M: liability = 5B, maintenance = 1.5B.
+	// Equity = 975M - 5B = -4.025B. Breach is enormous; 100 shares
+	// can't possibly cover it. Saga must cap at 100, not overshoot.
+	fireTrade(t, e, "AAPL", "trade-catastrophe", 50_000_000)
+
+	saga := loadSaga(t, e, "liquidation:acct-1:trade-catastrophe")
+	assert.Equal(t, int64(100), saga.Quantity, "should cap at available position size")
 }
 
 func TestReactor_TradeNotBreached_NoCall(t *testing.T) {
