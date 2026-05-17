@@ -168,35 +168,6 @@ func sagaStatusForFailure(reason string) sagav1.SagaStatus {
 	return sagav1.SagaStatus_SAGA_STATUS_FAILED
 }
 
-// ActiveSingleOrderSagas returns (saga_id, account_id) pairs for
-// ACTIVE single-order sagas of one account. Unlike List(), this
-// INCLUDES bracket-entry child sagas — cancelling them is the
-// mechanism by which a bracket parent in PendingEntry gets failed
-// during a margin call (the bracket reactor's onEntryOrderSagaFailed
-// cascades the failure up). Implements margincall.SagaLookup.
-func (p *PgProjection) ActiveSingleOrderSagas(ctx context.Context, accountID string) ([]margincall.SagaSummary, error) {
-	rows, err := p.pool.Query(ctx,
-		`SELECT saga_id, account_id FROM projection_sagas
-		WHERE account_id = $1 AND kind = $2 AND status = $3`,
-		accountID,
-		int32(sagav1.SagaKind_SAGA_KIND_SINGLE_ORDER),
-		int32(sagav1.SagaStatus_SAGA_STATUS_ACTIVE),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("query active single-order sagas: %w", err)
-	}
-	defer rows.Close()
-	var out []margincall.SagaSummary
-	for rows.Next() {
-		var s margincall.SagaSummary
-		if err := rows.Scan(&s.SagaID, &s.AccountID); err != nil {
-			return nil, fmt.Errorf("scan saga: %w", err)
-		}
-		out = append(out, s)
-	}
-	return out, rows.Err()
-}
-
 // List returns sagas matching the given filters. Zero-valued filters are
 // treated as "match any."
 // childSagaPrefixes hides sagas whose IDs were synthesized by a parent

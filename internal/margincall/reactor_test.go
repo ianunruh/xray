@@ -39,10 +39,10 @@ type fakeMarker struct {
 // stubSagaLookup is a no-op SagaLookup for tests that don't exercise
 // the user-saga cancellation path. Tests that do can populate sagas.
 type stubSagaLookup struct {
-	sagas []margincall.SagaSummary
+	sagas []portfolio.ActiveSaga
 }
 
-func (s *stubSagaLookup) ActiveSingleOrderSagas(_ context.Context, _ string) ([]margincall.SagaSummary, error) {
+func (s *stubSagaLookup) ActiveSingleOrderSagas(_ context.Context, _ string) ([]portfolio.ActiveSaga, error) {
 	return s.sagas, nil
 }
 
@@ -324,7 +324,7 @@ func TestReactor_CancelsUserSagaOnIssue(t *testing.T) {
 		return ordersaga.ExecuteStartOrderSaga(s, startCmd)
 	}))
 	// Populate the lookup so the reactor finds it.
-	e.sagas.sagas = []margincall.SagaSummary{{SagaID: userSagaID, AccountID: "acct-1"}}
+	e.sagas.sagas = []portfolio.ActiveSaga{{SagaID: userSagaID, AccountID: "acct-1"}}
 	e.pub.events = nil
 
 	// Trigger a margin call by spiking the mark.
@@ -356,7 +356,7 @@ func TestReactor_SkipsMarginCallSagasOnCancel(t *testing.T) {
 	require.NoError(t, e.orderSagaHandler.Handle(e.ctx, startCmd, func(s *ordersaga.OrderSaga) ([]es.Event, error) {
 		return ordersaga.ExecuteStartOrderSaga(s, startCmd)
 	}))
-	e.sagas.sagas = []margincall.SagaSummary{{SagaID: mcSagaID, AccountID: "acct-1"}}
+	e.sagas.sagas = []portfolio.ActiveSaga{{SagaID: mcSagaID, AccountID: "acct-1"}}
 	e.pub.events = nil
 
 	fireTrade(t, e, "AAPL", "trade-up", 8_000_000)

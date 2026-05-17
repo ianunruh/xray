@@ -42,18 +42,13 @@ import (
 // SAGA_STATUS_LIQUIDATED.
 const MarginCallReason = "margin_call"
 
-// SagaSummary is the minimal info the reactor needs from the saga
-// projection to decide which user sagas to cancel on call issue.
-type SagaSummary struct {
-	SagaID    string
-	AccountID string
-}
-
-// SagaLookup is the read interface the reactor uses to find sagas
-// belonging to an account. sagasvc.PgProjection satisfies it via an
-// adapter (so we don't import sagasvc from this package).
+// SagaLookup is the read interface the reactor uses to find user
+// sagas belonging to an account. Satisfied by
+// portfolio.PgActiveUserSagasProjection, which lives in the same
+// consumer as this reactor — keeps the cancellation sweep in
+// lockstep with saga lifecycle events (no cross-consumer lag).
 type SagaLookup interface {
-	ActiveSingleOrderSagas(ctx context.Context, accountID string) ([]SagaSummary, error)
+	ActiveSingleOrderSagas(ctx context.Context, accountID string) ([]portfolio.ActiveSaga, error)
 }
 
 type Reactor struct {
