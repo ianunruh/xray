@@ -38,7 +38,7 @@ import (
 type Reactor struct {
 	portfolioHandler *es.Handler[*portfolio.Portfolio]
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga]
-	shortsProj       *portfolio.ShortsBySymbolProjection
+	shorts           portfolio.ShortsTracker
 	marker           portfolio.Marker
 	log              *slog.Logger
 }
@@ -46,14 +46,14 @@ type Reactor struct {
 func NewReactor(
 	portfolioHandler *es.Handler[*portfolio.Portfolio],
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga],
-	shortsProj *portfolio.ShortsBySymbolProjection,
+	shorts portfolio.ShortsTracker,
 	marker portfolio.Marker,
 	log *slog.Logger,
 ) *Reactor {
 	return &Reactor{
 		portfolioHandler: portfolioHandler,
 		orderSagaHandler: orderSagaHandler,
-		shortsProj:       shortsProj,
+		shorts:           shorts,
 		marker:           marker,
 		log:              log,
 	}
@@ -81,6 +81,13 @@ func (r *Reactor) handleOne(ctx context.Context, evt es.Event) error {
 		return r.recheckAccount(ctx, data.AccountId, evt.ID, data.Symbol, data.PricePerShare)
 	case *portfoliov1.ShortCovered:
 		return r.recheckAccount(ctx, data.AccountId, evt.ID, data.Symbol, data.CostPerShare)
+	case *portfoliov1.CashDeposited:
+		// Deposits can clear an active call; recheck.
+		return r.recheckAccount(ctx, data.AccountId, evt.ID, "", 0)
+	case *portfoliov1.CashWithdrawn:
+		// Withdrawals can push an account into call without a mark
+		// move — recheck immediately rather than waiting for a trade.
+		return r.recheckAccount(ctx, data.AccountId, evt.ID, "", 0)
 	}
 	return nil
 }
@@ -89,7 +96,10 @@ func (r *Reactor) handleOne(ctx context.Context, evt es.Event) error {
 // with an open short in that symbol needs a recheck. Triggered by
 // TradeExecuted and OfficialCloseSet.
 func (r *Reactor) onMarkUpdate(ctx context.Context, symbol, triggerID string, markPrice int64) error {
-	accounts := r.shortsProj.AccountsWithShort(symbol)
+	accounts, err := r.shorts.AccountsWithShort(ctx, symbol)
+	if err != nil {
+		return fmt.Errorf("lookup shorts in %s: %w", symbol, err)
+	}
 	if len(accounts) == 0 {
 		return nil
 	}

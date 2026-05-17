@@ -145,7 +145,7 @@ func main() {
 	depthProjection := orderbook.NewDepthProjection()
 	candleProjection := orderbook.NewCandleProjection()
 	markProjection := orderbook.NewMarkProjection()
-	shortsProjection := portfolio.NewShortsBySymbolProjection()
+	shortsProjection := portfolio.NewPgShortsBySymbolProjection(pool)
 	broker := orderbook.NewBroker()
 	portfolioBroker := portfolio.NewPortfolioBroker()
 	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, ocoSagaHandler, obHandler, log)
@@ -158,14 +158,16 @@ func main() {
 	// consumer whose JetStream cursor is reset on every boot, so their
 	// state rebuilds from the start of the stream.
 	consumers := []*natsstore.ProjectionConsumer{
-		// shortsProjection MUST precede marginReactor in this list:
-		// the reactor reads shortsProjection state and the consumer
-		// dispatches ephemeral projections in slice order within a
-		// batch. Same-consumer placement also avoids the cross-consumer
-		// race where the reactor could see a TradeExecuted before
-		// shortsProjection caught up to the prior ShortOpened.
 		natsstore.NewProjectionConsumer(js, registry, log, "ephemeral").
-			WithEphemeral(depthProjection, candleProjection, markProjection, shortsProjection, marginReactor, broker, portfolioBroker),
+			WithEphemeral(depthProjection, candleProjection, markProjection, broker, portfolioBroker),
+		// shortsProjection MUST precede marginReactor here: the
+		// reactor queries the shorts table the projection writes,
+		// and the consumer dispatches projections in slice order
+		// against a shared checkpoint. Co-located so a TradeExecuted
+		// never reaches the reactor before its prior ShortOpened has
+		// been committed to PG.
+		natsstore.NewProjectionConsumer(js, registry, log, "margin-call").
+			WithPersistent(store, shortsProjection, marginReactor),
 		natsstore.NewProjectionConsumer(js, registry, log, "trade-projection").
 			WithPersistent(store, tradeProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "order-projection").

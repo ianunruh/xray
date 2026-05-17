@@ -49,7 +49,7 @@ type env struct {
 	pub              *collectingPublisher
 	portfolioHandler *es.Handler[*portfolio.Portfolio]
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga]
-	shorts           *portfolio.ShortsBySymbolProjection
+	shorts           *portfolio.InMemoryShortsBySymbol
 	marker           *fakeMarker
 	reactor          *margincall.Reactor
 }
@@ -73,7 +73,7 @@ func newEnv(t *testing.T) *env {
 		return ordersaga.NewOrderSaga(id)
 	}, log).WithPublisher(pub)
 
-	shorts := portfolio.NewShortsBySymbolProjection()
+	shorts := portfolio.NewInMemoryShortsBySymbol()
 	marker := &fakeMarker{prices: make(map[string]int64)}
 	reactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, shorts, marker, log)
 
@@ -256,4 +256,44 @@ func TestReactor_TradeOnDifferentSymbol_DoesntFalsePositive(t *testing.T) {
 	// NVDA trade — irrelevant to AAPL short.
 	fireTrade(t, e, "NVDA", "trade-1", 999_999_999)
 	assert.Nil(t, loadPortfolio(t, e, "acct-1").ActiveMarginCall)
+}
+
+func TestReactor_CashDeposit_ClearsCall(t *testing.T) {
+	e := newEnv(t)
+	seedShort(t, e, "acct-1", "AAPL", 100, 1_500_000, 75_000_000)
+	e.flush()
+
+	fireTrade(t, e, "AAPL", "trade-up", 8_000_000)
+	require.NotNil(t, loadPortfolio(t, e, "acct-1").ActiveMarginCall)
+
+	// Big cash deposit should restore margin without needing a trade.
+	dep := portfolio.DepositCash{AccountID: "acct-1", Amount: 1_000_000_000}
+	require.NoError(t, e.portfolioHandler.Handle(e.ctx, dep, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, dep)
+	}))
+	e.flush()
+
+	assert.Nil(t, loadPortfolio(t, e, "acct-1").ActiveMarginCall)
+}
+
+func TestReactor_CashWithdrawal_TriggersCall(t *testing.T) {
+	e := newEnv(t)
+	// Seed short at a margin-comfortable level — not in call.
+	// seedShort deposits 10*collateral = 750M and consumes 75M as
+	// collateral, leaving 675M unencumbered cash.
+	seedShort(t, e, "acct-1", "AAPL", 100, 1_500_000, 75_000_000)
+	e.marker.set("AAPL", 1_800_000) // mark slightly above open
+	e.flush()
+	require.Nil(t, loadPortfolio(t, e, "acct-1").ActiveMarginCall)
+
+	// Drain all unencumbered cash. After: equity = 0 + 75M coll +
+	// 150M proceeds - 180M short MV = 45M; maintenance = 0.30 * 180M
+	// = 54M; 45M < 54M → in call.
+	wd := portfolio.WithdrawCash{AccountID: "acct-1", Amount: 675_000_000}
+	require.NoError(t, e.portfolioHandler.Handle(e.ctx, wd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteWithdrawCash(p, wd)
+	}))
+	e.flush()
+
+	assert.NotNil(t, loadPortfolio(t, e, "acct-1").ActiveMarginCall)
 }
