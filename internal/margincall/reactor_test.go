@@ -459,15 +459,50 @@ func TestReactor_GraceExpiry_SpawnsLiquidation(t *testing.T) {
 	// Tick before grace expires — no-op.
 	require.NoError(t, e.reactor.EvaluateGraceExpiry(e.ctx, "acct-1", issuedAt.Add(10*time.Second)))
 	saga, _ := e.orderSagaHandler.Load(e.ctx, ordersaga.AggregateID(
-		"liquidation:acct-1:"+graceTriggerID(issuedAt)))
+		graceSagaID("acct-1", issuedAt, 0)))
 	assert.Equal(t, 0, saga.Version(), "no spawn before grace")
 
-	// Tick after grace expires — liquidation should spawn.
+	// Tick after grace expires — liquidation should spawn in bucket 1.
 	require.NoError(t, e.reactor.EvaluateGraceExpiry(e.ctx, "acct-1", issuedAt.Add(45*time.Second)))
 	saga, err := e.orderSagaHandler.Load(e.ctx, ordersaga.AggregateID(
-		"liquidation:acct-1:"+graceTriggerID(issuedAt)))
+		graceSagaID("acct-1", issuedAt, 1)))
 	require.NoError(t, err)
 	assert.NotEqual(t, 0, saga.Version(), "liquidation saga spawned after grace")
+}
+
+func TestReactor_GraceExpiry_RetriesAcrossBucketsWhenFailed(t *testing.T) {
+	// When the first attempt's saga ended in Failed (e.g. market IOC
+	// against an empty book), a subsequent tick should spawn a NEW
+	// saga rather than retry the same one (which would just hit
+	// ErrInvalidState and never actually retry the liquidation).
+	e := newEnvWithGrace(t, 30*time.Second)
+	seedShort(t, e, "acct-1", "AAPL", 100, 1_500_000, 75_000_000)
+	e.flush()
+
+	fireTrade(t, e, "AAPL", "trade-up", 8_000_000)
+	p := loadPortfolio(t, e, "acct-1")
+	require.NotNil(t, p.ActiveMarginCall)
+	issuedAt := p.ActiveMarginCall.IssuedAt
+
+	// First grace tick spawns bucket 1.
+	require.NoError(t, e.reactor.EvaluateGraceExpiry(e.ctx, "acct-1", issuedAt.Add(35*time.Second)))
+	bucket1ID := graceSagaID("acct-1", issuedAt, 1)
+	s1, _ := e.orderSagaHandler.Load(e.ctx, ordersaga.AggregateID(bucket1ID))
+	require.NotEqual(t, 0, s1.Version())
+
+	// Simulate the saga failing (no liquidity → IOC cancelled).
+	failCmd := ordersaga.RecordFailed{SagaID: bucket1ID, Reason: "no liquidity"}
+	require.NoError(t, e.orderSagaHandler.Handle(e.ctx, failCmd, func(s *ordersaga.OrderSaga) ([]es.Event, error) {
+		return ordersaga.ExecuteRecordFailed(s, failCmd)
+	}))
+
+	// Next grace tick (one bucket later). Should spawn bucket 2,
+	// NOT reuse bucket 1 (which would fail with ErrInvalidState).
+	require.NoError(t, e.reactor.EvaluateGraceExpiry(e.ctx, "acct-1", issuedAt.Add(65*time.Second)))
+	bucket2ID := graceSagaID("acct-1", issuedAt, 2)
+	s2, err := e.orderSagaHandler.Load(e.ctx, ordersaga.AggregateID(bucket2ID))
+	require.NoError(t, err)
+	assert.NotEqual(t, 0, s2.Version(), "fresh bucket spawns a new attempt")
 }
 
 func TestReactor_GraceExpiry_CoversWhenBreachResolved(t *testing.T) {
@@ -489,14 +524,10 @@ func TestReactor_GraceExpiry_CoversWhenBreachResolved(t *testing.T) {
 	assert.Nil(t, p.ActiveMarginCall, "call cleared by grace-expiry recheck")
 }
 
-// graceTriggerID mirrors the reactor's deterministic ID derivation
-// for grace-expiry liquidations.
-func graceTriggerID(issuedAt time.Time) string {
-	return "grace:" + strconvI64(issuedAt.UnixNano())
-}
-
-func strconvI64(n int64) string {
-	return fmt.Sprintf("%d", n)
+// graceSagaID mirrors the reactor's bucket-based trigger derivation.
+func graceSagaID(accountID string, issuedAt time.Time, bucket int64) string {
+	return fmt.Sprintf("liquidation:%s:grace:%d:bucket:%d",
+		accountID, issuedAt.UnixNano(), bucket)
 }
 
 func TestReactor_CashWithdrawal_TriggersCall(t *testing.T) {

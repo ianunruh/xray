@@ -257,13 +257,32 @@ func (r *Reactor) EvaluateGraceExpiry(ctx context.Context, accountID string, now
 	if !hasLiquidatable(status) {
 		return nil
 	}
-	// triggerID encodes that this liquidation came from grace
-	// expiry. Including the issuedAt makes the sagaID stable across
-	// reconciler ticks so we don't double-spawn.
-	triggerID := fmt.Sprintf("grace:%d", p.ActiveMarginCall.IssuedAt.UnixNano())
+
+	// Time-bucketed trigger ID so consecutive grace-expiry attempts
+	// spawn FRESH sagas. The first attempt sometimes fails (e.g.
+	// market IOC against an empty book → cancelled with zero fill);
+	// re-using the same sagaID would just hit ErrInvalidState on
+	// every reconciler tick, never actually retrying liquidation.
+	// One bucket per grace interval keeps the retry cadence sane.
+	elapsed := now.Sub(p.ActiveMarginCall.IssuedAt)
+	bucket := int64(elapsed / r.grace)
+	triggerID := fmt.Sprintf("grace:%d:bucket:%d",
+		p.ActiveMarginCall.IssuedAt.UnixNano(), bucket)
+	sagaID := fmt.Sprintf("liquidation:%s:%s", accountID, triggerID)
+
+	// If this bucket's saga is already in flight (placed but not yet
+	// resolved), don't pile on. Only spawn when the prior attempt is
+	// terminal or hasn't been created yet.
+	if existing, err := r.orderSagaHandler.Load(ctx, ordersaga.AggregateID(sagaID)); err == nil {
+		if existing.Version() > 0 && existing.Status != ordersaga.Failed &&
+			existing.Status != ordersaga.Completed {
+			return nil
+		}
+	}
+
 	r.log.Warn("margincall: grace expired, liquidating",
 		"account_id", accountID, "call_id", p.ActiveMarginCall.CallID,
-		"age", now.Sub(p.ActiveMarginCall.IssuedAt))
+		"age", elapsed, "bucket", bucket)
 	return r.spawnLiquidation(ctx, accountID, triggerID, p.ActiveMarginCall.CallID, status)
 }
 
