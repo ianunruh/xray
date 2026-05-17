@@ -10,6 +10,7 @@ import (
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
+	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
 	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
 	"github.com/ianunruh/xray/gen/saga/v1/sagav1connect"
@@ -22,6 +23,8 @@ type Engine struct {
 	prices     pricesource.PriceSource
 	pfClient   portfoliov1connect.PortfolioServiceClient
 	sagaClient sagav1connect.SagaServiceClient
+	obClient   orderbookv1connect.OrderBookServiceClient
+	phase      *trader.PhaseWatcher
 	log        *slog.Logger
 }
 
@@ -30,6 +33,7 @@ func NewEngine(
 	prices pricesource.PriceSource,
 	pfClient portfoliov1connect.PortfolioServiceClient,
 	sagaClient sagav1connect.SagaServiceClient,
+	obClient orderbookv1connect.OrderBookServiceClient,
 	log *slog.Logger,
 ) *Engine {
 	return &Engine{
@@ -37,6 +41,8 @@ func NewEngine(
 		prices:     prices,
 		pfClient:   pfClient,
 		sagaClient: sagaClient,
+		obClient:   obClient,
+		phase:      trader.NewPhaseWatcher(cfg.Symbol),
 		log:        log.With("symbol", cfg.Symbol, "account", cfg.AccountID),
 	}
 }
@@ -49,6 +55,8 @@ func (e *Engine) Run(ctx context.Context) error {
 		InitialShares:       e.cfg.InitialShares,
 		RandomInitialShares: e.cfg.RandomInitialShares,
 	}, e.prices, e.pfClient, e.log)
+
+	go e.phase.Watch(ctx, e.obClient, 5*time.Second, e.log)
 
 	ticker := time.NewTicker(e.cfg.OrderInterval)
 	defer ticker.Stop()
@@ -64,6 +72,14 @@ func (e *Engine) Run(ctx context.Context) error {
 }
 
 func (e *Engine) placeRandomOrder(ctx context.Context) {
+	// CLOSED: don't trade. AUCTION/CLOSING_AUCTION: keep posting GTC
+	// limit orders (they rest and contribute to the indicative book),
+	// but don't bother with market or IOC orders that would get rejected.
+	if e.phase.IsClosed() {
+		e.log.Debug("market closed, skipping order")
+		return
+	}
+
 	snap, ok := e.prices.GetPrice(e.cfg.Symbol)
 	if !ok {
 		e.log.Warn("no reference price available")
@@ -102,7 +118,14 @@ func (e *Engine) placeRandomOrder(ctx context.Context) {
 	tif := orderbookv1.TimeInForce_TIME_IN_FORCE_GTC
 	price := snap.Price
 
-	if rand.Float64() < e.cfg.MarketOrderPct {
+	// During an auction, force GTC limit (market/IOC orders would be
+	// rejected). CLOSING_AUCTION rejects regular orders entirely — skip.
+	if e.phase.IsAuction() && e.phase.Phase() == orderbookv1.MarketPhase_MARKET_PHASE_CLOSING_AUCTION {
+		e.log.Debug("closing auction active, skipping order")
+		return
+	}
+	rollMarket := !e.phase.IsAuction() && rand.Float64() < e.cfg.MarketOrderPct
+	if rollMarket {
 		orderType = orderbookv1.OrderType_ORDER_TYPE_MARKET
 		tif = orderbookv1.TimeInForce_TIME_IN_FORCE_IOC
 		price = 0

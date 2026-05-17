@@ -11,6 +11,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
 	"github.com/ianunruh/xray/gen/saga/v1/sagav1connect"
 	"github.com/ianunruh/xray/internal/noise"
@@ -37,6 +38,7 @@ func main() {
 	httpClient := &http.Client{}
 	pfClient := portfoliov1connect.NewPortfolioServiceClient(httpClient, cfg.ServerURL)
 	sagaClient := sagav1connect.NewSagaServiceClient(httpClient, cfg.ServerURL)
+	obClient := orderbookv1connect.NewOrderBookServiceClient(httpClient, cfg.ServerURL)
 
 	seen := make(map[string]bool)
 	var symbols []string
@@ -62,7 +64,7 @@ func main() {
 
 	var wg sync.WaitGroup
 	for _, symCfg := range cfg.Symbols {
-		engine := noise.NewEngine(symCfg, prices, pfClient, sagaClient, log)
+		engine := noise.NewEngine(symCfg, prices, pfClient, sagaClient, obClient, log)
 
 		wg.Add(1)
 		go func() {

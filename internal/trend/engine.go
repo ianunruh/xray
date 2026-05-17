@@ -20,6 +20,7 @@ type Engine struct {
 	prices   pricesource.PriceSource
 	tracker  *trader.OrderTracker
 	pfClient portfoliov1connect.PortfolioServiceClient
+	phase    *trader.PhaseWatcher
 	log      *slog.Logger
 }
 
@@ -40,6 +41,7 @@ func NewEngine(
 		prices:   prices,
 		tracker:  trader.NewOrderTracker(cfg.Symbol, obClient, sagaClient, log),
 		pfClient: pfClient,
+		phase:    trader.NewPhaseWatcher(cfg.Symbol),
 		log:      log,
 	}
 }
@@ -57,6 +59,7 @@ func (e *Engine) Run(ctx context.Context) error {
 
 	tradeCh := make(chan *orderbookv1.Trade, 64)
 	go trader.StreamTrades(ctx, e.tracker.ObClient, e.cfg.Symbol, tradeCh, e.log)
+	go e.phase.Watch(ctx, e.tracker.ObClient, 5*time.Second, e.log)
 
 	expireTicker := time.NewTicker(5 * time.Second)
 	defer expireTicker.Stop()
@@ -118,6 +121,15 @@ func (e *Engine) handleTrade(ctx context.Context, trade *orderbookv1.Trade) {
 		"signal", signalName(signal),
 		"fast_ema", e.state.FastEMA,
 		"slow_ema", e.state.SlowEMA)
+
+	// The trend strategy wants continuous matching to confirm fills. If
+	// the market is in an auction or closed, defer acting until phase
+	// returns to CONTINUOUS — the next crossover will pick it up.
+	if !e.phase.IsContinuous() {
+		e.log.Info("market not in continuous phase, suppressing signal",
+			"signal", signalName(signal), "phase", e.phase.Phase().String())
+		return
+	}
 
 	e.actOnSignal(ctx, signal, trade.Price)
 }

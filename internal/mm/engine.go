@@ -19,6 +19,7 @@ type Engine struct {
 	prices   pricesource.PriceSource
 	tracker  *trader.OrderTracker
 	pfClient portfoliov1connect.PortfolioServiceClient
+	phase    *trader.PhaseWatcher
 	log      *slog.Logger
 
 	lastRefPrice int64
@@ -40,6 +41,7 @@ func NewEngine(
 		prices:   prices,
 		tracker:  trader.NewOrderTracker(cfg.Symbol, obClient, sagaClient, engineLog),
 		pfClient: pfClient,
+		phase:    trader.NewPhaseWatcher(cfg.Symbol),
 		log:      engineLog,
 	}
 }
@@ -56,6 +58,7 @@ func (e *Engine) Run(ctx context.Context) error {
 
 	fillCh := make(chan *orderbookv1.Trade, 64)
 	go trader.StreamTrades(ctx, e.tracker.ObClient, e.cfg.Symbol, fillCh, e.log)
+	go e.phase.Watch(ctx, e.tracker.ObClient, 5*time.Second, e.log)
 
 	e.requote(ctx)
 
@@ -103,6 +106,15 @@ func (e *Engine) Run(ctx context.Context) error {
 }
 
 func (e *Engine) requote(ctx context.Context) {
+	// The MM is a continuous-matching strategy. During an auction the
+	// matching engine doesn't cross, so leaving stale quotes outstanding
+	// (and re-quoting against an indicative price) wastes RPCs and
+	// confuses the imbalance picture. After CLOSED we have nothing to do
+	// until the next session opens.
+	if !e.phase.IsContinuous() {
+		e.log.Debug("market phase is not CONTINUOUS, skipping requote", "phase", e.phase.Phase().String())
+		return
+	}
 	snap, ok := e.prices.GetPrice(e.cfg.Symbol)
 	if !ok {
 		e.log.Warn("no reference price available, skipping requote")
