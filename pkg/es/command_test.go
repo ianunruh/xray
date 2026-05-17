@@ -554,6 +554,119 @@ func (p *recordingPublisher) Publish(_ context.Context, events []es.Event) error
 	return nil
 }
 
+func TestHandler_StampsCausation_Origin(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+
+	handler := es.NewHandler(store, registry, func(id string) *testAggregate {
+		a := &testAggregate{}
+		a.SetID(id)
+		return a
+	}, slog.Default())
+
+	ctx := context.Background()
+	cmd := testCommand{aggregateID: "orderbook:AAPL"}
+
+	err := handler.Handle(ctx, cmd, func(agg *testAggregate) ([]es.Event, error) {
+		evt := es.Event{
+			AggregateID: agg.AggregateID(),
+			Type:        "OrderPlaced",
+			Timestamp:   time.Now(),
+			Data:        &orderbookv1.OrderPlaced{OrderId: "order-1"},
+		}
+		require.NoError(t, agg.Apply(evt))
+		return []es.Event{evt}, nil
+	})
+	require.NoError(t, err)
+
+	raw, err := store.Load(ctx, "orderbook:AAPL")
+	require.NoError(t, err)
+	require.Len(t, raw, 1)
+
+	// Origin: fresh ID, empty causation, fresh correlation.
+	assert.NotEmpty(t, raw[0].ID, "framework must mint an event ID")
+	assert.Empty(t, raw[0].CausationID, "origin command has no parent event")
+	assert.NotEmpty(t, raw[0].CorrelationID, "origin must mint a fresh correlation")
+}
+
+func TestHandler_StampsCausation_FromContext(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+
+	handler := es.NewHandler(store, registry, func(id string) *testAggregate {
+		a := &testAggregate{}
+		a.SetID(id)
+		return a
+	}, slog.Default())
+
+	parent := es.Event{ID: "parent-evt", CorrelationID: "corr-root"}
+	ctx := es.WithCausation(context.Background(), parent)
+	cmd := testCommand{aggregateID: "orderbook:AAPL"}
+
+	err := handler.Handle(ctx, cmd, func(agg *testAggregate) ([]es.Event, error) {
+		evt := es.Event{
+			AggregateID: agg.AggregateID(),
+			Type:        "OrderPlaced",
+			Timestamp:   time.Now(),
+			Data:        &orderbookv1.OrderPlaced{OrderId: "order-1"},
+		}
+		require.NoError(t, agg.Apply(evt))
+		return []es.Event{evt}, nil
+	})
+	require.NoError(t, err)
+
+	raw, err := store.Load(ctx, "orderbook:AAPL")
+	require.NoError(t, err)
+	require.Len(t, raw, 1)
+
+	assert.NotEmpty(t, raw[0].ID)
+	assert.Equal(t, "parent-evt", raw[0].CausationID, "causation = parent event ID")
+	assert.Equal(t, "corr-root", raw[0].CorrelationID, "correlation propagates unchanged")
+}
+
+func TestHandler_StampsCausation_BatchSharesParent(t *testing.T) {
+	// All events emitted by a single command share the same causation
+	// (the parent event from ctx) — flat, not chained. The command is the
+	// unit of causation; multi-event splits are a serialization detail.
+	registry := newTestRegistry()
+	store := memstore.New()
+
+	handler := es.NewHandler(store, registry, func(id string) *testAggregate {
+		a := &testAggregate{}
+		a.SetID(id)
+		return a
+	}, slog.Default())
+
+	parent := es.Event{ID: "parent-evt", CorrelationID: "corr-root"}
+	ctx := es.WithCausation(context.Background(), parent)
+	cmd := testCommand{aggregateID: "orderbook:AAPL"}
+
+	err := handler.Handle(ctx, cmd, func(agg *testAggregate) ([]es.Event, error) {
+		mk := func(id string) es.Event {
+			evt := es.Event{
+				AggregateID: agg.AggregateID(),
+				Type:        "OrderPlaced",
+				Timestamp:   time.Now(),
+				Data:        &orderbookv1.OrderPlaced{OrderId: id},
+			}
+			require.NoError(t, agg.Apply(evt))
+			return evt
+		}
+		return []es.Event{mk("order-1"), mk("order-2")}, nil
+	})
+	require.NoError(t, err)
+
+	raw, err := store.Load(ctx, "orderbook:AAPL")
+	require.NoError(t, err)
+	require.Len(t, raw, 2)
+
+	assert.NotEqual(t, raw[0].ID, raw[1].ID, "each event gets a distinct ID")
+	assert.Equal(t, "parent-evt", raw[0].CausationID)
+	assert.Equal(t, "parent-evt", raw[1].CausationID, "second event also caused by parent, not by first")
+	assert.Equal(t, "corr-root", raw[0].CorrelationID)
+	assert.Equal(t, "corr-root", raw[1].CorrelationID)
+}
+
 func TestHandler_WithPublisher(t *testing.T) {
 	registry := newTestRegistry()
 	store := memstore.New()

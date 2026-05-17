@@ -27,11 +27,13 @@ func TestRegistry_RoundTrip(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 
 	original := es.Event{
-		ID:          "evt-1",
-		AggregateID: "orderbook:AAPL",
-		Type:        "OrderPlaced",
-		Version:     1,
-		Timestamp:   now,
+		ID:            "evt-1",
+		CausationID:   "evt-0",
+		CorrelationID: "corr-1",
+		AggregateID:   "orderbook:AAPL",
+		Type:          "OrderPlaced",
+		Version:       1,
+		Timestamp:     now,
 		Data: &orderbookv1.OrderPlaced{
 			OrderId:  "order-1",
 			Symbol:   "AAPL",
@@ -46,11 +48,17 @@ func TestRegistry_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "OrderPlaced", raw.Type)
 	assert.NotEmpty(t, raw.Data)
+	assert.Equal(t, "evt-1", raw.ID)
+	assert.Equal(t, "evt-0", raw.CausationID)
+	assert.Equal(t, "corr-1", raw.CorrelationID)
 
 	got, err := r.Deserialize(raw)
 	require.NoError(t, err)
 	assert.Equal(t, original.Type, got.Type)
 	assert.Equal(t, original.AggregateID, got.AggregateID)
+	assert.Equal(t, "evt-1", got.ID)
+	assert.Equal(t, "evt-0", got.CausationID)
+	assert.Equal(t, "corr-1", got.CorrelationID)
 
 	placed, ok := got.Data.(*orderbookv1.OrderPlaced)
 	require.True(t, ok, "expected *orderbookv1.OrderPlaced, got %T", got.Data)

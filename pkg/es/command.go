@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -239,6 +240,27 @@ type pendingSnapshot struct {
 	version int
 }
 
+// stampCausation mints a fresh ID for every event and stamps causation +
+// correlation derived from ctx. All events in the batch share the same
+// causation (the command is the unit of causation; multi-event splits are a
+// serialization detail). If ctx has no Causation, a fresh correlation is
+// minted — this is the "origin" case for commands entering from RPC handlers
+// or the reconciler.
+func stampCausation(ctx context.Context, events []Event) {
+	cause, _ := CausationFrom(ctx)
+	correlationID := cause.CorrelationID
+	if correlationID == "" {
+		correlationID = uuid.NewString()
+	}
+	for i := range events {
+		if events[i].ID == "" {
+			events[i].ID = uuid.NewString()
+		}
+		events[i].CausationID = cause.CauseID
+		events[i].CorrelationID = correlationID
+	}
+}
+
 // Handle loads the aggregate, calls execute to produce new events, and appends
 // them to the store. On optimistic concurrency conflicts the entire cycle is
 // retried up to maxRetries times.
@@ -351,6 +373,8 @@ func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute 
 		h.cache.Put(aggregateID, agg, expectedVersion, snapshotVersion)
 		return nil, nil, nil
 	}
+
+	stampCausation(ctx, newEvents)
 
 	rawNew := make([]RawEvent, len(newEvents))
 	for i, evt := range newEvents {

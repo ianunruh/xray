@@ -19,17 +19,17 @@ import (
 var migrationsFS embed.FS
 
 const (
-	queryLoad = `SELECT id, aggregate_id, type, version, data, timestamp, position
+	queryLoad = `SELECT id, causation_id, correlation_id, aggregate_id, type, version, data, timestamp, position
 		FROM events
 		WHERE aggregate_id = $1
 		ORDER BY version`
 
-	queryLoadFrom = `SELECT id, aggregate_id, type, version, data, timestamp, position
+	queryLoadFrom = `SELECT id, causation_id, correlation_id, aggregate_id, type, version, data, timestamp, position
 		FROM events
 		WHERE aggregate_id = $1 AND version >= $2
 		ORDER BY version`
 
-	queryLoadRange = `SELECT id, aggregate_id, type, version, data, timestamp, position
+	queryLoadRange = `SELECT id, causation_id, correlation_id, aggregate_id, type, version, data, timestamp, position
 		FROM events
 		WHERE aggregate_id = $1 AND version >= $2 AND version <= $3
 		ORDER BY version`
@@ -43,18 +43,18 @@ const (
 		FROM events
 		WHERE aggregate_id = $1 AND timestamp <= $2`
 
-	queryLoadAll = `SELECT id, aggregate_id, type, version, data, timestamp, position
+	queryLoadAll = `SELECT id, causation_id, correlation_id, aggregate_id, type, version, data, timestamp, position
 		FROM events
 		ORDER BY position`
 
-	queryLoadAfter = `SELECT id, aggregate_id, type, version, data, timestamp, position
+	queryLoadAfter = `SELECT id, causation_id, correlation_id, aggregate_id, type, version, data, timestamp, position
 		FROM events
 		WHERE position > $1
 		ORDER BY position
 		LIMIT $2`
 
-	queryAppend = `INSERT INTO events (aggregate_id, type, version, data, timestamp)
-		VALUES ($1, $2, $3, $4, $5)`
+	queryAppend = `INSERT INTO events (id, causation_id, correlation_id, aggregate_id, type, version, data, timestamp)
+		VALUES ($1, NULLIF($2, '')::uuid, NULLIF($3, '')::uuid, $4, $5, $6, $7, $8)`
 
 	queryLoadSnapshot = `SELECT aggregate_id, version, data
 		FROM snapshots
@@ -179,8 +179,15 @@ func (s *Store) queryEvents(ctx context.Context, query string, args ...any) ([]e
 	var events []es.RawEvent
 	for rows.Next() {
 		var evt es.RawEvent
-		if err := rows.Scan(&evt.ID, &evt.AggregateID, &evt.Type, &evt.Version, &evt.Data, &evt.Timestamp, &evt.Position); err != nil {
+		var causation, correlation *string
+		if err := rows.Scan(&evt.ID, &causation, &correlation, &evt.AggregateID, &evt.Type, &evt.Version, &evt.Data, &evt.Timestamp, &evt.Position); err != nil {
 			return nil, fmt.Errorf("scan event: %w", err)
+		}
+		if causation != nil {
+			evt.CausationID = *causation
+		}
+		if correlation != nil {
+			evt.CorrelationID = *correlation
 		}
 		events = append(events, evt)
 	}
@@ -194,7 +201,7 @@ func (s *Store) Append(ctx context.Context, aggregateID string, expectedVersion 
 	batch := &pgx.Batch{}
 	for i, evt := range events {
 		version := expectedVersion + i + 1
-		batch.Queue(queryAppend, aggregateID, evt.Type, version, evt.Data, evt.Timestamp)
+		batch.Queue(queryAppend, evt.ID, evt.CausationID, evt.CorrelationID, aggregateID, evt.Type, version, evt.Data, evt.Timestamp)
 	}
 
 	br := s.pool.SendBatch(ctx, batch)

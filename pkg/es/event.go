@@ -10,24 +10,28 @@ import (
 
 // Event is the deserialized domain event used by aggregates.
 type Event struct {
-	ID          string
-	AggregateID string
-	Type        string
-	Version     int
-	Position    int64
-	Timestamp   time.Time
-	Data        proto.Message
+	ID            string
+	CausationID   string
+	CorrelationID string
+	AggregateID   string
+	Type          string
+	Version       int
+	Position      int64
+	Timestamp     time.Time
+	Data          proto.Message
 }
 
 // RawEvent is the store-level representation with serialized data.
 type RawEvent struct {
-	ID          string
-	AggregateID string
-	Type        string
-	Version     int
-	Position    int64
-	Timestamp   time.Time
-	Data        []byte
+	ID            string
+	CausationID   string
+	CorrelationID string
+	AggregateID   string
+	Type          string
+	Version       int
+	Position      int64
+	Timestamp     time.Time
+	Data          []byte
 }
 
 // Registry maps event type strings to proto.Message factories for
@@ -59,12 +63,14 @@ func (r *Registry) Serialize(e Event) (RawEvent, error) {
 		return RawEvent{}, fmt.Errorf("marshal event %s: %w", e.Type, err)
 	}
 	return RawEvent{
-		ID:          e.ID,
-		AggregateID: e.AggregateID,
-		Type:        e.Type,
-		Version:     e.Version,
-		Timestamp:   e.Timestamp,
-		Data:        data,
+		ID:            e.ID,
+		CausationID:   e.CausationID,
+		CorrelationID: e.CorrelationID,
+		AggregateID:   e.AggregateID,
+		Type:          e.Type,
+		Version:       e.Version,
+		Timestamp:     e.Timestamp,
+		Data:          data,
 	}, nil
 }
 
@@ -85,12 +91,14 @@ func (r *Registry) Deserialize(raw RawEvent) (Event, error) {
 	}
 
 	return Event{
-		ID:          raw.ID,
-		AggregateID: raw.AggregateID,
-		Type:        raw.Type,
-		Version:     raw.Version,
-		Position:    raw.Position,
-		Timestamp:   raw.Timestamp,
-		Data:        msg,
+		ID:            raw.ID,
+		CausationID:   raw.CausationID,
+		CorrelationID: raw.CorrelationID,
+		AggregateID:   raw.AggregateID,
+		Type:          raw.Type,
+		Version:       raw.Version,
+		Position:      raw.Position,
+		Timestamp:     raw.Timestamp,
+		Data:          msg,
 	}, nil
 }

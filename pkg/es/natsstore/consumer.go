@@ -212,6 +212,9 @@ func (c *ProjectionConsumer) deserialize(msg jetstream.Msg) (es.Event, uint64, e
 	headers := msg.Headers()
 	eventType := headers.Get("Xray-Event-Type")
 	aggregateID := headers.Get("Xray-Aggregate-Id")
+	eventID := headers.Get("Xray-Event-Id")
+	causationID := headers.Get("Xray-Causation-Id")
+	correlationID := headers.Get("Xray-Correlation-Id")
 	versionStr := headers.Get("Xray-Version")
 	timestampStr := headers.Get("Xray-Timestamp")
 
@@ -224,12 +227,15 @@ func (c *ProjectionConsumer) deserialize(msg jetstream.Msg) (es.Event, uint64, e
 	}
 
 	raw := es.RawEvent{
-		AggregateID: aggregateID,
-		Type:        eventType,
-		Version:     version,
-		Position:    int64(meta.Sequence.Stream),
-		Timestamp:   ts,
-		Data:        msg.Data(),
+		ID:            eventID,
+		CausationID:   causationID,
+		CorrelationID: correlationID,
+		AggregateID:   aggregateID,
+		Type:          eventType,
+		Version:       version,
+		Position:      int64(meta.Sequence.Stream),
+		Timestamp:     ts,
+		Data:          msg.Data(),
 	}
 
 	evt, err := c.registry.Deserialize(raw)

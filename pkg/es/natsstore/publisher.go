@@ -34,11 +34,14 @@ func (p *Publisher) Publish(ctx context.Context, events []es.Event) error {
 			Subject: Subject(evt.AggregateID, evt.Type),
 			Data:    data,
 			Header: nats.Header{
-				"Nats-Msg-Id":       {evt.AggregateID + ":" + strconv.Itoa(evt.Version)},
-				"Xray-Aggregate-Id": {evt.AggregateID},
-				"Xray-Event-Type":   {evt.Type},
-				"Xray-Version":      {strconv.Itoa(evt.Version)},
-				"Xray-Timestamp":    {evt.Timestamp.Format(time.RFC3339Nano)},
+				"Nats-Msg-Id":         {evt.AggregateID + ":" + strconv.Itoa(evt.Version)},
+				"Xray-Aggregate-Id":   {evt.AggregateID},
+				"Xray-Event-Id":       {evt.ID},
+				"Xray-Causation-Id":   {evt.CausationID},
+				"Xray-Correlation-Id": {evt.CorrelationID},
+				"Xray-Event-Type":     {evt.Type},
+				"Xray-Version":        {strconv.Itoa(evt.Version)},
+				"Xray-Timestamp":      {evt.Timestamp.Format(time.RFC3339Nano)},
 			},
 		}
 
