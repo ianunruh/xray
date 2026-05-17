@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import {
   ActionIcon,
@@ -6,6 +6,7 @@ import {
   Badge,
   Button,
   Card,
+  Collapse,
   Group,
   Menu,
   Modal,
@@ -330,6 +331,14 @@ export function PortfolioPanel({
   const [withdrawOpened, withdrawHandlers] = useDisclosure(false);
   const [creditOpened, creditHandlers] = useDisclosure(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [expandedCalls, setExpandedCalls] = useState<Set<string>>(new Set());
+  const toggleCallExpanded = (callId: string) => {
+    setExpandedCalls((prev) => {
+      const next = new Set(prev);
+      next.has(callId) ? next.delete(callId) : next.add(callId);
+      return next;
+    });
+  };
 
   async function handleCancel(sagaId: string, symbol: string) {
     setCancellingId(sagaId);
@@ -812,12 +821,10 @@ export function PortfolioPanel({
             <Table striped highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
+                  <Table.Th w={28} />
                   <Table.Th>Issued</Table.Th>
                   <Table.Th>Grace expires</Table.Th>
                   <Table.Th>Trigger</Table.Th>
-                  <Table.Th ta="right">Mark</Table.Th>
-                  <Table.Th ta="right">Equity at issue</Table.Th>
-                  <Table.Th ta="right">Maint. req.</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th />
                 </Table.Tr>
@@ -832,73 +839,108 @@ export function PortfolioPanel({
                   const graceLabel = graceMs
                     ? new Date(graceMs).toLocaleTimeString()
                     : "—";
+                  const expanded = expandedCalls.has(c.callId);
                   return (
-                    <Table.Tr key={c.callId}>
-                      <Table.Td>
-                        <Text size="xs">{issued}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap={6} wrap="nowrap">
-                          <Text size="xs">{graceLabel}</Text>
-                          {isActive && c.graceExpiresAt && (
-                            <Text size="xs" c="dimmed">
-                              (
-                              <GraceCountdown deadline={c.graceExpiresAt} />)
-                            </Text>
-                          )}
-                        </Group>
-                      </Table.Td>
-                      <Table.Td>{c.triggerSymbol}</Table.Td>
-                      <Table.Td ta="right">{formatMoney(c.markPrice)}</Table.Td>
-                      <Table.Td ta="right">
-                        {formatMoney(c.equityAtIssue)}
-                      </Table.Td>
-                      <Table.Td ta="right">
-                        {formatMoney(c.maintenanceRequirementAtIssue)}
-                      </Table.Td>
-                      <Table.Td>
-                        {isActive ? (
-                          <Badge size="xs" color="red" variant="filled">
-                            ACTIVE
-                          </Badge>
-                        ) : (
-                          <Badge size="xs" color="gray" variant="light">
-                            COVERED
-                          </Badge>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        <Group justify="flex-end">
-                          {c.liquidationSagaIds.length === 0 ? (
-                            <Text size="xs" c="dimmed">
-                              —
-                            </Text>
-                          ) : onJumpToAggregate ? (
-                            <Menu shadow="md" position="bottom-end" withinPortal>
-                              <Menu.Target>
-                                <ActionIcon size="xs" variant="subtle" color="gray" title="Call actions">
-                                  ⋯
-                                </ActionIcon>
-                              </Menu.Target>
-                              <Menu.Dropdown>
-                                {c.liquidationSagaIds.map((sid) => (
-                                  <Menu.Item
-                                    key={sid}
-                                    onClick={() => onJumpToAggregate(`order-saga:${sid}`)}
-                                  >
-                                    Go to liquidation: {sid}
-                                  </Menu.Item>
-                                ))}
-                              </Menu.Dropdown>
-                            </Menu>
+                    <Fragment key={c.callId}>
+                      <Table.Tr>
+                        <Table.Td>
+                          <ActionIcon
+                            size="xs"
+                            variant="subtle"
+                            color="gray"
+                            onClick={() => toggleCallExpanded(c.callId)}
+                            title={expanded ? "Hide details" : "Show details"}
+                          >
+                            {expanded ? "▾" : "▸"}
+                          </ActionIcon>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="xs">{issued}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Group gap={6} wrap="nowrap">
+                            <Text size="xs">{graceLabel}</Text>
+                            {isActive && c.graceExpiresAt && (
+                              <Text size="xs" c="dimmed">
+                                (
+                                <GraceCountdown deadline={c.graceExpiresAt} />)
+                              </Text>
+                            )}
+                          </Group>
+                        </Table.Td>
+                        <Table.Td>{c.triggerSymbol}</Table.Td>
+                        <Table.Td>
+                          {isActive ? (
+                            <Badge size="xs" color="red" variant="filled">
+                              ACTIVE
+                            </Badge>
                           ) : (
-                            <Text size="xs" c="dimmed">
-                              {c.liquidationSagaIds.length}
-                            </Text>
+                            <Badge size="xs" color="gray" variant="light">
+                              COVERED
+                            </Badge>
                           )}
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
+                        </Table.Td>
+                        <Table.Td>
+                          <Group justify="flex-end">
+                            {c.liquidationSagaIds.length === 0 ? (
+                              <Text size="xs" c="dimmed">
+                                —
+                              </Text>
+                            ) : onJumpToAggregate ? (
+                              <Menu shadow="md" position="bottom-end" withinPortal>
+                                <Menu.Target>
+                                  <ActionIcon size="xs" variant="subtle" color="gray" title="Call actions">
+                                    ⋯
+                                  </ActionIcon>
+                                </Menu.Target>
+                                <Menu.Dropdown>
+                                  {c.liquidationSagaIds.map((sid) => (
+                                    <Menu.Item
+                                      key={sid}
+                                      onClick={() => onJumpToAggregate(`order-saga:${sid}`)}
+                                    >
+                                      Go to liquidation: {sid}
+                                    </Menu.Item>
+                                  ))}
+                                </Menu.Dropdown>
+                              </Menu>
+                            ) : (
+                              <Text size="xs" c="dimmed">
+                                {c.liquidationSagaIds.length}
+                              </Text>
+                            )}
+                          </Group>
+                        </Table.Td>
+                      </Table.Tr>
+                      <Table.Tr>
+                        <Table.Td colSpan={6} p={0} style={{ borderTop: "none" }}>
+                          <Collapse in={expanded}>
+                            <Group gap="xl" p="xs" pl={40}>
+                              <div>
+                                <Text size="xs" c="dimmed">
+                                  Mark
+                                </Text>
+                                <Text size="sm">{formatMoney(c.markPrice)}</Text>
+                              </div>
+                              <div>
+                                <Text size="xs" c="dimmed">
+                                  Equity at issue
+                                </Text>
+                                <Text size="sm">{formatMoney(c.equityAtIssue)}</Text>
+                              </div>
+                              <div>
+                                <Text size="xs" c="dimmed">
+                                  Maint. req.
+                                </Text>
+                                <Text size="sm">
+                                  {formatMoney(c.maintenanceRequirementAtIssue)}
+                                </Text>
+                              </div>
+                            </Group>
+                          </Collapse>
+                        </Table.Td>
+                      </Table.Tr>
+                    </Fragment>
                   );
                 })}
               </Table.Tbody>
