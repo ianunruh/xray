@@ -53,6 +53,9 @@ const (
 	// PortfolioServiceListPortfoliosProcedure is the fully-qualified name of the PortfolioService's
 	// ListPortfolios RPC.
 	PortfolioServiceListPortfoliosProcedure = "/portfolio.v1.PortfolioService/ListPortfolios"
+	// PortfolioServiceGetMarginSnapshotProcedure is the fully-qualified name of the PortfolioService's
+	// GetMarginSnapshot RPC.
+	PortfolioServiceGetMarginSnapshotProcedure = "/portfolio.v1.PortfolioService/GetMarginSnapshot"
 )
 
 // PortfolioServiceClient is a client for the portfolio.v1.PortfolioService service.
@@ -64,6 +67,7 @@ type PortfolioServiceClient interface {
 	StreamPortfolio(context.Context, *connect.Request[v1.StreamPortfolioRequest]) (*connect.ServerStreamForClient[v1.GetPortfolioResponse], error)
 	GetPnL(context.Context, *connect.Request[v1.GetPnLRequest]) (*connect.Response[v1.GetPnLResponse], error)
 	ListPortfolios(context.Context, *connect.Request[v1.ListPortfoliosRequest]) (*connect.Response[v1.ListPortfoliosResponse], error)
+	GetMarginSnapshot(context.Context, *connect.Request[v1.GetMarginSnapshotRequest]) (*connect.Response[v1.GetMarginSnapshotResponse], error)
 }
 
 // NewPortfolioServiceClient constructs a client for the portfolio.v1.PortfolioService service. By
@@ -119,18 +123,25 @@ func NewPortfolioServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(portfolioServiceMethods.ByName("ListPortfolios")),
 			connect.WithClientOptions(opts...),
 		),
+		getMarginSnapshot: connect.NewClient[v1.GetMarginSnapshotRequest, v1.GetMarginSnapshotResponse](
+			httpClient,
+			baseURL+PortfolioServiceGetMarginSnapshotProcedure,
+			connect.WithSchema(portfolioServiceMethods.ByName("GetMarginSnapshot")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // portfolioServiceClient implements PortfolioServiceClient.
 type portfolioServiceClient struct {
-	deposit         *connect.Client[v1.DepositRequest, v1.DepositResponse]
-	withdraw        *connect.Client[v1.WithdrawRequest, v1.WithdrawResponse]
-	creditShares    *connect.Client[v1.CreditSharesRequest, v1.CreditSharesResponse]
-	getPortfolio    *connect.Client[v1.GetPortfolioRequest, v1.GetPortfolioResponse]
-	streamPortfolio *connect.Client[v1.StreamPortfolioRequest, v1.GetPortfolioResponse]
-	getPnL          *connect.Client[v1.GetPnLRequest, v1.GetPnLResponse]
-	listPortfolios  *connect.Client[v1.ListPortfoliosRequest, v1.ListPortfoliosResponse]
+	deposit           *connect.Client[v1.DepositRequest, v1.DepositResponse]
+	withdraw          *connect.Client[v1.WithdrawRequest, v1.WithdrawResponse]
+	creditShares      *connect.Client[v1.CreditSharesRequest, v1.CreditSharesResponse]
+	getPortfolio      *connect.Client[v1.GetPortfolioRequest, v1.GetPortfolioResponse]
+	streamPortfolio   *connect.Client[v1.StreamPortfolioRequest, v1.GetPortfolioResponse]
+	getPnL            *connect.Client[v1.GetPnLRequest, v1.GetPnLResponse]
+	listPortfolios    *connect.Client[v1.ListPortfoliosRequest, v1.ListPortfoliosResponse]
+	getMarginSnapshot *connect.Client[v1.GetMarginSnapshotRequest, v1.GetMarginSnapshotResponse]
 }
 
 // Deposit calls portfolio.v1.PortfolioService.Deposit.
@@ -168,6 +179,11 @@ func (c *portfolioServiceClient) ListPortfolios(ctx context.Context, req *connec
 	return c.listPortfolios.CallUnary(ctx, req)
 }
 
+// GetMarginSnapshot calls portfolio.v1.PortfolioService.GetMarginSnapshot.
+func (c *portfolioServiceClient) GetMarginSnapshot(ctx context.Context, req *connect.Request[v1.GetMarginSnapshotRequest]) (*connect.Response[v1.GetMarginSnapshotResponse], error) {
+	return c.getMarginSnapshot.CallUnary(ctx, req)
+}
+
 // PortfolioServiceHandler is an implementation of the portfolio.v1.PortfolioService service.
 type PortfolioServiceHandler interface {
 	Deposit(context.Context, *connect.Request[v1.DepositRequest]) (*connect.Response[v1.DepositResponse], error)
@@ -177,6 +193,7 @@ type PortfolioServiceHandler interface {
 	StreamPortfolio(context.Context, *connect.Request[v1.StreamPortfolioRequest], *connect.ServerStream[v1.GetPortfolioResponse]) error
 	GetPnL(context.Context, *connect.Request[v1.GetPnLRequest]) (*connect.Response[v1.GetPnLResponse], error)
 	ListPortfolios(context.Context, *connect.Request[v1.ListPortfoliosRequest]) (*connect.Response[v1.ListPortfoliosResponse], error)
+	GetMarginSnapshot(context.Context, *connect.Request[v1.GetMarginSnapshotRequest]) (*connect.Response[v1.GetMarginSnapshotResponse], error)
 }
 
 // NewPortfolioServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -228,6 +245,12 @@ func NewPortfolioServiceHandler(svc PortfolioServiceHandler, opts ...connect.Han
 		connect.WithSchema(portfolioServiceMethods.ByName("ListPortfolios")),
 		connect.WithHandlerOptions(opts...),
 	)
+	portfolioServiceGetMarginSnapshotHandler := connect.NewUnaryHandler(
+		PortfolioServiceGetMarginSnapshotProcedure,
+		svc.GetMarginSnapshot,
+		connect.WithSchema(portfolioServiceMethods.ByName("GetMarginSnapshot")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/portfolio.v1.PortfolioService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case PortfolioServiceDepositProcedure:
@@ -244,6 +267,8 @@ func NewPortfolioServiceHandler(svc PortfolioServiceHandler, opts ...connect.Han
 			portfolioServiceGetPnLHandler.ServeHTTP(w, r)
 		case PortfolioServiceListPortfoliosProcedure:
 			portfolioServiceListPortfoliosHandler.ServeHTTP(w, r)
+		case PortfolioServiceGetMarginSnapshotProcedure:
+			portfolioServiceGetMarginSnapshotHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -279,4 +304,8 @@ func (UnimplementedPortfolioServiceHandler) GetPnL(context.Context, *connect.Req
 
 func (UnimplementedPortfolioServiceHandler) ListPortfolios(context.Context, *connect.Request[v1.ListPortfoliosRequest]) (*connect.Response[v1.ListPortfoliosResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portfolio.v1.PortfolioService.ListPortfolios is not implemented"))
+}
+
+func (UnimplementedPortfolioServiceHandler) GetMarginSnapshot(context.Context, *connect.Request[v1.GetMarginSnapshotRequest]) (*connect.Response[v1.GetMarginSnapshotResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portfolio.v1.PortfolioService.GetMarginSnapshot is not implemented"))
 }

@@ -4,7 +4,7 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
-import type { OrderType, Side, TimeInForce } from "../../orderbook/v1/events_pb";
+import type { OrderType, PositionSide, Side, TimeInForce } from "../../orderbook/v1/events_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
@@ -454,6 +454,190 @@ export declare type ListPortfoliosResponse = Message<"portfolio.v1.ListPortfolio
 export declare const ListPortfoliosResponseSchema: GenMessage<ListPortfoliosResponse>;
 
 /**
+ * GetMarginSnapshot returns a point-in-time mark-to-market view of an
+ * account: cash buckets, position market values, equity, and the
+ * maintenance-margin requirement implied by open shorts at current
+ * marks.
+ *
+ * @generated from message portfolio.v1.GetMarginSnapshotRequest
+ */
+export declare type GetMarginSnapshotRequest = Message<"portfolio.v1.GetMarginSnapshotRequest"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+};
+
+/**
+ * Describes the message portfolio.v1.GetMarginSnapshotRequest.
+ * Use `create(GetMarginSnapshotRequestSchema)` to create a new message.
+ */
+export declare const GetMarginSnapshotRequestSchema: GenMessage<GetMarginSnapshotRequest>;
+
+/**
+ * @generated from message portfolio.v1.GetMarginSnapshotResponse
+ */
+export declare type GetMarginSnapshotResponse = Message<"portfolio.v1.GetMarginSnapshotResponse"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * Cash buckets (snapshot of portfolio aggregate state).
+   *
+   * @generated from field: int64 cash_balance = 2;
+   */
+  cashBalance: bigint;
+
+  /**
+   * @generated from field: int64 cash_held = 3;
+   */
+  cashHeld: bigint;
+
+  /**
+   * @generated from field: int64 collateral_pool = 4;
+   */
+  collateralPool: bigint;
+
+  /**
+   * @generated from field: int64 proceeds_pool = 5;
+   */
+  proceedsPool: bigint;
+
+  /**
+   * Per-saga collateral held pre-fill — summed for convenience.
+   *
+   * @generated from field: int64 collateral_held_pre_fill = 6;
+   */
+  collateralHeldPreFill: bigint;
+
+  /**
+   * Market values from current marks. long_market_value is the sum of
+   * owned shares at mark; short_liability is the cost to repurchase
+   * all open shorts at mark.
+   *
+   * @generated from field: int64 long_market_value = 7;
+   */
+  longMarketValue: bigint;
+
+  /**
+   * @generated from field: int64 short_liability = 8;
+   */
+  shortLiability: bigint;
+
+  /**
+   * equity = cash + cash_held + pools + collateral_held_pre_fill +
+   *          long_mv - short_liability.
+   *
+   * @generated from field: int64 equity = 9;
+   */
+  equity: bigint;
+
+  /**
+   * maintenance_requirement is the equity floor implied by open
+   * shorts at the current maintenance rate (see internal/margin).
+   *
+   * @generated from field: int64 maintenance_requirement = 10;
+   */
+  maintenanceRequirement: bigint;
+
+  /**
+   * margin_excess = equity - maintenance_requirement. Negative means
+   * a margin call should fire.
+   *
+   * @generated from field: int64 margin_excess = 11;
+   */
+  marginExcess: bigint;
+
+  /**
+   * @generated from field: bool margin_call = 12;
+   */
+  marginCall: boolean;
+
+  /**
+   * missing_marks lists symbols held (long or short) for which no
+   * mark is currently available. Equity treats their contribution
+   * as zero — callers should surface this to avoid acting on
+   * stale-by-omission snapshots.
+   *
+   * @generated from field: repeated string missing_marks = 13;
+   */
+  missingMarks: string[];
+
+  /**
+   * @generated from field: repeated portfolio.v1.PositionMarginInfo positions = 14;
+   */
+  positions: PositionMarginInfo[];
+};
+
+/**
+ * Describes the message portfolio.v1.GetMarginSnapshotResponse.
+ * Use `create(GetMarginSnapshotResponseSchema)` to create a new message.
+ */
+export declare const GetMarginSnapshotResponseSchema: GenMessage<GetMarginSnapshotResponse>;
+
+/**
+ * @generated from message portfolio.v1.PositionMarginInfo
+ */
+export declare type PositionMarginInfo = Message<"portfolio.v1.PositionMarginInfo"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * LONG: account owns quantity shares. SHORT: account owes quantity.
+   *
+   * @generated from field: orderbook.v1.PositionSide side = 2;
+   */
+  side: PositionSide;
+
+  /**
+   * @generated from field: int64 quantity = 3;
+   */
+  quantity: bigint;
+
+  /**
+   * avg_price is the average open cost (long) or average open price (short).
+   *
+   * @generated from field: int64 avg_price = 4;
+   */
+  avgPrice: bigint;
+
+  /**
+   * @generated from field: int64 mark_price = 5;
+   */
+  markPrice: bigint;
+
+  /**
+   * @generated from field: int64 market_value = 6;
+   */
+  marketValue: bigint;
+
+  /**
+   * Signed: positive = paper gain, negative = paper loss.
+   *
+   * @generated from field: int64 unrealized_pnl = 7;
+   */
+  unrealizedPnl: bigint;
+
+  /**
+   * True when no mark was available; market_value and unrealized_pnl
+   * are zero in that case.
+   *
+   * @generated from field: bool mark_missing = 8;
+   */
+  markMissing: boolean;
+};
+
+/**
+ * Describes the message portfolio.v1.PositionMarginInfo.
+ * Use `create(PositionMarginInfoSchema)` to create a new message.
+ */
+export declare const PositionMarginInfoSchema: GenMessage<PositionMarginInfo>;
+
+/**
  * OrderStatus is kept for the PendingOrder field on GetPortfolioResponse,
  * which the portfolio projection still surfaces inline. The dedicated
  * per-saga GetOrderStatus RPC has moved to saga.v1.SagaService.Get.
@@ -556,6 +740,14 @@ export declare const PortfolioService: GenService<{
     methodKind: "unary";
     input: typeof ListPortfoliosRequestSchema;
     output: typeof ListPortfoliosResponseSchema;
+  },
+  /**
+   * @generated from rpc portfolio.v1.PortfolioService.GetMarginSnapshot
+   */
+  getMarginSnapshot: {
+    methodKind: "unary";
+    input: typeof GetMarginSnapshotRequestSchema;
+    output: typeof GetMarginSnapshotResponseSchema;
   },
 }>;
 

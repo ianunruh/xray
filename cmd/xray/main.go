@@ -143,6 +143,7 @@ func main() {
 	sagaProjection := sagasvc.NewPgProjection(pool)
 	depthProjection := orderbook.NewDepthProjection()
 	candleProjection := orderbook.NewCandleProjection()
+	markProjection := orderbook.NewMarkProjection()
 	broker := orderbook.NewBroker()
 	portfolioBroker := portfolio.NewPortfolioBroker()
 	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, ocoSagaHandler, obHandler, log)
@@ -155,7 +156,7 @@ func main() {
 	// state rebuilds from the start of the stream.
 	consumers := []*natsstore.ProjectionConsumer{
 		natsstore.NewProjectionConsumer(js, registry, log, "ephemeral").
-			WithEphemeral(depthProjection, candleProjection, broker, portfolioBroker),
+			WithEphemeral(depthProjection, candleProjection, markProjection, broker, portfolioBroker),
 		natsstore.NewProjectionConsumer(js, registry, log, "trade-projection").
 			WithPersistent(store, tradeProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "order-projection").
@@ -188,7 +189,7 @@ func main() {
 	go rec.Run(ctx)
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, dailyCloseProjection, broker)
-	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, pnlProjection, portfolioBroker, log)
+	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, pnlProjection, markProjection, portfolioBroker, log)
 	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, ocoSagaHandler, obHandler, sagaProjection, log)
 	diagnosticsSrv := diagnostics.NewServer(store, registry, log)
 

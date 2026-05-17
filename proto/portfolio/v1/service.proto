@@ -15,6 +15,7 @@ service PortfolioService {
   rpc StreamPortfolio(StreamPortfolioRequest) returns (stream GetPortfolioResponse);
   rpc GetPnL(GetPnLRequest) returns (GetPnLResponse);
   rpc ListPortfolios(ListPortfoliosRequest) returns (ListPortfoliosResponse);
+  rpc GetMarginSnapshot(GetMarginSnapshotRequest) returns (GetMarginSnapshotResponse);
 }
 
 message DepositRequest {
@@ -124,4 +125,67 @@ message ListPortfoliosRequest {}
 
 message ListPortfoliosResponse {
   repeated string account_ids = 1;
+}
+
+// GetMarginSnapshot returns a point-in-time mark-to-market view of an
+// account: cash buckets, position market values, equity, and the
+// maintenance-margin requirement implied by open shorts at current
+// marks.
+message GetMarginSnapshotRequest {
+  string account_id = 1;
+}
+
+message GetMarginSnapshotResponse {
+  string account_id = 1;
+
+  // Cash buckets (snapshot of portfolio aggregate state).
+  int64 cash_balance = 2;
+  int64 cash_held = 3;
+  int64 collateral_pool = 4;
+  int64 proceeds_pool = 5;
+  // Per-saga collateral held pre-fill — summed for convenience.
+  int64 collateral_held_pre_fill = 6;
+
+  // Market values from current marks. long_market_value is the sum of
+  // owned shares at mark; short_liability is the cost to repurchase
+  // all open shorts at mark.
+  int64 long_market_value = 7;
+  int64 short_liability = 8;
+
+  // equity = cash + cash_held + pools + collateral_held_pre_fill +
+  //          long_mv - short_liability.
+  int64 equity = 9;
+
+  // maintenance_requirement is the equity floor implied by open
+  // shorts at the current maintenance rate (see internal/margin).
+  int64 maintenance_requirement = 10;
+
+  // margin_excess = equity - maintenance_requirement. Negative means
+  // a margin call should fire.
+  int64 margin_excess = 11;
+  bool margin_call = 12;
+
+  // missing_marks lists symbols held (long or short) for which no
+  // mark is currently available. Equity treats their contribution
+  // as zero — callers should surface this to avoid acting on
+  // stale-by-omission snapshots.
+  repeated string missing_marks = 13;
+
+  repeated PositionMarginInfo positions = 14;
+}
+
+message PositionMarginInfo {
+  string symbol = 1;
+  // LONG: account owns quantity shares. SHORT: account owes quantity.
+  orderbook.v1.PositionSide side = 2;
+  int64 quantity = 3;
+  // avg_price is the average open cost (long) or average open price (short).
+  int64 avg_price = 4;
+  int64 mark_price = 5;
+  int64 market_value = 6;
+  // Signed: positive = paper gain, negative = paper loss.
+  int64 unrealized_pnl = 7;
+  // True when no mark was available; market_value and unrealized_pnl
+  // are zero in that case.
+  bool mark_missing = 8;
 }

@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sort"
+	"time"
 
 	"connectrpc.com/connect"
 
+	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
+	"github.com/ianunruh/xray/internal/margin"
 	"github.com/ianunruh/xray/pkg/es"
 )
 
@@ -22,21 +26,31 @@ type PortfolioReader interface {
 	ListPortfolios(ctx context.Context) ([]string, error)
 }
 
+// Marker exposes mark-to-market prices for symbols. Implemented by
+// orderbook.MarkProjection (via its GetMarkPrice method); kept as a
+// small interface so the portfolio server doesn't depend on the
+// orderbook package directly.
+type Marker interface {
+	GetMarkPrice(symbol string) (price int64, at time.Time, ok bool)
+}
+
 type Server struct {
 	portfoliov1connect.UnimplementedPortfolioServiceHandler
 
 	portfolioHandler *es.Handler[*Portfolio]
 	reader           PortfolioReader
 	pnlReader        PnLReader
+	marker           Marker
 	broker           *PortfolioBroker
 	log              *slog.Logger
 }
 
-func NewServer(portfolioHandler *es.Handler[*Portfolio], reader PortfolioReader, pnlReader PnLReader, broker *PortfolioBroker, log *slog.Logger) *Server {
+func NewServer(portfolioHandler *es.Handler[*Portfolio], reader PortfolioReader, pnlReader PnLReader, marker Marker, broker *PortfolioBroker, log *slog.Logger) *Server {
 	return &Server{
 		portfolioHandler: portfolioHandler,
 		reader:           reader,
 		pnlReader:        pnlReader,
+		marker:           marker,
 		broker:           broker,
 		log:              log,
 	}
@@ -169,4 +183,114 @@ func (s *Server) GetPnL(ctx context.Context, req *connect.Request[portfoliov1.Ge
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(resp), nil
+}
+
+func (s *Server) GetMarginSnapshot(ctx context.Context, req *connect.Request[portfoliov1.GetMarginSnapshotRequest]) (*connect.Response[portfoliov1.GetMarginSnapshotResponse], error) {
+	accountID := req.Msg.AccountId
+	p, err := s.portfolioHandler.Load(ctx, AggregateID(accountID))
+	if err != nil {
+		s.log.Error("GetMarginSnapshot load failed", "account_id", accountID, "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	resp := buildMarginSnapshot(accountID, p, s.marker)
+	return connect.NewResponse(resp), nil
+}
+
+// buildMarginSnapshot is the pure-data computation, factored out so
+// tests can drive it without spinning up a Connect server.
+func buildMarginSnapshot(accountID string, p *Portfolio, marker Marker) *portfoliov1.GetMarginSnapshotResponse {
+	resp := &portfoliov1.GetMarginSnapshotResponse{
+		AccountId:      accountID,
+		CashBalance:    p.CashBalance,
+		CashHeld:       p.CashHeld,
+		CollateralPool: p.CollateralPool,
+		ProceedsPool:   p.ProceedsPool,
+	}
+	for _, h := range p.CollateralHeldBySaga {
+		resp.CollateralHeldPreFill += h.Amount
+	}
+
+	// Deterministic ordering so responses (and tests) don't depend on
+	// map iteration order.
+	longSymbols := sortedKeys(p.Holdings)
+	shortSymbols := sortedKeysShort(p.ShortPositions)
+
+	for _, sym := range longSymbols {
+		h := p.Holdings[sym]
+		if h.Quantity <= 0 {
+			continue
+		}
+		avg := int64(0)
+		if h.Quantity > 0 {
+			avg = h.TotalCost / h.Quantity
+		}
+		info := &portfoliov1.PositionMarginInfo{
+			Symbol:   sym,
+			Side:     orderbookv1.PositionSide_POSITION_SIDE_LONG,
+			Quantity: h.Quantity,
+			AvgPrice: avg,
+		}
+		if mark, _, ok := lookupMark(marker, sym); ok {
+			info.MarkPrice = mark
+			info.MarketValue = mark * h.Quantity
+			info.UnrealizedPnl = (mark - avg) * h.Quantity
+			resp.LongMarketValue += info.MarketValue
+		} else {
+			info.MarkMissing = true
+			resp.MissingMarks = append(resp.MissingMarks, sym)
+		}
+		resp.Positions = append(resp.Positions, info)
+	}
+
+	for _, sym := range shortSymbols {
+		short := p.ShortPositions[sym]
+		info := &portfoliov1.PositionMarginInfo{
+			Symbol:   sym,
+			Side:     orderbookv1.PositionSide_POSITION_SIDE_SHORT,
+			Quantity: short.Quantity,
+			AvgPrice: short.AvgOpenPrice,
+		}
+		if mark, _, ok := lookupMark(marker, sym); ok {
+			info.MarkPrice = mark
+			info.MarketValue = mark * short.Quantity
+			info.UnrealizedPnl = (short.AvgOpenPrice - mark) * short.Quantity
+			resp.ShortLiability += info.MarketValue
+			resp.MaintenanceRequirement += margin.MaintenanceRequirement(mark, short.Quantity)
+		} else {
+			info.MarkMissing = true
+			resp.MissingMarks = append(resp.MissingMarks, sym)
+		}
+		resp.Positions = append(resp.Positions, info)
+	}
+
+	resp.Equity = resp.CashBalance + resp.CashHeld + resp.CollateralPool +
+		resp.ProceedsPool + resp.CollateralHeldPreFill +
+		resp.LongMarketValue - resp.ShortLiability
+	resp.MarginExcess = resp.Equity - resp.MaintenanceRequirement
+	resp.MarginCall = resp.MarginExcess < 0
+
+	return resp
+}
+
+func lookupMark(marker Marker, symbol string) (int64, time.Time, bool) {
+	if marker == nil {
+		return 0, time.Time{}, false
+	}
+	return marker.GetMarkPrice(symbol)
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// sortedKeysShort exists only because Go generics don't let us use the
+// same sortedKeys helper with a different value type without specifying
+// both — kept separate for clarity.
+func sortedKeysShort(m map[string]*ShortPosition) []string {
+	return sortedKeys(m)
 }
