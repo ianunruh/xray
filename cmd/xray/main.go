@@ -21,6 +21,7 @@ import (
 	"github.com/ianunruh/xray/gen/saga/v1/sagav1connect"
 	"github.com/ianunruh/xray/internal/bracket"
 	"github.com/ianunruh/xray/internal/diagnostics"
+	"github.com/ianunruh/xray/internal/margincall"
 	"github.com/ianunruh/xray/internal/ocosaga"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
@@ -144,11 +145,13 @@ func main() {
 	depthProjection := orderbook.NewDepthProjection()
 	candleProjection := orderbook.NewCandleProjection()
 	markProjection := orderbook.NewMarkProjection()
+	shortsProjection := portfolio.NewShortsBySymbolProjection()
 	broker := orderbook.NewBroker()
 	portfolioBroker := portfolio.NewPortfolioBroker()
 	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, ocoSagaHandler, obHandler, log)
 	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
 	ocoSagaReactor := ocosaga.NewReactor(ocoSagaHandler, portfolioHandler, obHandler, log)
+	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, shortsProjection, markProjection, log)
 
 	// One consumer per persistent projection so each one's cursor advances
 	// independently. Ephemeral projections (in-memory) share a single
@@ -156,7 +159,7 @@ func main() {
 	// state rebuilds from the start of the stream.
 	consumers := []*natsstore.ProjectionConsumer{
 		natsstore.NewProjectionConsumer(js, registry, log, "ephemeral").
-			WithEphemeral(depthProjection, candleProjection, markProjection, broker, portfolioBroker),
+			WithEphemeral(depthProjection, candleProjection, markProjection, shortsProjection, marginReactor, broker, portfolioBroker),
 		natsstore.NewProjectionConsumer(js, registry, log, "trade-projection").
 			WithPersistent(store, tradeProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "order-projection").

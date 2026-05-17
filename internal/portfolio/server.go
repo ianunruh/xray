@@ -196,6 +196,64 @@ func (s *Server) GetMarginSnapshot(ctx context.Context, req *connect.Request[por
 	return connect.NewResponse(resp), nil
 }
 
+// MarginStatus is the slim view of the margin computation used by
+// the margin-call reactor — full mark/PnL detail lives in
+// buildMarginSnapshot, but the reactor only needs equity, requirement,
+// breach state, and a remediation target.
+type MarginStatus struct {
+	Equity                 int64
+	MaintenanceRequirement int64
+	InCall                 bool
+	// LargestShort* identifies the short the reactor should liquidate
+	// first when remediating. Zero when no open short has a mark.
+	LargestShortSymbol string
+	LargestShortQty    int64
+	LargestShortMark   int64
+	// AnyMarkMissing flags that one or more shorts lack a mark; equity
+	// treats their contribution as zero, which can mask a breach.
+	AnyMarkMissing bool
+}
+
+// ComputeMarginStatus is the lightweight version of buildMarginSnapshot
+// — no proto, no per-position breakdown, just enough for the reactor
+// to decide whether to issue/cover a call and which short to liquidate.
+func ComputeMarginStatus(p *Portfolio, marker Marker) MarginStatus {
+	status := MarginStatus{}
+
+	equity := p.CashBalance + p.CashHeld + p.CollateralPool + p.ProceedsPool
+	for _, h := range p.CollateralHeldBySaga {
+		equity += h.Amount
+	}
+	for sym, h := range p.Holdings {
+		if h.Quantity <= 0 {
+			continue
+		}
+		if mark, _, ok := lookupMark(marker, sym); ok {
+			equity += mark * h.Quantity
+		}
+	}
+
+	for sym, short := range p.ShortPositions {
+		mark, _, ok := lookupMark(marker, sym)
+		if !ok {
+			status.AnyMarkMissing = true
+			continue
+		}
+		liability := mark * short.Quantity
+		equity -= liability
+		status.MaintenanceRequirement += margin.MaintenanceRequirement(mark, short.Quantity)
+		if liability > status.LargestShortQty*status.LargestShortMark {
+			status.LargestShortSymbol = sym
+			status.LargestShortQty = short.Quantity
+			status.LargestShortMark = mark
+		}
+	}
+
+	status.Equity = equity
+	status.InCall = equity < status.MaintenanceRequirement
+	return status
+}
+
 // buildMarginSnapshot is the pure-data computation, factored out so
 // tests can drive it without spinning up a Connect server.
 func buildMarginSnapshot(accountID string, p *Portfolio, marker Marker) *portfoliov1.GetMarginSnapshotResponse {
