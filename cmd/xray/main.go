@@ -146,6 +146,7 @@ func main() {
 	candleProjection := orderbook.NewCandleProjection()
 	markProjection := orderbook.NewMarkProjection()
 	shortsProjection := portfolio.NewPgShortsBySymbolProjection(pool)
+	longsProjection := portfolio.NewPgLongsBySymbolProjection(pool)
 	activeUserSagasProjection := portfolio.NewPgActiveUserSagasProjection(pool)
 	activeCallsProjection := portfolio.NewInMemoryActiveMarginCalls()
 	marginCallsProjection := portfolio.NewPgMarginCallsProjection(pool)
@@ -154,7 +155,7 @@ func main() {
 	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, ocoSagaHandler, obHandler, log)
 	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
 	ocoSagaReactor := ocosaga.NewReactor(ocoSagaHandler, portfolioHandler, obHandler, log)
-	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shortsProjection, activeUserSagasProjection, markProjection,
+	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shortsProjection, longsProjection, activeUserSagasProjection, markProjection,
 		margincall.Config{Grace: 30 * time.Second}, log)
 
 	// One consumer per persistent projection so each one's cursor advances
@@ -171,7 +172,7 @@ func main() {
 		// never reaches the reactor before its prior ShortOpened has
 		// been committed to PG.
 		natsstore.NewProjectionConsumer(js, registry, log, "margin-call").
-			WithPersistent(store, shortsProjection, activeUserSagasProjection, marginCallsProjection, marginReactor),
+			WithPersistent(store, shortsProjection, longsProjection, activeUserSagasProjection, marginCallsProjection, marginReactor),
 		natsstore.NewProjectionConsumer(js, registry, log, "trade-projection").
 			WithPersistent(store, tradeProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "order-projection").

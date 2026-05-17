@@ -309,26 +309,28 @@ func TestReactor_OrderCancelled_CashReleased(t *testing.T) {
 	assert.Equal(t, int64(0), p.CashHeld)
 }
 
-func TestReactor_InsufficientFunds_SagaFails(t *testing.T) {
+func TestReactor_BuyExceedsCash_GoesOnMargin(t *testing.T) {
+	// Buying more than cash no longer fails the saga — the deficit
+	// becomes margin loan. (Saga-level / margin-snapshot over-
+	// leverage protection is a separate concern; the aggregate's job
+	// is just to faithfully track the loan.)
 	env := setupReactorTest(t)
 
-	// Only deposit $100 but try to buy 100 shares at $150.
 	depositCash(t, env, "acct-1", 1000000)
+	// Provide sell liquidity so the buy can fill.
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1500000, 100)
+	env.pub.events = nil
 
 	startOrderSaga(t, env, "saga-1", "acct-1", "AAPL", orderbookv1.Side_SIDE_BUY, 1500000, 100)
-
-	// Flush repeatedly to exhaust retries.
-	for i := 0; i < ordersaga.MaxActionAttempts+1; i++ {
-		env.flush()
-	}
+	env.flush()
 
 	s := loadSaga(t, env, "saga-1")
-	assert.Equal(t, ordersaga.Failed, s.Status)
+	assert.Equal(t, ordersaga.Completed, s.Status)
 
-	// Cash should not have been touched.
+	// Cash went negative; the deficit is the margin loan.
 	p := loadPortfolio(t, env, "acct-1")
-	assert.Equal(t, int64(1000000), p.CashBalance)
-	assert.Equal(t, int64(0), p.CashHeld)
+	assert.Equal(t, int64(-149000000), p.CashBalance) // $1k - $150k
+	assert.Equal(t, int64(149000000), p.MarginLoan())
 }
 
 func TestReactor_PriceImprovement_RemainingCashReleased(t *testing.T) {

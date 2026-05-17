@@ -273,23 +273,29 @@ func TestBracket_FailDuringPendingExit_ReleasesShares(t *testing.T) {
 	assert.Equal(t, int64(100), p.Holdings["AAPL"].Quantity, "shares still owned (entry already settled)")
 }
 
-func TestBracket_InsufficientCash_EntryFails(t *testing.T) {
+func TestBracket_LowCash_EntryGoesOnMargin(t *testing.T) {
+	// Bracket needs $150M notional but the account only has $1M cash —
+	// the entry buy now borrows the difference on margin instead of
+	// failing. Over-leverage protection lives elsewhere (saga-level /
+	// margin-snapshot), not in the aggregate.
 	e := setupEnv(t)
-	// Deposit not enough — bracket needs 150M but we have 1M.
 	deposit(t, e, "acct-1", 1_000_000)
+	// Liquidity for the entry to fill against.
+	placeLimitOrder(t, e, "AAPL", orderbook.Sell, 1500000, 100)
+	e.pub.events = nil
 
 	startBracket(t, e, "acct-1", "br-1", "AAPL", orderbookv1.Side_SIDE_BUY,
 		1500000, 100, 1550000, 1450000)
-	for range ordersaga.MaxActionAttempts + 1 {
-		e.flush()
-	}
+	e.flush()
 
+	// Entry should have filled, bracket should be PendingExit, and
+	// the account should be on margin.
 	b := loadBracket(t, e, "br-1")
-	assert.Equal(t, bracket.Failed, b.Status)
+	assert.Equal(t, bracket.PendingExit, b.Status)
 
 	p := loadPortfolio(t, e, "acct-1")
-	assert.Equal(t, int64(1_000_000), p.CashBalance, "cash untouched")
-	assert.Equal(t, int64(0), p.CashHeld)
+	assert.True(t, p.CashBalance < 0, "cash went negative — on margin")
+	assert.Equal(t, int64(149_000_000), p.MarginLoan())
 }
 
 func TestBracket_StatelessReactor_FreshInstanceHandlesMidLifecycleEvents(t *testing.T) {

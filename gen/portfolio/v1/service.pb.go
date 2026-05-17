@@ -1205,13 +1205,20 @@ type GetMarginSnapshotResponse struct {
 	// stale-by-omission snapshots.
 	MissingMarks []string              `protobuf:"bytes,13,rep,name=missing_marks,json=missingMarks,proto3" json:"missing_marks,omitempty"`
 	Positions    []*PositionMarginInfo `protobuf:"bytes,14,rep,name=positions,proto3" json:"positions,omitempty"`
-	// buying_power is the cash truly available to back new orders —
-	// CashBalance after every long-buy hold, short collateral hold,
-	// and pool allocation. Distinct from equity: equity counts locked
-	// cash too (it's still yours, just earmarked).
-	BuyingPower   int64 `protobuf:"varint,15,opt,name=buying_power,json=buyingPower,proto3" json:"buying_power,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// buying_power is what's available to back new orders, accounting
+	// for margin leverage: 2 * (equity - maintenance_requirement),
+	// floored at zero. With no positions, equals 2x cash.
+	BuyingPower int64 `protobuf:"varint,15,opt,name=buying_power,json=buyingPower,proto3" json:"buying_power,omitempty"`
+	// margin_loan is the outstanding borrow against the broker — the
+	// negative portion of CashBalance, exposed as a positive number.
+	// Created when buys exceed cash; paid down by sells.
+	MarginLoan int64 `protobuf:"varint,16,opt,name=margin_loan,json=marginLoan,proto3" json:"margin_loan,omitempty"`
+	// Maintenance requirement broken out by side. Total is the field
+	// above; this lets the UI explain where the requirement comes from.
+	LongMaintenanceRequirement  int64 `protobuf:"varint,17,opt,name=long_maintenance_requirement,json=longMaintenanceRequirement,proto3" json:"long_maintenance_requirement,omitempty"`
+	ShortMaintenanceRequirement int64 `protobuf:"varint,18,opt,name=short_maintenance_requirement,json=shortMaintenanceRequirement,proto3" json:"short_maintenance_requirement,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
 func (x *GetMarginSnapshotResponse) Reset() {
@@ -1345,6 +1352,27 @@ func (x *GetMarginSnapshotResponse) GetPositions() []*PositionMarginInfo {
 func (x *GetMarginSnapshotResponse) GetBuyingPower() int64 {
 	if x != nil {
 		return x.BuyingPower
+	}
+	return 0
+}
+
+func (x *GetMarginSnapshotResponse) GetMarginLoan() int64 {
+	if x != nil {
+		return x.MarginLoan
+	}
+	return 0
+}
+
+func (x *GetMarginSnapshotResponse) GetLongMaintenanceRequirement() int64 {
+	if x != nil {
+		return x.LongMaintenanceRequirement
+	}
+	return 0
+}
+
+func (x *GetMarginSnapshotResponse) GetShortMaintenanceRequirement() int64 {
+	if x != nil {
+		return x.ShortMaintenanceRequirement
 	}
 	return 0
 }
@@ -1990,7 +2018,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"accountIds\"9\n" +
 	"\x18GetMarginSnapshotRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\"\xf5\x04\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\"\x9c\x06\n" +
 	"\x19GetMarginSnapshotResponse\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12!\n" +
@@ -2009,7 +2037,11 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"marginCall\x12#\n" +
 	"\rmissing_marks\x18\r \x03(\tR\fmissingMarks\x12>\n" +
 	"\tpositions\x18\x0e \x03(\v2 .portfolio.v1.PositionMarginInfoR\tpositions\x12!\n" +
-	"\fbuying_power\x18\x0f \x01(\x03R\vbuyingPower\"\xc2\x04\n" +
+	"\fbuying_power\x18\x0f \x01(\x03R\vbuyingPower\x12\x1f\n" +
+	"\vmargin_loan\x18\x10 \x01(\x03R\n" +
+	"marginLoan\x12@\n" +
+	"\x1clong_maintenance_requirement\x18\x11 \x01(\x03R\x1alongMaintenanceRequirement\x12B\n" +
+	"\x1dshort_maintenance_requirement\x18\x12 \x01(\x03R\x1bshortMaintenanceRequirement\"\xc2\x04\n" +
 	"\x10MarginCallRecord\x12\x17\n" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x1d\n" +
 	"\n" +

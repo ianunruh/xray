@@ -65,6 +65,7 @@ type env struct {
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga]
 	obHandler        *es.Handler[*orderbook.OrderBook]
 	shorts           *portfolio.InMemoryShortsBySymbol
+	longs            *portfolio.InMemoryLongsBySymbol
 	sagas            *stubSagaLookup
 	marker           *fakeMarker
 	reactor          *margincall.Reactor
@@ -93,9 +94,10 @@ func newEnv(t *testing.T) *env {
 	}, log).WithPublisher(pub)
 
 	shorts := portfolio.NewInMemoryShortsBySymbol()
+	longs := portfolio.NewInMemoryLongsBySymbol()
 	marker := &fakeMarker{prices: make(map[string]int64)}
 	sagas := &stubSagaLookup{}
-	reactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shorts, sagas, marker,
+	reactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shorts, longs, sagas, marker,
 		margincall.Config{Grace: 0}, log)
 
 	return &env{
@@ -104,6 +106,7 @@ func newEnv(t *testing.T) *env {
 		orderSagaHandler: orderSagaHandler,
 		obHandler:        obHandler,
 		shorts:           shorts,
+		longs:            longs,
 		sagas:            sagas,
 		marker:           marker,
 		reactor:          reactor,
@@ -115,6 +118,7 @@ func (e *env) flush() {
 		batch := e.pub.events
 		e.pub.events = nil
 		_ = e.shorts.HandleEvents(e.ctx, batch)
+		_ = e.longs.HandleEvents(e.ctx, batch)
 		_ = e.reactor.HandleEvents(e.ctx, batch)
 	}
 }
@@ -270,6 +274,51 @@ func TestReactor_NoShortInSymbol_Ignored(t *testing.T) {
 	// the reactor didn't blow up.
 }
 
+// seedLongOnMargin makes an account that bought stock on margin.
+// Bypasses the saga; sets aggregate state directly.
+func seedLongOnMargin(t *testing.T, e *env, accountID, symbol string, qty, cost int64) {
+	t.Helper()
+	// Skip a "deposit cash" and a "settle buy" sequence — just push
+	// the aggregate to the state we need: held a long position via
+	// CashSettled with no prior cash. Simulates buying on margin.
+	settle := portfolio.SettleTrade{
+		AccountID:    accountID,
+		OrderSagaID:  "seed-buy-" + symbol,
+		TradeID:      "seed-tr-" + symbol,
+		Amount:       cost,
+		Symbol:       symbol,
+		Quantity:     qty,
+		CostPerShare: cost / qty,
+	}
+	require.NoError(t, e.portfolioHandler.Handle(e.ctx, settle, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteSettleTrade(p, settle)
+	}))
+}
+
+func TestReactor_LongOnMarginBreach_SpawnsSellLiquidation(t *testing.T) {
+	e := newEnv(t)
+	// Stock bought on margin: 100 shares costing $1k total ($10/share).
+	// CashBalance goes to -$1k after settlement → loan = $1k.
+	seedLongOnMargin(t, e, "acct-1", "NVDA", 100, 10_000_000)
+	e.flush()
+
+	// Crash the mark to $5/share. Long MV = $500; equity = -$1k +
+	// $500 = -$500. Maintenance = 25% * $500 = $125. Equity << maint.
+	fireTrade(t, e, "NVDA", "trade-down", 50_000)
+
+	p := loadPortfolio(t, e, "acct-1")
+	require.NotNil(t, p.ActiveMarginCall, "margin call should fire")
+
+	// Liquidation saga should be a SELL of the long, not a buy-cover.
+	liqSaga, err := e.orderSagaHandler.Load(e.ctx,
+		ordersaga.AggregateID("liquidation:acct-1:trade-down"))
+	require.NoError(t, err)
+	assert.Equal(t, orderbook.Sell, liqSaga.Side)
+	assert.Equal(t, orderbookv1.PositionSide_POSITION_SIDE_LONG, liqSaga.PositionSide)
+	assert.Equal(t, "NVDA", liqSaga.Symbol)
+	assert.Equal(t, int64(100), liqSaga.Quantity)
+}
+
 func TestReactor_TradeOnDifferentSymbol_DoesntFalsePositive(t *testing.T) {
 	e := newEnv(t)
 	// Short in AAPL.
@@ -374,7 +423,7 @@ func newEnvWithGrace(t *testing.T, grace time.Duration) *env {
 	t.Helper()
 	e := newEnv(t)
 	e.reactor = margincall.NewReactor(e.portfolioHandler, e.orderSagaHandler, e.obHandler,
-		e.shorts, e.sagas, e.marker, margincall.Config{Grace: grace}, slog.Default())
+		e.shorts, e.longs, e.sagas, e.marker, margincall.Config{Grace: grace}, slog.Default())
 	return e
 }
 

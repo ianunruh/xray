@@ -131,23 +131,32 @@ func TestHoldAndReleaseCash(t *testing.T) {
 	assert.Empty(t, p.HoldsBySaga)
 }
 
-func TestHoldCash_InsufficientFunds(t *testing.T) {
+func TestHoldCash_AllowsMarginBorrow(t *testing.T) {
+	// HoldCash no longer enforces an InsufficientFunds gate — buying
+	// on margin is allowed. The deficit is tracked as MarginLoan
+	// (CashBalance going negative). Saga-level / margin-snapshot
+	// validation are the actual gatekeepers; the aggregate trusts
+	// the caller.
 	registry := newTestRegistry()
 	store := memstore.New()
 	handler := newTestHandler(store, registry)
 	ctx := context.Background()
 
 	deposit := portfolio.DepositCash{AccountID: "acct-1", Amount: 5000000}
-	err := handler.Handle(ctx, deposit, func(p *portfolio.Portfolio) ([]es.Event, error) {
+	require.NoError(t, handler.Handle(ctx, deposit, func(p *portfolio.Portfolio) ([]es.Event, error) {
 		return portfolio.ExecuteDepositCash(p, deposit)
-	})
-	require.NoError(t, err)
+	}))
 
 	hold := portfolio.HoldCash{AccountID: "acct-1", OrderSagaID: "saga-1", Amount: 6000000}
-	err = handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+	require.NoError(t, handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
 		return portfolio.ExecuteHoldCash(p, hold)
-	})
-	assert.ErrorIs(t, err, portfolio.ErrInsufficientFunds)
+	}))
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(-1000000), p.CashBalance, "cash goes negative by the margin loan amount")
+	assert.Equal(t, int64(1000000), p.MarginLoan(), "MarginLoan reflects the deficit")
+	assert.Equal(t, int64(6000000), p.CashHeld)
 }
 
 func TestSettleTrade(t *testing.T) {

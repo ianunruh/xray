@@ -593,14 +593,35 @@ export declare type GetMarginSnapshotResponse = Message<"portfolio.v1.GetMarginS
   positions: PositionMarginInfo[];
 
   /**
-   * buying_power is the cash truly available to back new orders —
-   * CashBalance after every long-buy hold, short collateral hold,
-   * and pool allocation. Distinct from equity: equity counts locked
-   * cash too (it's still yours, just earmarked).
+   * buying_power is what's available to back new orders, accounting
+   * for margin leverage: 2 * (equity - maintenance_requirement),
+   * floored at zero. With no positions, equals 2x cash.
    *
    * @generated from field: int64 buying_power = 15;
    */
   buyingPower: bigint;
+
+  /**
+   * margin_loan is the outstanding borrow against the broker — the
+   * negative portion of CashBalance, exposed as a positive number.
+   * Created when buys exceed cash; paid down by sells.
+   *
+   * @generated from field: int64 margin_loan = 16;
+   */
+  marginLoan: bigint;
+
+  /**
+   * Maintenance requirement broken out by side. Total is the field
+   * above; this lets the UI explain where the requirement comes from.
+   *
+   * @generated from field: int64 long_maintenance_requirement = 17;
+   */
+  longMaintenanceRequirement: bigint;
+
+  /**
+   * @generated from field: int64 short_maintenance_requirement = 18;
+   */
+  shortMaintenanceRequirement: bigint;
 };
 
 /**

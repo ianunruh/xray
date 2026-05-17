@@ -263,16 +263,22 @@ func (s *Server) buildPreview(ctx context.Context, p *Portfolio, req *portfoliov
 	switch {
 	case req.Side == orderbookv1.Side_SIDE_BUY && !isShort:
 		if fillPrice > 0 {
+			// Long buy on margin: cash needed = full notional, but
+			// the impact against buying power is the *notional itself*
+			// since buying power already accounts for leverage. (The
+			// borrowed portion shows up as cash going negative; the
+			// equity contribution shows up as maintenance accruing.)
 			resp.BuyingPowerImpact = fillPrice * qty
 		}
-		// Acquiring at fillPrice, immediately marked at mark.
+		// Acquiring at fillPrice, immediately marked at mark. Equity
+		// shifts by the price-vs-mark spread. Long maintenance grows.
 		resp.ProjectedEquity = current.Equity + qty*(mark-fillPrice)
-		resp.ProjectedMaintenanceRequirement = current.MaintenanceRequirement
+		resp.ProjectedMaintenanceRequirement = current.MaintenanceRequirement + margin.MaintenanceForLong(mark, qty)
 	case req.Side == orderbookv1.Side_SIDE_SELL && !isShort:
 		resp.BuyingPowerImpact = 0
 		// Selling at fillPrice, releasing position marked at mark.
 		resp.ProjectedEquity = current.Equity + qty*(fillPrice-mark)
-		resp.ProjectedMaintenanceRequirement = current.MaintenanceRequirement
+		resp.ProjectedMaintenanceRequirement = current.MaintenanceRequirement - margin.MaintenanceForLong(mark, qty)
 	case req.Side == orderbookv1.Side_SIDE_SELL && isShort:
 		if fillPrice > 0 {
 			resp.BuyingPowerImpact = margin.CollateralForShortOpen(fillPrice, qty)
@@ -295,7 +301,11 @@ func (s *Server) buildPreview(ctx context.Context, p *Portfolio, req *portfoliov
 
 	resp.ProjectedMarginExcess = resp.ProjectedEquity - resp.ProjectedMaintenanceRequirement
 	resp.ProjectedInCall = resp.ProjectedMarginExcess < 0
-	resp.SufficientBuyingPower = p.CashBalance >= resp.BuyingPowerImpact
+	// Check against current buying power (which is leveraged), not
+	// against raw cash — a $5k buy is sufficient when buying power
+	// is $20k even though cash might be $10k.
+	currentBP := margin.BuyingPower(current.Equity, current.MaintenanceRequirement)
+	resp.SufficientBuyingPower = currentBP >= resp.BuyingPowerImpact
 
 	if !resp.SufficientBuyingPower {
 		resp.Warnings = append(resp.Warnings, "insufficient buying power")
@@ -340,22 +350,29 @@ func (s *Server) estimateFillPrice(ctx context.Context, req *portfoliov1.Preview
 // buildMarginSnapshot, but the reactor only needs equity, requirement,
 // breach state, and a remediation target.
 type MarginStatus struct {
-	Equity                 int64
-	MaintenanceRequirement int64
-	InCall                 bool
-	// LargestShort* identifies the short the reactor should liquidate
-	// first when remediating. Zero when no open short has a mark.
+	Equity                      int64
+	LongMaintenanceRequirement  int64
+	ShortMaintenanceRequirement int64
+	MaintenanceRequirement      int64 // sum of the two above
+	InCall                      bool
+
+	// Liquidation targets — the reactor picks whichever side has the
+	// larger market value when remediating a breach.
 	LargestShortSymbol string
 	LargestShortQty    int64
 	LargestShortMark   int64
-	// AnyMarkMissing flags that one or more shorts lack a mark; equity
-	// treats their contribution as zero, which can mask a breach.
+	LargestLongSymbol  string
+	LargestLongQty     int64
+	LargestLongMark    int64
+
+	// AnyMarkMissing flags that one or more positions lack a mark;
+	// equity treats their contribution as zero, which can mask a breach.
 	AnyMarkMissing bool
 }
 
 // ComputeMarginStatus is the lightweight version of buildMarginSnapshot
 // — no proto, no per-position breakdown, just enough for the reactor
-// to decide whether to issue/cover a call and which short to liquidate.
+// to decide whether to issue/cover a call and which position to liquidate.
 func ComputeMarginStatus(p *Portfolio, marker Marker) MarginStatus {
 	status := MarginStatus{}
 
@@ -367,8 +384,18 @@ func ComputeMarginStatus(p *Portfolio, marker Marker) MarginStatus {
 		if h.Quantity <= 0 {
 			continue
 		}
-		if mark, _, ok := lookupMark(marker, sym); ok {
-			equity += mark * h.Quantity
+		mark, _, ok := lookupMark(marker, sym)
+		if !ok {
+			status.AnyMarkMissing = true
+			continue
+		}
+		marketValue := mark * h.Quantity
+		equity += marketValue
+		status.LongMaintenanceRequirement += margin.MaintenanceForLong(mark, h.Quantity)
+		if marketValue > status.LargestLongQty*status.LargestLongMark {
+			status.LargestLongSymbol = sym
+			status.LargestLongQty = h.Quantity
+			status.LargestLongMark = mark
 		}
 	}
 
@@ -380,7 +407,7 @@ func ComputeMarginStatus(p *Portfolio, marker Marker) MarginStatus {
 		}
 		liability := mark * short.Quantity
 		equity -= liability
-		status.MaintenanceRequirement += margin.MaintenanceRequirement(mark, short.Quantity)
+		status.ShortMaintenanceRequirement += margin.MaintenanceRequirement(mark, short.Quantity)
 		if liability > status.LargestShortQty*status.LargestShortMark {
 			status.LargestShortSymbol = sym
 			status.LargestShortQty = short.Quantity
@@ -389,6 +416,7 @@ func ComputeMarginStatus(p *Portfolio, marker Marker) MarginStatus {
 	}
 
 	status.Equity = equity
+	status.MaintenanceRequirement = status.LongMaintenanceRequirement + status.ShortMaintenanceRequirement
 	status.InCall = equity < status.MaintenanceRequirement
 	return status
 }
@@ -402,10 +430,7 @@ func buildMarginSnapshot(accountID string, p *Portfolio, marker Marker) *portfol
 		CashHeld:       p.CashHeld,
 		CollateralPool: p.CollateralPool,
 		ProceedsPool:   p.ProceedsPool,
-		// CashBalance is already net of every kind of hold (long buy,
-		// short collateral, etc.) — the aggregate decrements it
-		// whenever cash is locked. So buying power is just CashBalance.
-		BuyingPower: p.CashBalance,
+		MarginLoan:     p.MarginLoan(),
 	}
 	for _, h := range p.CollateralHeldBySaga {
 		resp.CollateralHeldPreFill += h.Amount
@@ -436,6 +461,7 @@ func buildMarginSnapshot(accountID string, p *Portfolio, marker Marker) *portfol
 			info.MarketValue = mark * h.Quantity
 			info.UnrealizedPnl = (mark - avg) * h.Quantity
 			resp.LongMarketValue += info.MarketValue
+			resp.LongMaintenanceRequirement += margin.MaintenanceForLong(mark, h.Quantity)
 		} else {
 			info.MarkMissing = true
 			resp.MissingMarks = append(resp.MissingMarks, sym)
@@ -456,7 +482,7 @@ func buildMarginSnapshot(accountID string, p *Portfolio, marker Marker) *portfol
 			info.MarketValue = mark * short.Quantity
 			info.UnrealizedPnl = (short.AvgOpenPrice - mark) * short.Quantity
 			resp.ShortLiability += info.MarketValue
-			resp.MaintenanceRequirement += margin.MaintenanceRequirement(mark, short.Quantity)
+			resp.ShortMaintenanceRequirement += margin.MaintenanceRequirement(mark, short.Quantity)
 		} else {
 			info.MarkMissing = true
 			resp.MissingMarks = append(resp.MissingMarks, sym)
@@ -467,8 +493,13 @@ func buildMarginSnapshot(accountID string, p *Portfolio, marker Marker) *portfol
 	resp.Equity = resp.CashBalance + resp.CashHeld + resp.CollateralPool +
 		resp.ProceedsPool + resp.CollateralHeldPreFill +
 		resp.LongMarketValue - resp.ShortLiability
+	resp.MaintenanceRequirement = resp.LongMaintenanceRequirement + resp.ShortMaintenanceRequirement
 	resp.MarginExcess = resp.Equity - resp.MaintenanceRequirement
 	resp.MarginCall = resp.MarginExcess < 0
+	// Leveraged buying power: how much new exposure the user can add
+	// before hitting the maintenance floor. Real brokers cap at 2:1
+	// for Reg-T accounts; we use margin.BuyingPower as the policy.
+	resp.BuyingPower = margin.BuyingPower(resp.Equity, resp.MaintenanceRequirement)
 
 	return resp
 }

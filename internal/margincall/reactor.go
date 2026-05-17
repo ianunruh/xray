@@ -56,6 +56,7 @@ type Reactor struct {
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga]
 	orderbookHandler *es.Handler[*orderbook.OrderBook]
 	shorts           portfolio.ShortsTracker
+	longs            portfolio.LongsTracker
 	sagas            SagaLookup
 	marker           portfolio.Marker
 	log              *slog.Logger
@@ -80,6 +81,7 @@ func NewReactor(
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga],
 	orderbookHandler *es.Handler[*orderbook.OrderBook],
 	shorts portfolio.ShortsTracker,
+	longs portfolio.LongsTracker,
 	sagas SagaLookup,
 	marker portfolio.Marker,
 	cfg Config,
@@ -90,6 +92,7 @@ func NewReactor(
 		orderSagaHandler: orderSagaHandler,
 		orderbookHandler: orderbookHandler,
 		shorts:           shorts,
+		longs:            longs,
 		sagas:            sagas,
 		marker:           marker,
 		log:              log,
@@ -119,6 +122,12 @@ func (r *Reactor) handleOne(ctx context.Context, evt es.Event) error {
 		return r.recheckAccount(ctx, data.AccountId, evt.ID, data.Symbol, data.PricePerShare)
 	case *portfoliov1.ShortCovered:
 		return r.recheckAccount(ctx, data.AccountId, evt.ID, data.Symbol, data.CostPerShare)
+	case *portfoliov1.CashSettled:
+		// Long buy fill — may have just added margin loan.
+		return r.recheckAccount(ctx, data.AccountId, evt.ID, data.Symbol, data.CostPerShare)
+	case *portfoliov1.SharesSettled:
+		// Long sell fill — may have just paid down loan / reduced long position.
+		return r.recheckAccount(ctx, data.AccountId, evt.ID, data.Symbol, data.PricePerShare)
 	case *portfoliov1.CashDeposited:
 		// Deposits can clear an active call; recheck.
 		return r.recheckAccount(ctx, data.AccountId, evt.ID, "", 0)
@@ -134,15 +143,27 @@ func (r *Reactor) handleOne(ctx context.Context, evt es.Event) error {
 // with an open short in that symbol needs a recheck. Triggered by
 // TradeExecuted and OfficialCloseSet.
 func (r *Reactor) onMarkUpdate(ctx context.Context, symbol, triggerID string, markPrice int64) error {
-	accounts, err := r.shorts.AccountsWithShort(ctx, symbol)
+	shortAccts, err := r.shorts.AccountsWithShort(ctx, symbol)
 	if err != nil {
 		return fmt.Errorf("lookup shorts in %s: %w", symbol, err)
 	}
-	if len(accounts) == 0 {
+	longAccts, err := r.longs.AccountsWithLong(ctx, symbol)
+	if err != nil {
+		return fmt.Errorf("lookup longs in %s: %w", symbol, err)
+	}
+	// Union — same account may hold both sides; only recheck once.
+	seen := make(map[string]struct{}, len(shortAccts)+len(longAccts))
+	for _, a := range shortAccts {
+		seen[a] = struct{}{}
+	}
+	for _, a := range longAccts {
+		seen[a] = struct{}{}
+	}
+	if len(seen) == 0 {
 		return nil
 	}
 	var errs []error
-	for _, accountID := range accounts {
+	for accountID := range seen {
 		if err := r.recheckAccount(ctx, accountID, triggerID, symbol, markPrice); err != nil {
 			errs = append(errs, err)
 		}
@@ -157,6 +178,15 @@ func (r *Reactor) recheckAccount(ctx context.Context, accountID, triggerID, trig
 	}
 
 	status := portfolio.ComputeMarginStatus(p, r.marker)
+
+	// Skip if any held position lacks a mark — equity is unreliable
+	// in that state (positions contribute 0 to equity but also 0 to
+	// maintenance, which can look like a false-positive breach for
+	// margin-loan accounts). Waits for the next event to drive the
+	// recheck with full data.
+	if status.AnyMarkMissing {
+		return nil
+	}
 
 	// State transitions:
 	//   1. Not in call, becomes in call -> issue + liquidate
@@ -192,13 +222,10 @@ func (r *Reactor) recheckAccount(ctx context.Context, accountID, triggerID, trig
 		return r.coverCall(ctx, accountID, status)
 
 	case hadCall && status.InCall:
-		// Chained liquidation — only when the prior cover trade
-		// actually reduced something. Skip if no short remains
-		// (status.LargestShortQty == 0 means we've covered them all
-		// but equity is still below requirement; nothing more we can
-		// liquidate on our own). Skipped under grace too — the
-		// reconciler decides when to act.
-		if status.LargestShortQty == 0 || r.grace > 0 {
+		// Chained liquidation — only when something remains to
+		// liquidate. Skipped under grace too; the reconciler decides
+		// when to act.
+		if !hasLiquidatable(status) || r.grace > 0 {
 			return nil
 		}
 		return r.spawnLiquidation(ctx, accountID, triggerID, p.ActiveMarginCall.CallID, status)
@@ -227,7 +254,7 @@ func (r *Reactor) EvaluateGraceExpiry(ctx context.Context, accountID string, now
 	if !status.InCall {
 		return r.coverCall(ctx, accountID, status)
 	}
-	if status.LargestShortQty == 0 {
+	if !hasLiquidatable(status) {
 		return nil
 	}
 	// triggerID encodes that this liquidation came from grace
@@ -278,24 +305,52 @@ func (r *Reactor) coverCall(ctx context.Context, accountID string, status portfo
 	return nil
 }
 
-// spawnLiquidation issues a market BUY-to-cover saga for the account's
-// largest open short. SagaID is deterministic from (account, triggerID)
-// so replays produce no-ops. Returns nil if there's nothing to liquidate
-// (no open shorts with marks).
+// hasLiquidatable returns true when the account has at least one
+// open position the reactor knows how to close.
+func hasLiquidatable(status portfolio.MarginStatus) bool {
+	return status.LargestShortQty > 0 || status.LargestLongQty > 0
+}
+
+// spawnLiquidation issues a liquidation saga for whichever position
+// has the larger market value at mark — a market BUY-to-cover for a
+// short or a market SELL for a long. SagaID is deterministic from
+// (account, triggerID) so replays produce no-ops. Returns nil if
+// there's nothing to liquidate (no open positions with marks).
 func (r *Reactor) spawnLiquidation(ctx context.Context, accountID, triggerID, callID string, status portfolio.MarginStatus) error {
-	if status.LargestShortSymbol == "" || status.LargestShortQty == 0 {
+	shortMV := status.LargestShortQty * status.LargestShortMark
+	longMV := status.LargestLongQty * status.LargestLongMark
+	if shortMV == 0 && longMV == 0 {
 		return nil
 	}
+
+	var symbol string
+	var qty int64
+	var side orderbookv1.Side
+	var ps orderbookv1.PositionSide
+	if shortMV >= longMV {
+		// Cover the largest short.
+		symbol = status.LargestShortSymbol
+		qty = status.LargestShortQty
+		side = orderbookv1.Side_SIDE_BUY
+		ps = orderbookv1.PositionSide_POSITION_SIDE_SHORT
+	} else {
+		// Sell the largest long.
+		symbol = status.LargestLongSymbol
+		qty = status.LargestLongQty
+		side = orderbookv1.Side_SIDE_SELL
+		ps = orderbookv1.PositionSide_POSITION_SIDE_LONG
+	}
+
 	sagaID := fmt.Sprintf("liquidation:%s:%s", accountID, triggerID)
 	cmd := ordersaga.StartOrderSaga{
 		SagaID:       sagaID,
 		AccountID:    accountID,
-		Symbol:       status.LargestShortSymbol,
-		Side:         orderbookv1.Side_SIDE_BUY,
-		Quantity:     status.LargestShortQty,
+		Symbol:       symbol,
+		Side:         side,
+		Quantity:     qty,
 		OrderType:    orderbookv1.OrderType_ORDER_TYPE_MARKET,
 		TimeInForce:  orderbookv1.TimeInForce_TIME_IN_FORCE_IOC,
-		PositionSide: orderbookv1.PositionSide_POSITION_SIDE_SHORT,
+		PositionSide: ps,
 		CauseEventID: callID,
 		Initiator:    sagav1.Initiator_INITIATOR_MARGIN_CALL,
 	}

@@ -183,11 +183,20 @@ message GetMarginSnapshotResponse {
 
   repeated PositionMarginInfo positions = 14;
 
-  // buying_power is the cash truly available to back new orders —
-  // CashBalance after every long-buy hold, short collateral hold,
-  // and pool allocation. Distinct from equity: equity counts locked
-  // cash too (it's still yours, just earmarked).
+  // buying_power is what's available to back new orders, accounting
+  // for margin leverage: 2 * (equity - maintenance_requirement),
+  // floored at zero. With no positions, equals 2x cash.
   int64 buying_power = 15;
+
+  // margin_loan is the outstanding borrow against the broker — the
+  // negative portion of CashBalance, exposed as a positive number.
+  // Created when buys exceed cash; paid down by sells.
+  int64 margin_loan = 16;
+
+  // Maintenance requirement broken out by side. Total is the field
+  // above; this lets the UI explain where the requirement comes from.
+  int64 long_maintenance_requirement = 17;
+  int64 short_maintenance_requirement = 18;
 }
 
 // MarginCallRecord is one row in the audit log: the issued snapshot

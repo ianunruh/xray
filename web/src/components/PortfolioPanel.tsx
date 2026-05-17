@@ -427,6 +427,16 @@ export function PortfolioPanel({
                   {formatMoney(margin.marginExcess)}
                 </Text>
               </div>
+              {margin.marginLoan > 0n && (
+                <div>
+                  <Text size="xs" c="dimmed">
+                    Margin Loan
+                  </Text>
+                  <Text fw={700} c="orange">
+                    {formatMoney(margin.marginLoan)}
+                  </Text>
+                </div>
+              )}
             </>
           )}
         </Group>

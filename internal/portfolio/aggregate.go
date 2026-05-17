@@ -103,6 +103,18 @@ func NewPortfolio(id string) *Portfolio {
 	return p
 }
 
+// MarginLoan returns the outstanding broker loan, derived from
+// CashBalance going negative. Positive values mean the account owes
+// the broker. Cash buying (long buys past cash) is what creates the
+// loan; long sells and deposits pay it down naturally as CashBalance
+// climbs back toward zero.
+func (p *Portfolio) MarginLoan() int64 {
+	if p.CashBalance >= 0 {
+		return 0
+	}
+	return -p.CashBalance
+}
+
 // HasSettled reports whether the (saga, trade) pair has already settled
 // against this portfolio. Empty tradeID returns false — legacy events
 // without trade IDs bypass dedup, so callers always emit.

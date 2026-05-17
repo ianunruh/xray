@@ -34,10 +34,12 @@ func TestBuildMarginSnapshot_LongOnly(t *testing.T) {
 	assert.Equal(t, int64(50_000_000), resp.CashBalance)
 	assert.Equal(t, int64(160_000_000), resp.LongMarketValue) // 100 * 1.6M
 	assert.Equal(t, int64(0), resp.ShortLiability)
-	assert.Equal(t, int64(0), resp.MaintenanceRequirement)
+	// Long maintenance = 25% * 160M = 40M.
+	assert.Equal(t, int64(40_000_000), resp.MaintenanceRequirement)
+	assert.Equal(t, int64(40_000_000), resp.LongMaintenanceRequirement)
 	// Equity = 50M cash + 160M long MV = 210M.
 	assert.Equal(t, int64(210_000_000), resp.Equity)
-	assert.Equal(t, int64(210_000_000), resp.MarginExcess)
+	assert.Equal(t, int64(170_000_000), resp.MarginExcess) // 210 - 40
 	assert.False(t, resp.MarginCall)
 
 	require.Len(t, resp.Positions, 1)
@@ -120,9 +122,13 @@ func TestBuildMarginSnapshot_Mixed(t *testing.T) {
 	}}
 	resp := buildMarginSnapshot("acct-1", p, marker)
 
-	assert.Equal(t, int64(30_000_000), resp.LongMarketValue)   // 50 * 600k
-	assert.Equal(t, int64(140_000_000), resp.ShortLiability)   // 100 * 1.4M
-	assert.Equal(t, int64(42_000_000), resp.MaintenanceRequirement)
+	assert.Equal(t, int64(30_000_000), resp.LongMarketValue) // 50 * 600k
+	assert.Equal(t, int64(140_000_000), resp.ShortLiability) // 100 * 1.4M
+	// Long maint = 25% * 30M = 7.5M; short maint = 30% * 140M = 42M;
+	// total = 49.5M.
+	assert.Equal(t, int64(7_500_000), resp.LongMaintenanceRequirement)
+	assert.Equal(t, int64(42_000_000), resp.ShortMaintenanceRequirement)
+	assert.Equal(t, int64(49_500_000), resp.MaintenanceRequirement)
 
 	// Equity = 100M + 75M coll + 150M proceeds + 30M long - 140M short = 215M.
 	assert.Equal(t, int64(215_000_000), resp.Equity)
@@ -157,6 +163,52 @@ func TestBuildMarginSnapshot_MissingMarks(t *testing.T) {
 		}
 	}
 	require.NotNil(t, nvda, "NVDA position present in response")
+}
+
+func TestBuildMarginSnapshot_LongOnMargin(t *testing.T) {
+	// Account deposited $50k cash, bought $100k of stock on margin.
+	// Cash went negative by $50k (the loan); long MV = $100k.
+	p := NewPortfolio(AggregateID("acct-1"))
+	p.CashBalance = -50_000_000
+	p.Holdings["AAPL"] = &Holding{Quantity: 100, TotalCost: 1_000_000_000}
+
+	marker := fakeMarker{prices: map[string]int64{"AAPL": 10_000_000}}
+	resp := buildMarginSnapshot("acct-1", p, marker)
+
+	assert.Equal(t, int64(50_000_000), resp.MarginLoan)
+	assert.Equal(t, int64(1_000_000_000), resp.LongMarketValue)
+	// Long maintenance = 25% * 1B = 250M.
+	assert.Equal(t, int64(250_000_000), resp.LongMaintenanceRequirement)
+	assert.Equal(t, int64(250_000_000), resp.MaintenanceRequirement)
+	// Equity = -50M cash + 1B long MV = 950M.
+	assert.Equal(t, int64(950_000_000), resp.Equity)
+	assert.Equal(t, int64(700_000_000), resp.MarginExcess)
+	assert.False(t, resp.MarginCall)
+	// Buying power = 2 * 700M = 1.4B.
+	assert.Equal(t, int64(1_400_000_000), resp.BuyingPower)
+}
+
+func TestBuildMarginSnapshot_LongOnMargin_Breach(t *testing.T) {
+	// Same as above but the stock fell to $4. Long MV = $400M;
+	// equity = -50M + 400M = 350M. Maintenance = 25% * 400M = 100M.
+	// Excess = 250M > 0, NOT breached at this level.
+	// Let me push further: stock at $0.50 → MV = $50M.
+	// Equity = -50M + 50M = 0. Maint = 25% * 50M = 12.5M.
+	// Excess = -12.5M → breach.
+	p := NewPortfolio(AggregateID("acct-1"))
+	p.CashBalance = -50_000_000
+	p.Holdings["AAPL"] = &Holding{Quantity: 100, TotalCost: 1_000_000_000}
+
+	marker := fakeMarker{prices: map[string]int64{"AAPL": 500_000}}
+	resp := buildMarginSnapshot("acct-1", p, marker)
+
+	assert.Equal(t, int64(50_000_000), resp.MarginLoan)
+	assert.Equal(t, int64(50_000_000), resp.LongMarketValue)
+	assert.Equal(t, int64(12_500_000), resp.MaintenanceRequirement)
+	assert.Equal(t, int64(0), resp.Equity) // -50M + 50M
+	assert.Equal(t, int64(-12_500_000), resp.MarginExcess)
+	assert.True(t, resp.MarginCall, "long-on-margin breach must fire a call")
+	assert.Equal(t, int64(0), resp.BuyingPower)
 }
 
 func TestBuildMarginSnapshot_PreFillCollateralCounts(t *testing.T) {

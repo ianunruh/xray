@@ -39,6 +39,7 @@ type integrationEnv struct {
 
 	marks       *orderbook.MarkProjection
 	shorts      *portfolio.InMemoryShortsBySymbol
+	longs       *portfolio.InMemoryLongsBySymbol
 	activeCalls *portfolio.InMemoryActiveMarginCalls
 
 	orderSagaReactor *ordersaga.Reactor
@@ -81,6 +82,7 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 
 	marks := orderbook.NewMarkProjection()
 	shorts := portfolio.NewInMemoryShortsBySymbol()
+	longs := portfolio.NewInMemoryLongsBySymbol()
 	activeCalls := portfolio.NewInMemoryActiveMarginCalls()
 	sagaLookup := &stubSagaLookup{}
 
@@ -90,7 +92,7 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 	// Grace=0 for the integration test — we want to assert the
 	// immediate-liquidation path end-to-end without driving a clock.
 	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler,
-		shorts, sagaLookup, marks, margincall.Config{Grace: 0}, log)
+		shorts, longs, sagaLookup, marks, margincall.Config{Grace: 0}, log)
 
 	return &integrationEnv{
 		ctx:              ctx,
@@ -102,6 +104,7 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 		bracketHandler:   bracketHandler,
 		marks:            marks,
 		shorts:           shorts,
+		longs:            longs,
 		activeCalls:      activeCalls,
 		orderSagaReactor: orderSagaReactor,
 		ocoSagaReactor:   ocoSagaReactor,
@@ -122,6 +125,7 @@ func (e *integrationEnv) drain() {
 		// Projections first (in-memory state the reactors read).
 		_ = e.marks.HandleEvents(e.ctx, batch)
 		_ = e.shorts.HandleEvents(e.ctx, batch)
+		_ = e.longs.HandleEvents(e.ctx, batch)
 		_ = e.activeCalls.HandleEvents(e.ctx, batch)
 
 		// Reactors (order matters less than projections — each acts

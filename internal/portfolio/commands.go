@@ -109,9 +109,12 @@ func ExecuteHoldCash(p *Portfolio, cmd HoldCash) ([]es.Event, error) {
 	if s, ok := p.ShortPositions[cmd.Symbol]; ok && s.Quantity > 0 {
 		return nil, ErrLongHoldsShort
 	}
-	if p.CashBalance < cmd.Amount {
-		return nil, ErrInsufficientFunds
-	}
+	// Buying on margin is allowed: CashBalance can go negative, with
+	// the deficit representing a broker loan. The saga reactor +
+	// PreviewOrderImpact + margin reactor are the gatekeepers — they
+	// know the marks and can compute equity / maintenance. The
+	// aggregate trusts the caller; over-leverage just triggers a
+	// margin call on the next mark update.
 
 	now := time.Now()
 	evt := es.Event{
