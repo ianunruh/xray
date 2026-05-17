@@ -391,6 +391,24 @@ export function OrderForm({
                 )}
               </Text>
             </Group>
+            {side === "BUY" &&
+              positionSide === "SHORT" &&
+              preview.estimatedFillPrice > 0n &&
+              qtyNum > 0 && (
+              <Group justify="space-between" gap="xs">
+                <Text size="xs" c="dimmed">
+                  Cover cost
+                </Text>
+                <Text size="xs" fw={600}>
+                  {formatMoney(
+                    preview.estimatedFillPrice * BigInt(qtyNum),
+                  )}
+                  <Text component="span" size="xs" c="dimmed" ml={6}>
+                    (paid from short pool)
+                  </Text>
+                </Text>
+              </Group>
+            )}
             {margin && (
               <Group justify="space-between" gap="xs">
                 <Text size="xs" c="dimmed">
