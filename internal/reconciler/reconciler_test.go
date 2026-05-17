@@ -105,7 +105,7 @@ func setupEnv(t *testing.T) *env {
 		return ocosaga.NewOCOSaga(id)
 	}, log).WithPublisher(pub)
 
-	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
+	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, nil, log)
 	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, ocoSagaHandler, obHandler, log)
 	ocoSagaReactor := ocosaga.NewReactor(ocoSagaHandler, portfolioHandler, obHandler, log)
 

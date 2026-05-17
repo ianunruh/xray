@@ -235,114 +235,44 @@ func (s *Server) PreviewOrderImpact(ctx context.Context, req *connect.Request[po
 		s.log.Error("PreviewOrderImpact load failed", "account_id", msg.AccountId, "error", err)
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	resp := s.buildPreview(ctx, p, msg)
-	return connect.NewResponse(resp), nil
+	book := s.loadBookForPreview(ctx, msg.Symbol, msg.OrderType)
+	impact := ComputeOrderImpact(ctx, p, s.marker, book, OrderPlan{
+		Symbol:       msg.Symbol,
+		Side:         msg.Side,
+		PositionSide: msg.PositionSide,
+		OrderType:    msg.OrderType,
+		Price:        msg.Price,
+		Quantity:     msg.Quantity,
+	})
+	return connect.NewResponse(&portfoliov1.PreviewOrderImpactResponse{
+		BuyingPowerImpact:               impact.BuyingPowerImpact,
+		ProjectedEquity:                 impact.ProjectedEquity,
+		ProjectedMaintenanceRequirement: impact.ProjectedMaintenanceRequirement,
+		ProjectedMarginExcess:           impact.ProjectedMarginExcess,
+		ProjectedInCall:                 impact.ProjectedInCall,
+		SufficientBuyingPower:           impact.SufficientBuyingPower,
+		EstimatedFillPrice:              impact.EstimatedFillPrice,
+		Warnings:                        impact.Warnings,
+	}), nil
 }
 
-// buildPreview computes deltas directly off the order parameters
-// rather than cloning the aggregate — same result, less plumbing.
-func (s *Server) buildPreview(ctx context.Context, p *Portfolio, req *portfoliov1.PreviewOrderImpactRequest) *portfoliov1.PreviewOrderImpactResponse {
-	resp := &portfoliov1.PreviewOrderImpactResponse{}
-	current := ComputeMarginStatus(p, s.marker)
-
-	fillPrice, fillWarn := s.estimateFillPrice(ctx, req)
-	if fillWarn != "" {
-		resp.Warnings = append(resp.Warnings, fillWarn)
-	}
-	resp.EstimatedFillPrice = fillPrice
-
-	// Use current mark if available; fall back to fill price as the
-	// "this is the only price signal we have" assumption.
-	mark, _, hasMark := lookupMark(s.marker, req.Symbol)
-	if !hasMark {
-		mark = fillPrice
-	}
-
-	qty := req.Quantity
-	isShort := req.PositionSide == orderbookv1.PositionSide_POSITION_SIDE_SHORT
-	switch {
-	case req.Side == orderbookv1.Side_SIDE_BUY && !isShort:
-		if fillPrice > 0 {
-			// Long buy on margin: cash needed = full notional, but
-			// the impact against buying power is the *notional itself*
-			// since buying power already accounts for leverage. (The
-			// borrowed portion shows up as cash going negative; the
-			// equity contribution shows up as maintenance accruing.)
-			resp.BuyingPowerImpact = fillPrice * qty
-		}
-		// Acquiring at fillPrice, immediately marked at mark. Equity
-		// shifts by the price-vs-mark spread. Long maintenance grows.
-		resp.ProjectedEquity = current.Equity + qty*(mark-fillPrice)
-		resp.ProjectedMaintenanceRequirement = current.MaintenanceRequirement + margin.MaintenanceForLong(mark, qty)
-	case req.Side == orderbookv1.Side_SIDE_SELL && !isShort:
-		resp.BuyingPowerImpact = 0
-		// Selling at fillPrice, releasing position marked at mark.
-		resp.ProjectedEquity = current.Equity + qty*(fillPrice-mark)
-		resp.ProjectedMaintenanceRequirement = current.MaintenanceRequirement - margin.MaintenanceForLong(mark, qty)
-	case req.Side == orderbookv1.Side_SIDE_SELL && isShort:
-		if fillPrice > 0 {
-			resp.BuyingPowerImpact = margin.CollateralForShortOpen(fillPrice, qty)
-		}
-		resp.ProjectedEquity = current.Equity + qty*(fillPrice-mark)
-		resp.ProjectedMaintenanceRequirement = current.MaintenanceRequirement + margin.MaintenanceRequirement(mark, qty)
-	case req.Side == orderbookv1.Side_SIDE_BUY && isShort:
-		resp.BuyingPowerImpact = 0
-		short := p.ShortPositions[req.Symbol]
-		if short != nil {
-			// Realized PnL from covering at fillPrice vs avg open.
-			resp.ProjectedEquity = current.Equity + qty*(short.AvgOpenPrice-fillPrice)
-			resp.ProjectedMaintenanceRequirement = current.MaintenanceRequirement - margin.MaintenanceRequirement(mark, qty)
-		} else {
-			resp.Warnings = append(resp.Warnings, "no open short in this symbol to cover")
-			resp.ProjectedEquity = current.Equity
-			resp.ProjectedMaintenanceRequirement = current.MaintenanceRequirement
-		}
-	}
-
-	resp.ProjectedMarginExcess = resp.ProjectedEquity - resp.ProjectedMaintenanceRequirement
-	resp.ProjectedInCall = resp.ProjectedMarginExcess < 0
-	// Check against current buying power (which is leveraged), not
-	// against raw cash — a $5k buy is sufficient when buying power
-	// is $20k even though cash might be $10k.
-	currentBP := margin.BuyingPower(current.Equity, current.MaintenanceRequirement)
-	resp.SufficientBuyingPower = currentBP >= resp.BuyingPowerImpact
-
-	if !resp.SufficientBuyingPower {
-		resp.Warnings = append(resp.Warnings, "insufficient buying power")
-	}
-	if resp.ProjectedInCall && !current.InCall {
-		resp.Warnings = append(resp.Warnings, "this order would put the account in margin call")
-	}
-	return resp
-}
-
-// estimateFillPrice returns the price the server expects this order
-// to clear at. For limit orders, that's the typed price. For market
-// orders, walk the relevant side of the book and average. Returns 0
-// (with a warning) when there's no liquidity to walk.
-func (s *Server) estimateFillPrice(ctx context.Context, req *portfoliov1.PreviewOrderImpactRequest) (int64, string) {
-	if req.OrderType != orderbookv1.OrderType_ORDER_TYPE_MARKET {
-		return req.Price, ""
+// loadBookForPreview returns nil for limit orders (no book needed),
+// otherwise loads the orderbook aggregate so ComputeOrderImpact can
+// walk it. A nil return on a market order falls back to the typed
+// price with a warning.
+func (s *Server) loadBookForPreview(ctx context.Context, symbol string, orderType orderbookv1.OrderType) BookEstimator {
+	if orderType != orderbookv1.OrderType_ORDER_TYPE_MARKET {
+		return nil
 	}
 	if s.orderbookHandler == nil {
-		return req.Price, "market order preview needs orderbook access"
+		return nil
 	}
-	book, err := s.orderbookHandler.Load(ctx, orderbook.AggregateID(req.Symbol))
+	book, err := s.orderbookHandler.Load(ctx, orderbook.AggregateID(symbol))
 	if err != nil {
-		return 0, "failed to load orderbook for preview"
+		s.log.Warn("preview: failed to load orderbook", "symbol", symbol, "error", err)
+		return nil
 	}
-	if req.Side == orderbookv1.Side_SIDE_BUY {
-		cost, ok := book.EstimateMarketBuyCost(req.Quantity)
-		if !ok {
-			return 0, "no ask liquidity for market buy"
-		}
-		return cost / req.Quantity, ""
-	}
-	proceeds, ok := book.EstimateMarketSellProceeds(req.Quantity)
-	if !ok {
-		return 0, "no bid liquidity for market sell"
-	}
-	return proceeds / req.Quantity, ""
+	return book
 }
 
 // MarginStatus is the slim view of the margin computation used by

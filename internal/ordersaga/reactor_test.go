@@ -76,7 +76,7 @@ func setupReactorTest(t *testing.T) *reactorTestEnv {
 		return portfolio.NewPortfolio(id)
 	}, slog.Default()).WithPublisher(pub)
 
-	reactor := ordersaga.NewReactor(sagaHandler, portfolioHandler, obHandler, slog.Default())
+	reactor := ordersaga.NewReactor(sagaHandler, portfolioHandler, obHandler, nil, slog.Default())
 
 	return &reactorTestEnv{
 		ctx:              ctx,
@@ -223,7 +223,7 @@ func TestReactor_StatelessReactor_FreshInstanceHandlesMidLifecycleEvents(t *test
 	require.Equal(t, ordersaga.OrderPlaced, loadSaga(t, env, "saga-1").Status)
 
 	// "Restart" the reactor — fresh instance with no in-memory state.
-	env.reactor = ordersaga.NewReactor(env.sagaHandler, env.portfolioHandler, env.obHandler, slog.Default())
+	env.reactor = ordersaga.NewReactor(env.sagaHandler, env.portfolioHandler, env.obHandler, nil, slog.Default())
 
 	// Fill the remaining 40; the fresh reactor must settle and complete.
 	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1500000, 40)

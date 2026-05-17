@@ -86,7 +86,7 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 	activeCalls := portfolio.NewInMemoryActiveMarginCalls()
 	sagaLookup := &stubSagaLookup{}
 
-	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
+	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, nil, log)
 	ocoSagaReactor := ocosaga.NewReactor(ocoSagaHandler, portfolioHandler, obHandler, log)
 	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, ocoSagaHandler, obHandler, log)
 	// Grace=0 for the integration test — we want to assert the

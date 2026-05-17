@@ -31,6 +31,7 @@ type Server struct {
 	ocoSagaHandler   *es.Handler[*ocosaga.OCOSaga]
 	orderbookHandler *es.Handler[*orderbook.OrderBook]
 	portfolioHandler *es.Handler[*portfolio.Portfolio]
+	marker           portfolio.Marker
 	projection       *PgProjection
 	log              *slog.Logger
 }
@@ -41,6 +42,7 @@ func NewServer(
 	ocoSagaHandler *es.Handler[*ocosaga.OCOSaga],
 	orderbookHandler *es.Handler[*orderbook.OrderBook],
 	portfolioHandler *es.Handler[*portfolio.Portfolio],
+	marker portfolio.Marker,
 	projection *PgProjection,
 	log *slog.Logger,
 ) *Server {
@@ -50,6 +52,7 @@ func NewServer(
 		ocoSagaHandler:   ocoSagaHandler,
 		orderbookHandler: orderbookHandler,
 		portfolioHandler: portfolioHandler,
+		marker:           marker,
 		projection:       projection,
 		log:              log,
 	}
@@ -115,6 +118,34 @@ func (s *Server) placeOCO(ctx context.Context, accountID string, plan *sagav1.OC
 	return sagaID, nil
 }
 
+// guardBuyingPower rejects an order at submit time when it would
+// require more buying power than the account has. Mirrors the
+// PreviewOrderImpact computation so the UI's preview and the
+// server's rejection use the same math. Reducing-exposure orders
+// (impact = 0) always pass.
+func (s *Server) guardBuyingPower(ctx context.Context, accountID string, plan portfolio.OrderPlan) error {
+	p, err := s.portfolioHandler.Load(ctx, portfolio.AggregateID(accountID))
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("load portfolio: %w", err))
+	}
+	var book portfolio.BookEstimator
+	if plan.OrderType == orderbookv1.OrderType_ORDER_TYPE_MARKET && s.orderbookHandler != nil {
+		b, err := s.orderbookHandler.Load(ctx, orderbook.AggregateID(plan.Symbol))
+		if err == nil {
+			book = b
+		}
+	}
+	impact := portfolio.ComputeOrderImpact(ctx, p, s.marker, book, plan)
+	if !impact.SufficientBuyingPower {
+		return connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("insufficient buying power: order would use %d, available %d",
+				impact.BuyingPowerImpact,
+				p.CashBalance), // user-facing context; exact BP can also be computed but cash is clearer
+		)
+	}
+	return nil
+}
+
 // guardMarginCall blocks user-initiated orders that would grow
 // exposure (BUY+LONG or SELL+SHORT) while the account has an active
 // margin call. Reducing-exposure orders pass through — the user
@@ -138,6 +169,16 @@ func (s *Server) guardMarginCall(ctx context.Context, accountID string, side ord
 
 func (s *Server) placeSingleOrder(ctx context.Context, accountID string, plan *sagav1.SingleOrderPlan) (string, error) {
 	if err := s.guardMarginCall(ctx, accountID, plan.Side, plan.PositionSide); err != nil {
+		return "", err
+	}
+	if err := s.guardBuyingPower(ctx, accountID, portfolio.OrderPlan{
+		Symbol:       plan.Symbol,
+		Side:         plan.Side,
+		PositionSide: plan.PositionSide,
+		OrderType:    plan.OrderType,
+		Price:        plan.Price,
+		Quantity:     plan.Quantity,
+	}); err != nil {
 		return "", err
 	}
 	sagaID := ordersaga.NewSagaID()
@@ -172,6 +213,18 @@ func (s *Server) placeBracket(ctx context.Context, accountID string, plan *sagav
 		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("entry_quantity must be positive"))
 	}
 	if err := s.guardMarginCall(ctx, accountID, plan.EntrySide, plan.PositionSide); err != nil {
+		return "", err
+	}
+	// Bracket's entry is the cash-consuming leg; check buying power
+	// against that as a limit order (brackets are always limit entries).
+	if err := s.guardBuyingPower(ctx, accountID, portfolio.OrderPlan{
+		Symbol:       plan.Symbol,
+		Side:         plan.EntrySide,
+		PositionSide: plan.PositionSide,
+		OrderType:    orderbookv1.OrderType_ORDER_TYPE_LIMIT,
+		Price:        plan.EntryPrice,
+		Quantity:     plan.EntryQuantity,
+	}); err != nil {
 		return "", err
 	}
 

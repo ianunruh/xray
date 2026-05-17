@@ -25,6 +25,7 @@ type Reactor struct {
 	sagaHandler      *es.Handler[*OrderSaga]
 	portfolioHandler *es.Handler[*portfolio.Portfolio]
 	orderbookHandler *es.Handler[*orderbook.OrderBook]
+	marker           portfolio.Marker
 	log              *slog.Logger
 }
 
@@ -32,12 +33,14 @@ func NewReactor(
 	sagaHandler *es.Handler[*OrderSaga],
 	portfolioHandler *es.Handler[*portfolio.Portfolio],
 	orderbookHandler *es.Handler[*orderbook.OrderBook],
+	marker portfolio.Marker,
 	log *slog.Logger,
 ) *Reactor {
 	return &Reactor{
 		sagaHandler:      sagaHandler,
 		portfolioHandler: portfolioHandler,
 		orderbookHandler: orderbookHandler,
+		marker:           marker,
 		log:              log,
 	}
 }
@@ -107,6 +110,34 @@ func (r *Reactor) holdResources(ctx context.Context, sagaID string) error {
 		if p.ActiveMarginCall != nil {
 			return r.emitActionFailed(ctx, sagaID, "in_margin_call",
 				"account in margin call; cannot add exposure")
+		}
+
+		// Defensive over-leverage gate. sagasvc.Place enforces this at
+		// submit time, but state can drift between Place and here
+		// (concurrent fills, mark moves). If the order would now
+		// exceed buying power, fail it cleanly instead of compounding
+		// the breach. Marker can be nil in tests that don't exercise
+		// the gate — skip in that case.
+		if r.marker != nil {
+			plan := portfolio.OrderPlan{
+				Symbol:       saga.Symbol,
+				Side:         orderbook.SideToProto(saga.Side),
+				PositionSide: saga.PositionSide,
+				OrderType:    orderbook.OrderTypeToProto(saga.OrderType),
+				Price:        saga.Price,
+				Quantity:     saga.Quantity,
+			}
+			var book portfolio.BookEstimator
+			if saga.OrderType == orderbook.Market {
+				if b, err := r.orderbookHandler.Load(ctx, orderbook.AggregateID(saga.Symbol)); err == nil {
+					book = b
+				}
+			}
+			impact := portfolio.ComputeOrderImpact(ctx, p, r.marker, book, plan)
+			if !impact.SufficientBuyingPower {
+				return r.emitActionFailed(ctx, sagaID, "insufficient_buying_power",
+					"order exceeds available buying power")
+			}
 		}
 	}
 
