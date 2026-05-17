@@ -6,8 +6,8 @@ export default defineConfig({
   server: {
     proxy: {
       "/orderbook.v1.OrderBookService": "http://localhost:8080",
-      "/orderbook.v1.SagaService": "http://localhost:8080",
       "/portfolio.v1.PortfolioService": "http://localhost:8080",
+      "/saga.v1.SagaService": "http://localhost:8080",
       "/diagnostics.v1.DiagnosticsService": "http://localhost:8080",
     },
   },
