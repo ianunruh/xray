@@ -74,6 +74,7 @@ type OCOSaga struct {
 	SettledQty        int64
 	Status            Status
 	ActionAttempts    int
+	PositionSide      orderbookv1.PositionSide
 }
 
 func NewOCOSaga(id string) *OCOSaga {
@@ -115,6 +116,7 @@ func (s *OCOSaga) applyStarted(data *orderbookv1.OCOSagaStarted) {
 	s.Quantity = data.Quantity
 	s.TakeProfitPrice = data.TakeProfitPrice
 	s.StopLossPrice = data.StopLossPrice
+	s.PositionSide = data.PositionSide
 	s.Status = Started
 }
 

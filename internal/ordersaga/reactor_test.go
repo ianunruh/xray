@@ -808,3 +808,179 @@ func TestReactor_CausationChain_EndToEnd(t *testing.T) {
 		}
 	}
 }
+
+// --- Short-selling tests ---
+
+// startShortOpenSaga starts a SELL+SHORT (sell-to-open) limit-order saga.
+func startShortOpenSaga(t *testing.T, env *reactorTestEnv, sagaID, accountID, symbol string, price, qty int64) {
+	t.Helper()
+	cmd := ordersaga.StartOrderSaga{
+		SagaID:       sagaID,
+		AccountID:    accountID,
+		Symbol:       symbol,
+		Side:         orderbookv1.Side_SIDE_SELL,
+		Price:        price,
+		Quantity:     qty,
+		OrderType:    orderbookv1.OrderType_ORDER_TYPE_LIMIT,
+		TimeInForce:  orderbookv1.TimeInForce_TIME_IN_FORCE_GTC,
+		PositionSide: orderbookv1.PositionSide_POSITION_SIDE_SHORT,
+	}
+	require.NoError(t, env.sagaHandler.Handle(env.ctx, cmd, func(s *ordersaga.OrderSaga) ([]es.Event, error) {
+		return ordersaga.ExecuteStartOrderSaga(s, cmd)
+	}))
+}
+
+// startShortCoverSaga starts a BUY+SHORT (buy-to-cover) limit-order saga.
+func startShortCoverSaga(t *testing.T, env *reactorTestEnv, sagaID, accountID, symbol string, price, qty int64) {
+	t.Helper()
+	cmd := ordersaga.StartOrderSaga{
+		SagaID:       sagaID,
+		AccountID:    accountID,
+		Symbol:       symbol,
+		Side:         orderbookv1.Side_SIDE_BUY,
+		Price:        price,
+		Quantity:     qty,
+		OrderType:    orderbookv1.OrderType_ORDER_TYPE_LIMIT,
+		TimeInForce:  orderbookv1.TimeInForce_TIME_IN_FORCE_GTC,
+		PositionSide: orderbookv1.PositionSide_POSITION_SIDE_SHORT,
+	}
+	require.NoError(t, env.sagaHandler.Handle(env.ctx, cmd, func(s *ordersaga.OrderSaga) ([]es.Event, error) {
+		return ordersaga.ExecuteStartOrderSaga(s, cmd)
+	}))
+}
+
+func TestReactor_ShortOpen_Limit_FullLifecycle(t *testing.T) {
+	env := setupReactorTest(t)
+
+	// Deposit $10000. A 100-share short at $150 has $15000 notional;
+	// 50% margin = $7500 collateral.
+	depositCash(t, env, "acct-1", 100000000)
+
+	// Resting bid for the short to lift.
+	placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1500000, 100)
+	env.pub.events = nil
+
+	startShortOpenSaga(t, env, "saga-short", "acct-1", "AAPL", 1500000, 100)
+	env.flush()
+
+	s := loadSaga(t, env, "saga-short")
+	assert.Equal(t, ordersaga.Completed, s.Status)
+	assert.Equal(t, int64(100), s.FilledQty)
+
+	p := loadPortfolio(t, env, "acct-1")
+	short := p.ShortPositions["AAPL"]
+	require.NotNil(t, short)
+	assert.Equal(t, int64(100), short.Quantity)
+	assert.Equal(t, int64(1500000), short.AvgOpenPrice)
+	assert.Equal(t, int64(150000000), short.ProceedsHeld)
+	assert.Equal(t, int64(75000000), short.CollateralHeld)
+	assert.Empty(t, p.CollateralHeldBySaga)
+	// $10000 - $7500 collateral = $2500 cash.
+	assert.Equal(t, int64(25000000), p.CashBalance)
+}
+
+func TestReactor_ShortOpen_InsufficientCollateral_SagaFails(t *testing.T) {
+	env := setupReactorTest(t)
+
+	// Deposit only $100 — far too little for collateral on a 100-share short at $150.
+	depositCash(t, env, "acct-1", 1000000)
+
+	startShortOpenSaga(t, env, "saga-short", "acct-1", "AAPL", 1500000, 100)
+	env.flush()
+
+	s := loadSaga(t, env, "saga-short")
+	assert.Equal(t, ordersaga.Failed, s.Status)
+}
+
+func TestReactor_ShortCover_Profit_FullLifecycle(t *testing.T) {
+	env := setupReactorTest(t)
+
+	depositCash(t, env, "acct-1", 100000000)
+	placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1500000, 100)
+	env.pub.events = nil
+	startShortOpenSaga(t, env, "saga-short", "acct-1", "AAPL", 1500000, 100)
+	env.flush()
+
+	// Now cover at $120 (price dropped — profit).
+	placeLimitOrder(t, env, "AAPL", orderbook.Sell, 1200000, 100)
+	env.pub.events = nil
+	startShortCoverSaga(t, env, "saga-cover", "acct-1", "AAPL", 1200000, 100)
+	env.flush()
+
+	s := loadSaga(t, env, "saga-cover")
+	assert.Equal(t, ordersaga.Completed, s.Status)
+
+	p := loadPortfolio(t, env, "acct-1")
+	assert.Empty(t, p.ShortPositions)
+	// Realized PnL = (1500000 - 1200000) * 100 = 30M.
+	// Final cash = $10000 deposit + $3000 profit = $13000.
+	assert.Equal(t, int64(130000000), p.CashBalance)
+}
+
+func TestReactor_ShortCover_RefusedWithoutShort(t *testing.T) {
+	env := setupReactorTest(t)
+
+	// No short open — try to cover anyway.
+	depositCash(t, env, "acct-1", 100000000)
+	startShortCoverSaga(t, env, "saga-cover", "acct-1", "AAPL", 1500000, 100)
+	env.flush()
+
+	s := loadSaga(t, env, "saga-cover")
+	assert.Equal(t, ordersaga.Failed, s.Status)
+}
+
+func TestReactor_ShortOpen_Cancelled_CollateralReleased(t *testing.T) {
+	env := setupReactorTest(t)
+
+	depositCash(t, env, "acct-1", 100000000)
+
+	// Start the saga but don't seed bid liquidity — it'll rest as an ask.
+	startShortOpenSaga(t, env, "saga-short", "acct-1", "AAPL", 1500000, 100)
+	env.flush()
+
+	// Cancel the resting order.
+	orderID := ordersaga.OrderID("saga-short")
+	cancelCmd := orderbook.CancelOrder{Symbol: "AAPL", OrderID: orderID}
+	require.NoError(t, env.obHandler.Handle(env.ctx, cancelCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecuteCancelOrder(book, cancelCmd)
+	}))
+	env.flush()
+
+	s := loadSaga(t, env, "saga-short")
+	assert.Equal(t, ordersaga.Failed, s.Status)
+
+	p := loadPortfolio(t, env, "acct-1")
+	assert.Empty(t, p.CollateralHeldBySaga)
+	assert.Equal(t, int64(100000000), p.CashBalance) // collateral fully returned
+}
+
+func TestReactor_ShortOpen_Market_BidLiquidity(t *testing.T) {
+	env := setupReactorTest(t)
+
+	depositCash(t, env, "acct-1", 100000000)
+
+	// Seed bid liquidity for the market short to hit.
+	placeLimitOrder(t, env, "AAPL", orderbook.Buy, 1500000, 100)
+	env.pub.events = nil
+
+	cmd := ordersaga.StartOrderSaga{
+		SagaID:       "saga-mshort",
+		AccountID:    "acct-1",
+		Symbol:       "AAPL",
+		Side:         orderbookv1.Side_SIDE_SELL,
+		Quantity:     100,
+		OrderType:    orderbookv1.OrderType_ORDER_TYPE_MARKET,
+		TimeInForce:  orderbookv1.TimeInForce_TIME_IN_FORCE_IOC,
+		PositionSide: orderbookv1.PositionSide_POSITION_SIDE_SHORT,
+	}
+	require.NoError(t, env.sagaHandler.Handle(env.ctx, cmd, func(s *ordersaga.OrderSaga) ([]es.Event, error) {
+		return ordersaga.ExecuteStartOrderSaga(s, cmd)
+	}))
+	env.flush()
+
+	s := loadSaga(t, env, "saga-mshort")
+	assert.Equal(t, ordersaga.Completed, s.Status)
+	p := loadPortfolio(t, env, "acct-1")
+	require.NotNil(t, p.ShortPositions["AAPL"])
+	assert.Equal(t, int64(100), p.ShortPositions["AAPL"].Quantity)
+}

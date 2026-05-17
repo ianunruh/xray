@@ -6,6 +6,7 @@ option go_package = "github.com/ianunruh/xray/gen/portfolio/v1;portfoliov1";
 
 import "google/protobuf/timestamp.proto";
 import "orderbook/v1/events.proto";
+import "saga/v1/saga.proto";
 
 // Portfolio events — stored under aggregate ID "portfolio:{account_id}".
 
@@ -26,6 +27,9 @@ message CashHeld {
   string order_saga_id = 2;
   int64 amount = 3;
   google.protobuf.Timestamp held_at = 4;
+  // Symbol the long-buy hold is for. Used by the aggregate to enforce
+  // the "no long position while short in symbol" rule at hold time.
+  string symbol = 5;
 }
 
 message CashReleased {
@@ -93,6 +97,86 @@ message SharesSettled {
   string trade_id = 8;
 }
 
+// --- Short-selling events ---
+
+// CollateralHeld locks cash above-and-beyond the eventual sale proceeds
+// as collateral against a pending short-open saga. The hold amount is
+// pre-computed by the caller from policy (e.g. 50% of notional under a
+// Reg-T-style rule) so the aggregate stays policy-agnostic.
+message CollateralHeld {
+  string account_id = 1;
+  string order_saga_id = 2;
+  string symbol = 3;
+  int64 quantity = 4;
+  int64 amount = 5;
+  google.protobuf.Timestamp held_at = 6;
+}
+
+// CollateralReleased returns a pre-fill collateral hold to CashBalance,
+// e.g. when the short-open saga aborts before the sell-to-open executes.
+message CollateralReleased {
+  string account_id = 1;
+  string order_saga_id = 2;
+  int64 amount = 3;
+  google.protobuf.Timestamp released_at = 4;
+}
+
+// ShortOpened settles a sell-to-open fill. Consumes the saga's collateral
+// hold and moves both proceeds_held (sale proceeds) and collateral_held
+// (extra margin) into the per-symbol short position's locked pools.
+// new_avg_open_price is computed by the command — weighted across prior
+// opens of the same short — so the applier is a pure assignment.
+message ShortOpened {
+  string account_id = 1;
+  string order_saga_id = 2;
+  string trade_id = 3;
+  string symbol = 4;
+  int64 quantity = 5;
+  int64 price_per_share = 6;
+  int64 proceeds_held = 7;
+  int64 collateral_held = 8;
+  int64 new_avg_open_price = 9;
+  google.protobuf.Timestamp opened_at = 10;
+}
+
+// ShortCoverHeld reserves capacity to buy-to-cover against an existing
+// short. No cash side effect — cash comes from the short's pooled
+// proceeds and collateral on settlement.
+message ShortCoverHeld {
+  string account_id = 1;
+  string order_saga_id = 2;
+  string symbol = 3;
+  int64 quantity = 4;
+  google.protobuf.Timestamp held_at = 5;
+}
+
+message ShortCoverReleased {
+  string account_id = 1;
+  string order_saga_id = 2;
+  string symbol = 3;
+  int64 quantity = 4;
+  google.protobuf.Timestamp released_at = 5;
+}
+
+// ShortCovered settles a buy-to-cover fill. Cost is paid from the
+// proportionally released proceeds_pool first, then collateral_pool,
+// then CashBalance for any residual (loss beyond pooled collateral).
+// realized_pnl uses the short's average open price, not the marginal
+// proceeds_released ratio.
+message ShortCovered {
+  string account_id = 1;
+  string order_saga_id = 2;
+  string trade_id = 3;
+  string symbol = 4;
+  int64 quantity = 5;
+  int64 cost_per_share = 6;
+  int64 cost = 7;
+  int64 proceeds_released = 8;
+  int64 collateral_released = 9;
+  int64 realized_pnl = 10;
+  google.protobuf.Timestamp covered_at = 11;
+}
+
 // Order saga events — stored under aggregate ID "order-saga:{uuid}".
 
 message OrderSagaStarted {
@@ -106,9 +190,29 @@ message OrderSagaStarted {
   orderbook.v1.TimeInForce time_in_force = 8;
   google.protobuf.Timestamp started_at = 9;
   string replace_order_id = 10;
+  // Drives which portfolio hold the reactor issues:
+  //   BUY  + LONG   -> HoldCash
+  //   SELL + LONG   -> HoldShares
+  //   SELL + SHORT  -> HoldCollateral
+  //   BUY  + SHORT  -> HoldShortCover
+  orderbook.v1.PositionSide position_side = 11;
+  // cause_event_id, if set, points at the upstream event that triggered
+  // this saga — e.g. a MarginCallIssued event for forced-liquidation
+  // runs. Surfaces in the existing causation chain viewer.
+  string cause_event_id = 12;
+  saga.v1.Initiator initiator = 13;
 }
 
 message OrderSagaCashHeld {
+  string saga_id = 1;
+  int64 amount_held = 2;
+  google.protobuf.Timestamp held_at = 3;
+}
+
+// OrderSagaCollateralHeld is the SELL+SHORT analog of OrderSagaCashHeld.
+// amount_held is the additional collateral posted on top of the eventual
+// sale proceeds.
+message OrderSagaCollateralHeld {
   string saga_id = 1;
   int64 amount_held = 2;
   google.protobuf.Timestamp held_at = 3;

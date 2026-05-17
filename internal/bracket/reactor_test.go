@@ -326,3 +326,59 @@ func TestBracket_StatelessReactor_FreshInstanceHandlesMidLifecycleEvents(t *test
 	assert.Equal(t, int64(155_000_000), p.CashBalance)
 	assert.Empty(t, p.SharesHeld)
 }
+
+func TestBracket_Short_FullLifecycle_TakeProfit(t *testing.T) {
+	// Short bracket: sell 100 @ $150 entry, TP $120 (buy to cover at low),
+	// SL $180 (buy to cover at high). Entry matches resting buy; then TP
+	// buy matches incoming sell.
+	e := setupEnv(t)
+	deposit(t, e, "acct-1", 1_000_000_000) // $100,000 — plenty for $7500 collateral
+
+	// Resting buy so the entry sell-to-open can fill.
+	placeLimitOrder(t, e, "AAPL", orderbook.Buy, 1500000, 100)
+	e.pub.events = nil
+
+	startShortBracket(t, e, "acct-1", "br-short", "AAPL",
+		1500000, 100, 1200000, 1800000)
+	e.flush()
+
+	b := loadBracket(t, e, "br-short")
+	require.Equal(t, bracket.PendingExit, b.Status, "should be PendingExit after entry fills")
+
+	p := loadPortfolio(t, e, "acct-1")
+	require.NotNil(t, p.ShortPositions["AAPL"])
+	require.Equal(t, int64(100), p.ShortPositions["AAPL"].Quantity)
+	require.Equal(t, int64(100), p.ShortCoversHeld["AAPL"], "100 short-cover capacity held for exit OCO")
+
+	// Drop a sell at TP price; TP buy fills.
+	placeLimitOrder(t, e, "AAPL", orderbook.Sell, 1200000, 100)
+	e.flush()
+
+	b = loadBracket(t, e, "br-short")
+	assert.Equal(t, bracket.Completed, b.Status)
+
+	p = loadPortfolio(t, e, "acct-1")
+	assert.Empty(t, p.ShortPositions)
+	assert.Empty(t, p.ShortCoversHeld)
+	// Realized PnL = (1500000 - 1200000) * 100 = 30M.
+	// Final cash = $100,000 deposit + $3,000 profit = $103,000.
+	assert.Equal(t, int64(1_030_000_000), p.CashBalance)
+}
+
+func startShortBracket(t *testing.T, e *env, accountID, sagaID, symbol string, entryPrice, qty, tp, sl int64) {
+	t.Helper()
+	cmd := bracket.StartSaga{
+		SagaID:          sagaID,
+		AccountID:       accountID,
+		Symbol:          symbol,
+		EntrySide:       orderbookv1.Side_SIDE_SELL,
+		EntryPrice:      entryPrice,
+		EntryQty:        qty,
+		TakeProfitPrice: tp,
+		StopLossPrice:   sl,
+		PositionSide:    orderbookv1.PositionSide_POSITION_SIDE_SHORT,
+	}
+	require.NoError(t, e.bracketHandler.Handle(e.ctx, cmd, func(b *bracket.BracketSaga) ([]es.Event, error) {
+		return bracket.ExecuteStartSaga(b, cmd)
+	}))
+}

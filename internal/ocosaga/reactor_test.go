@@ -185,3 +185,112 @@ func mustLoadSaga(t *testing.T, e *env, sagaID string) *ocosaga.OCOSaga {
 	require.NoError(t, err)
 	return s
 }
+
+// openShort is a helper that seeds an open short position for the OCO
+// short-cover tests. Uses the portfolio aggregate directly rather than
+// running a full ordersaga.
+func openShort(t *testing.T, e *env, accountID, symbol string, qty, price, collateral int64) {
+	t.Helper()
+	holdCmd := portfolio.HoldCollateral{
+		AccountID: accountID, OrderSagaID: "seed-" + symbol,
+		Symbol: symbol, Quantity: qty, Amount: collateral,
+	}
+	require.NoError(t, e.portfolioHandler.Handle(e.ctx, holdCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCollateral(p, holdCmd)
+	}))
+	openCmd := portfolio.OpenShort{
+		AccountID: accountID, OrderSagaID: "seed-" + symbol, TradeID: "seed-trade-" + symbol,
+		Symbol: symbol, Quantity: qty, PricePerShare: price,
+	}
+	require.NoError(t, e.portfolioHandler.Handle(e.ctx, openCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteOpenShort(p, openCmd)
+	}))
+}
+
+func TestOCOSaga_ShortCover_TakeProfitFills(t *testing.T) {
+	// Account has an open short of 100 AAPL @ $150. OCO covers with
+	// TP $120 (profit, buy at low) / SL $180 (stop, buy at high).
+	// An aggressive seller hits the TP buy at $120.
+	e := setupEnv(t)
+
+	depositCmd := portfolio.DepositCash{AccountID: "acct-1", Amount: 1_000_000_000}
+	require.NoError(t, e.portfolioHandler.Handle(e.ctx, depositCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, depositCmd)
+	}))
+	openShort(t, e, "acct-1", "AAPL", 100, 1_500_000, 75_000_000)
+	e.pub.events = nil
+
+	start := ocosaga.StartOCOSaga{
+		SagaID: "oco-1", AccountID: "acct-1", Symbol: "AAPL",
+		ExitSide:        orderbookv1.Side_SIDE_BUY,
+		Quantity:        100,
+		TakeProfitPrice: 1_200_000,
+		StopLossPrice:   1_800_000,
+		PositionSide:    orderbookv1.PositionSide_POSITION_SIDE_SHORT,
+	}
+	require.NoError(t, e.ocoSagaHandler.Handle(e.ctx, start, func(s *ocosaga.OCOSaga) ([]es.Event, error) {
+		return ocosaga.ExecuteStartOCOSaga(s, start)
+	}))
+	e.flush()
+
+	saga := mustLoadSaga(t, e, "oco-1")
+	require.Equal(t, ocosaga.ExitPlaced, saga.Status)
+
+	p, err := e.portfolioHandler.Load(e.ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(100), p.ShortCoversHeld["AAPL"], "100 short-cover capacity held")
+
+	// Aggressor sell at TP price (cover buy fills) triggers TP; SL cancelled.
+	sellCmd := orderbook.PlaceOrder{
+		Symbol: "AAPL", Side: orderbook.Sell, Price: 1_200_000, Quantity: 100, OrderType: orderbook.Limit,
+	}
+	require.NoError(t, e.obHandler.Handle(e.ctx, sellCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecutePlaceOrder(book, sellCmd)
+	}))
+	e.flush()
+
+	saga = mustLoadSaga(t, e, "oco-1")
+	assert.Equal(t, ocosaga.Completed, saga.Status)
+
+	p, err = e.portfolioHandler.Load(e.ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Empty(t, p.ShortPositions, "short fully covered")
+	assert.Empty(t, p.ShortCoversHeld, "cover capacity drained")
+	// Realized PnL = (1500000 - 1200000) * 100 = 30M.
+	// Cash = $100k deposit + $3000 profit = $103,000.
+	assert.Equal(t, int64(1_030_000_000), p.CashBalance)
+}
+
+func TestOCOSaga_ShortCover_Cancelled_ReleasesCapacity(t *testing.T) {
+	e := setupEnv(t)
+
+	depositCmd := portfolio.DepositCash{AccountID: "acct-1", Amount: 1_000_000_000}
+	require.NoError(t, e.portfolioHandler.Handle(e.ctx, depositCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, depositCmd)
+	}))
+	openShort(t, e, "acct-1", "AAPL", 100, 1_500_000, 75_000_000)
+	e.pub.events = nil
+
+	start := ocosaga.StartOCOSaga{
+		SagaID: "oco-1", AccountID: "acct-1", Symbol: "AAPL",
+		ExitSide: orderbookv1.Side_SIDE_BUY, Quantity: 100,
+		TakeProfitPrice: 1_200_000, StopLossPrice: 1_800_000,
+		PositionSide: orderbookv1.PositionSide_POSITION_SIDE_SHORT,
+	}
+	require.NoError(t, e.ocoSagaHandler.Handle(e.ctx, start, func(s *ocosaga.OCOSaga) ([]es.Event, error) {
+		return ocosaga.ExecuteStartOCOSaga(s, start)
+	}))
+	e.flush()
+	require.Equal(t, ocosaga.ExitPlaced, mustLoadSaga(t, e, "oco-1").Status)
+
+	failCmd := ocosaga.RecordFailed{SagaID: "oco-1", Reason: "user cancelled"}
+	require.NoError(t, e.ocoSagaHandler.Handle(e.ctx, failCmd, func(s *ocosaga.OCOSaga) ([]es.Event, error) {
+		return ocosaga.ExecuteRecordFailed(s, failCmd)
+	}))
+	e.flush()
+
+	p, err := e.portfolioHandler.Load(e.ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Empty(t, p.ShortCoversHeld, "short-cover capacity released")
+	assert.Equal(t, int64(100), p.ShortPositions["AAPL"].Quantity, "short still open")
+}

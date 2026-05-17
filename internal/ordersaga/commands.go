@@ -10,6 +10,7 @@ import (
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
+	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
 	"github.com/ianunruh/xray/pkg/es"
 )
 
@@ -31,6 +32,9 @@ type StartOrderSaga struct {
 	OrderType      orderbookv1.OrderType
 	TimeInForce    orderbookv1.TimeInForce
 	ReplaceOrderID string
+	PositionSide   orderbookv1.PositionSide
+	CauseEventID   string
+	Initiator      sagav1.Initiator
 }
 
 func (c StartOrderSaga) AggregateID() string {
@@ -48,16 +52,19 @@ func ExecuteStartOrderSaga(saga *OrderSaga, cmd StartOrderSaga) ([]es.Event, err
 		Type:        EventOrderSagaStarted,
 		Timestamp:   now,
 		Data: &portfoliov1.OrderSagaStarted{
-			SagaId:      cmd.SagaID,
-			AccountId:   cmd.AccountID,
-			Symbol:      cmd.Symbol,
-			Side:        cmd.Side,
-			Price:       cmd.Price,
-			Quantity:    cmd.Quantity,
+			SagaId:         cmd.SagaID,
+			AccountId:      cmd.AccountID,
+			Symbol:         cmd.Symbol,
+			Side:           cmd.Side,
+			Price:          cmd.Price,
+			Quantity:       cmd.Quantity,
 			OrderType:      cmd.OrderType,
 			TimeInForce:    cmd.TimeInForce,
 			StartedAt:      timestamppb.New(now),
 			ReplaceOrderId: cmd.ReplaceOrderID,
+			PositionSide:   cmd.PositionSide,
+			CauseEventId:   cmd.CauseEventID,
+			Initiator:      cmd.Initiator,
 		},
 	}
 
@@ -99,6 +106,38 @@ func ExecuteRecordCashHeld(saga *OrderSaga, cmd RecordCashHeld) ([]es.Event, err
 	return []es.Event{evt}, nil
 }
 
+type RecordCollateralHeld struct {
+	SagaID     string
+	AmountHeld int64
+}
+
+func (c RecordCollateralHeld) AggregateID() string {
+	return AggregateID(c.SagaID)
+}
+
+func ExecuteRecordCollateralHeld(saga *OrderSaga, cmd RecordCollateralHeld) ([]es.Event, error) {
+	if saga.Status != Started {
+		return nil, ErrInvalidState
+	}
+
+	now := time.Now()
+	evt := es.Event{
+		AggregateID: saga.AggregateID(),
+		Type:        EventOrderSagaCollateralHeld,
+		Timestamp:   now,
+		Data: &portfoliov1.OrderSagaCollateralHeld{
+			SagaId:     cmd.SagaID,
+			AmountHeld: cmd.AmountHeld,
+			HeldAt:     timestamppb.New(now),
+		},
+	}
+
+	if err := saga.Apply(evt); err != nil {
+		return nil, err
+	}
+	return []es.Event{evt}, nil
+}
+
 type RecordOrderPlaced struct {
 	SagaID  string
 	OrderID string
@@ -109,7 +148,7 @@ func (c RecordOrderPlaced) AggregateID() string {
 }
 
 func ExecuteRecordOrderPlaced(saga *OrderSaga, cmd RecordOrderPlaced) ([]es.Event, error) {
-	if saga.Status != CashHeld {
+	if saga.Status != CashHeld && saga.Status != CollateralHeld && saga.Status != SharesHeld {
 		return nil, ErrInvalidState
 	}
 

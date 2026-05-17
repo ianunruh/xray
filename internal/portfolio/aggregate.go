@@ -23,6 +23,26 @@ type ShareHold struct {
 	Quantity int64
 }
 
+// ShortPosition tracks one symbol's open short. Quantity is positive
+// (the number of shares owed back). ProceedsHeld is the cash received
+// from sell-to-opens, locked. CollateralHeld is the additional cash
+// posted as margin. AvgOpenPrice is weighted across opens.
+type ShortPosition struct {
+	Quantity       int64
+	ProceedsHeld   int64
+	CollateralHeld int64
+	AvgOpenPrice   int64
+}
+
+// CollateralHold is a per-saga pre-fill cash collateral hold for a
+// pending short-open. Consumed by ShortOpened or returned by
+// CollateralReleased.
+type CollateralHold struct {
+	Symbol   string
+	Quantity int64
+	Amount   int64
+}
+
 type Portfolio struct {
 	es.AggregateBase
 
@@ -39,15 +59,27 @@ type Portfolio struct {
 	// a reactor batch crashes after settling some fills and is then
 	// redelivered on restart.
 	SettledTrades map[string]map[string]struct{}
+
+	// Short-selling state.
+	ShortPositions        map[string]*ShortPosition
+	ProceedsPool          int64
+	CollateralPool        int64
+	CollateralHeldBySaga  map[string]*CollateralHold
+	ShortCoversHeld       map[string]int64
+	ShortCoverHoldsBySaga map[string]*ShareHold
 }
 
 func NewPortfolio(id string) *Portfolio {
 	p := &Portfolio{
-		Holdings:         make(map[string]*Holding),
-		HoldsBySaga:      make(map[string]int64),
-		SharesHeld:       make(map[string]int64),
-		ShareHoldsBySaga: make(map[string]*ShareHold),
-		SettledTrades:    make(map[string]map[string]struct{}),
+		Holdings:              make(map[string]*Holding),
+		HoldsBySaga:           make(map[string]int64),
+		SharesHeld:            make(map[string]int64),
+		ShareHoldsBySaga:      make(map[string]*ShareHold),
+		SettledTrades:         make(map[string]map[string]struct{}),
+		ShortPositions:        make(map[string]*ShortPosition),
+		CollateralHeldBySaga:  make(map[string]*CollateralHold),
+		ShortCoversHeld:       make(map[string]int64),
+		ShortCoverHoldsBySaga: make(map[string]*ShareHold),
 	}
 	p.SetID(id)
 	return p
@@ -96,6 +128,18 @@ func (p *Portfolio) Apply(evt es.Event) error {
 		p.applySharesReleased(data)
 	case *portfoliov1.SharesSettled:
 		p.applySharesSettled(data)
+	case *portfoliov1.CollateralHeld:
+		p.applyCollateralHeld(data)
+	case *portfoliov1.CollateralReleased:
+		p.applyCollateralReleased(data)
+	case *portfoliov1.ShortOpened:
+		p.applyShortOpened(data)
+	case *portfoliov1.ShortCoverHeld:
+		p.applyShortCoverHeld(data)
+	case *portfoliov1.ShortCoverReleased:
+		p.applyShortCoverReleased(data)
+	case *portfoliov1.ShortCovered:
+		p.applyShortCovered(data)
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}
@@ -217,6 +261,117 @@ func (p *Portfolio) applySharesSettled(data *portfoliov1.SharesSettled) {
 	}
 
 	p.CashBalance += data.Proceeds
+
+	p.markSettled(data.OrderSagaId, data.TradeId)
+}
+
+func (p *Portfolio) applyCollateralHeld(data *portfoliov1.CollateralHeld) {
+	p.AccountID = data.AccountId
+	p.CashBalance -= data.Amount
+	p.CollateralHeldBySaga[data.OrderSagaId] = &CollateralHold{
+		Symbol:   data.Symbol,
+		Quantity: data.Quantity,
+		Amount:   data.Amount,
+	}
+}
+
+func (p *Portfolio) applyCollateralReleased(data *portfoliov1.CollateralReleased) {
+	p.CashBalance += data.Amount
+	delete(p.CollateralHeldBySaga, data.OrderSagaId)
+}
+
+func (p *Portfolio) applyShortOpened(data *portfoliov1.ShortOpened) {
+	p.AccountID = data.AccountId
+
+	// Consume the pre-fill collateral hold if present. Any executed
+	// collateral above the pre-held amount is debited straight from
+	// CashBalance — mirrors the CashSettled overflow pattern.
+	hold := p.CollateralHeldBySaga[data.OrderSagaId]
+	fromHold := int64(0)
+	if hold != nil {
+		fromHold = min(hold.Amount, data.CollateralHeld)
+	}
+	overflow := data.CollateralHeld - fromHold
+	p.CashBalance -= overflow
+	if hold != nil {
+		hold.Amount -= fromHold
+		if hold.Amount <= 0 {
+			delete(p.CollateralHeldBySaga, data.OrderSagaId)
+		}
+	}
+
+	short, ok := p.ShortPositions[data.Symbol]
+	if !ok {
+		short = &ShortPosition{}
+		p.ShortPositions[data.Symbol] = short
+	}
+	short.Quantity += data.Quantity
+	short.ProceedsHeld += data.ProceedsHeld
+	short.CollateralHeld += data.CollateralHeld
+	short.AvgOpenPrice = data.NewAvgOpenPrice
+
+	p.ProceedsPool += data.ProceedsHeld
+	p.CollateralPool += data.CollateralHeld
+
+	p.markSettled(data.OrderSagaId, data.TradeId)
+}
+
+func (p *Portfolio) applyShortCoverHeld(data *portfoliov1.ShortCoverHeld) {
+	p.ShortCoversHeld[data.Symbol] += data.Quantity
+	p.ShortCoverHoldsBySaga[data.OrderSagaId] = &ShareHold{
+		Symbol:   data.Symbol,
+		Quantity: data.Quantity,
+	}
+}
+
+func (p *Portfolio) applyShortCoverReleased(data *portfoliov1.ShortCoverReleased) {
+	p.ShortCoversHeld[data.Symbol] -= data.Quantity
+	if p.ShortCoversHeld[data.Symbol] <= 0 {
+		delete(p.ShortCoversHeld, data.Symbol)
+	}
+	delete(p.ShortCoverHoldsBySaga, data.OrderSagaId)
+}
+
+func (p *Portfolio) applyShortCovered(data *portfoliov1.ShortCovered) {
+	short := p.ShortPositions[data.Symbol]
+
+	short.ProceedsHeld -= data.ProceedsReleased
+	short.CollateralHeld -= data.CollateralReleased
+	p.ProceedsPool -= data.ProceedsReleased
+	p.CollateralPool -= data.CollateralReleased
+
+	if cover, ok := p.ShortCoverHoldsBySaga[data.OrderSagaId]; ok {
+		cover.Quantity -= data.Quantity
+		p.ShortCoversHeld[data.Symbol] -= data.Quantity
+		if cover.Quantity <= 0 {
+			delete(p.ShortCoverHoldsBySaga, data.OrderSagaId)
+		}
+		if p.ShortCoversHeld[data.Symbol] <= 0 {
+			delete(p.ShortCoversHeld, data.Symbol)
+		}
+	}
+
+	// Pay cost from released proceeds first, then released collateral,
+	// then CashBalance for any residual (loss beyond pooled collateral).
+	paid := data.Cost
+	fromProceeds := min(paid, data.ProceedsReleased)
+	paid -= fromProceeds
+	fromCollateral := min(paid, data.CollateralReleased)
+	paid -= fromCollateral
+	p.CashBalance -= paid
+
+	returned := (data.ProceedsReleased - fromProceeds) +
+		(data.CollateralReleased - fromCollateral)
+	p.CashBalance += returned
+
+	short.Quantity -= data.Quantity
+	if short.Quantity <= 0 {
+		// Drain rounding remainders from prior partial covers.
+		p.CashBalance += short.ProceedsHeld + short.CollateralHeld
+		p.ProceedsPool -= short.ProceedsHeld
+		p.CollateralPool -= short.CollateralHeld
+		delete(p.ShortPositions, data.Symbol)
+	}
 
 	p.markSettled(data.OrderSagaId, data.TradeId)
 }

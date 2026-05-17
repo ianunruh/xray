@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
+	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/pkg/es"
 )
@@ -42,6 +44,8 @@ const (
 	OrderPlaced
 	Completed
 	Failed
+	CollateralHeld
+	SharesHeld
 )
 
 type OrderSaga struct {
@@ -62,6 +66,9 @@ type OrderSaga struct {
 	CashSettled    int64
 	Status         Status
 	ActionAttempts int
+	PositionSide   orderbookv1.PositionSide
+	CauseEventID   string
+	Initiator      sagav1.Initiator
 }
 
 func NewOrderSaga(id string) *OrderSaga {
@@ -76,6 +83,8 @@ func (s *OrderSaga) Apply(evt es.Event) error {
 		s.applyStarted(data)
 	case *portfoliov1.OrderSagaCashHeld:
 		s.applyCashHeld(data)
+	case *portfoliov1.OrderSagaCollateralHeld:
+		s.applyCollateralHeld(data)
 	case *portfoliov1.OrderSagaOrderPlaced:
 		s.applyOrderPlaced(data)
 	case *portfoliov1.OrderSagaFillRecorded:
@@ -103,12 +112,21 @@ func (s *OrderSaga) applyStarted(data *portfoliov1.OrderSagaStarted) {
 	s.OrderType = orderbook.OrderTypeFromProto(data.OrderType)
 	s.TimeInForce = orderbook.TimeInForceFromProto(data.TimeInForce)
 	s.ReplaceOrderID = data.ReplaceOrderId
+	s.PositionSide = data.PositionSide
+	s.CauseEventID = data.CauseEventId
+	s.Initiator = data.Initiator
 	s.Status = Started
 }
 
 func (s *OrderSaga) applyCashHeld(data *portfoliov1.OrderSagaCashHeld) {
 	s.AmountHeld = data.AmountHeld
 	s.Status = CashHeld
+	s.ActionAttempts = 0
+}
+
+func (s *OrderSaga) applyCollateralHeld(data *portfoliov1.OrderSagaCollateralHeld) {
+	s.AmountHeld = data.AmountHeld
+	s.Status = CollateralHeld
 	s.ActionAttempts = 0
 }
 

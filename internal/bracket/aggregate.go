@@ -110,6 +110,7 @@ type BracketSaga struct {
 	Status            Status
 	EntryFilledQty    int64
 	ActionAttempts    int
+	PositionSide      orderbookv1.PositionSide
 }
 
 func NewBracketSaga(id string) *BracketSaga {
@@ -149,6 +150,7 @@ func (s *BracketSaga) applySagaStarted(data *orderbookv1.SagaStarted) {
 	s.TakeProfitPrice = data.TakeProfitPrice
 	s.StopLossPrice = data.StopLossPrice
 	s.EntryOrderID = data.EntryOrderId
+	s.PositionSide = data.PositionSide
 	s.Status = PendingEntry
 }
 

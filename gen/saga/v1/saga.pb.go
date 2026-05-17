@@ -85,6 +85,13 @@ const (
 	SagaStatus_SAGA_STATUS_ACTIVE      SagaStatus = 1
 	SagaStatus_SAGA_STATUS_COMPLETED   SagaStatus = 2
 	SagaStatus_SAGA_STATUS_FAILED      SagaStatus = 3
+	// The saga was cancelled mid-flight by a margin-call reactor forcing
+	// liquidation, not by the user or an action-failure budget. Distinct
+	// from FAILED so the UI and audit log can attribute it correctly,
+	// and so retry/backoff logic doesn't kick in. Underlying aggregate
+	// state is OrderSagaFailed{reason="margin_call"}; the projection
+	// surfaces this status based on the reason tag.
+	SagaStatus_SAGA_STATUS_LIQUIDATED SagaStatus = 4
 )
 
 // Enum value maps for SagaStatus.
@@ -94,12 +101,14 @@ var (
 		1: "SAGA_STATUS_ACTIVE",
 		2: "SAGA_STATUS_COMPLETED",
 		3: "SAGA_STATUS_FAILED",
+		4: "SAGA_STATUS_LIQUIDATED",
 	}
 	SagaStatus_value = map[string]int32{
 		"SAGA_STATUS_UNSPECIFIED": 0,
 		"SAGA_STATUS_ACTIVE":      1,
 		"SAGA_STATUS_COMPLETED":   2,
 		"SAGA_STATUS_FAILED":      3,
+		"SAGA_STATUS_LIQUIDATED":  4,
 	}
 )
 
@@ -130,6 +139,59 @@ func (SagaStatus) EnumDescriptor() ([]byte, []int) {
 	return file_saga_v1_saga_proto_rawDescGZIP(), []int{1}
 }
 
+// Initiator identifies what caused a saga to start. Lives in saga/v1
+// because portfolio/v1 needs to reference it on OrderSagaStarted, and
+// putting it the other way would force a saga -> portfolio import that
+// closes a cycle (saga already imports orderbook for Side/PositionSide).
+type Initiator int32
+
+const (
+	Initiator_INITIATOR_UNSPECIFIED Initiator = 0
+	Initiator_INITIATOR_USER        Initiator = 1
+	Initiator_INITIATOR_MARGIN_CALL Initiator = 2
+)
+
+// Enum value maps for Initiator.
+var (
+	Initiator_name = map[int32]string{
+		0: "INITIATOR_UNSPECIFIED",
+		1: "INITIATOR_USER",
+		2: "INITIATOR_MARGIN_CALL",
+	}
+	Initiator_value = map[string]int32{
+		"INITIATOR_UNSPECIFIED": 0,
+		"INITIATOR_USER":        1,
+		"INITIATOR_MARGIN_CALL": 2,
+	}
+)
+
+func (x Initiator) Enum() *Initiator {
+	p := new(Initiator)
+	*p = x
+	return p
+}
+
+func (x Initiator) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Initiator) Descriptor() protoreflect.EnumDescriptor {
+	return file_saga_v1_saga_proto_enumTypes[2].Descriptor()
+}
+
+func (Initiator) Type() protoreflect.EnumType {
+	return &file_saga_v1_saga_proto_enumTypes[2]
+}
+
+func (x Initiator) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Initiator.Descriptor instead.
+func (Initiator) EnumDescriptor() ([]byte, []int) {
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{2}
+}
+
 // SingleOrderPhase is the granular state for SAGA_KIND_SINGLE_ORDER.
 type SingleOrderPhase int32
 
@@ -138,6 +200,12 @@ const (
 	SingleOrderPhase_SINGLE_ORDER_PHASE_STARTED      SingleOrderPhase = 1
 	SingleOrderPhase_SINGLE_ORDER_PHASE_CASH_HELD    SingleOrderPhase = 2
 	SingleOrderPhase_SINGLE_ORDER_PHASE_ORDER_PLACED SingleOrderPhase = 3
+	// SELL+SHORT: extra cash collateral posted before sell-to-open.
+	SingleOrderPhase_SINGLE_ORDER_PHASE_COLLATERAL_HELD SingleOrderPhase = 4
+	// SELL+LONG and BUY+SHORT: shares (or short-position capacity)
+	// reserved before placing. Fills the existing asymmetry where
+	// those paths jumped straight from STARTED to ORDER_PLACED.
+	SingleOrderPhase_SINGLE_ORDER_PHASE_SHARES_HELD SingleOrderPhase = 5
 )
 
 // Enum value maps for SingleOrderPhase.
@@ -147,12 +215,16 @@ var (
 		1: "SINGLE_ORDER_PHASE_STARTED",
 		2: "SINGLE_ORDER_PHASE_CASH_HELD",
 		3: "SINGLE_ORDER_PHASE_ORDER_PLACED",
+		4: "SINGLE_ORDER_PHASE_COLLATERAL_HELD",
+		5: "SINGLE_ORDER_PHASE_SHARES_HELD",
 	}
 	SingleOrderPhase_value = map[string]int32{
-		"SINGLE_ORDER_PHASE_UNSPECIFIED":  0,
-		"SINGLE_ORDER_PHASE_STARTED":      1,
-		"SINGLE_ORDER_PHASE_CASH_HELD":    2,
-		"SINGLE_ORDER_PHASE_ORDER_PLACED": 3,
+		"SINGLE_ORDER_PHASE_UNSPECIFIED":     0,
+		"SINGLE_ORDER_PHASE_STARTED":         1,
+		"SINGLE_ORDER_PHASE_CASH_HELD":       2,
+		"SINGLE_ORDER_PHASE_ORDER_PLACED":    3,
+		"SINGLE_ORDER_PHASE_COLLATERAL_HELD": 4,
+		"SINGLE_ORDER_PHASE_SHARES_HELD":     5,
 	}
 )
 
@@ -167,11 +239,11 @@ func (x SingleOrderPhase) String() string {
 }
 
 func (SingleOrderPhase) Descriptor() protoreflect.EnumDescriptor {
-	return file_saga_v1_saga_proto_enumTypes[2].Descriptor()
+	return file_saga_v1_saga_proto_enumTypes[3].Descriptor()
 }
 
 func (SingleOrderPhase) Type() protoreflect.EnumType {
-	return &file_saga_v1_saga_proto_enumTypes[2]
+	return &file_saga_v1_saga_proto_enumTypes[3]
 }
 
 func (x SingleOrderPhase) Number() protoreflect.EnumNumber {
@@ -180,7 +252,7 @@ func (x SingleOrderPhase) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SingleOrderPhase.Descriptor instead.
 func (SingleOrderPhase) EnumDescriptor() ([]byte, []int) {
-	return file_saga_v1_saga_proto_rawDescGZIP(), []int{2}
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{3}
 }
 
 // BracketPhase is the granular state for SAGA_KIND_BRACKET.
@@ -217,11 +289,11 @@ func (x BracketPhase) String() string {
 }
 
 func (BracketPhase) Descriptor() protoreflect.EnumDescriptor {
-	return file_saga_v1_saga_proto_enumTypes[3].Descriptor()
+	return file_saga_v1_saga_proto_enumTypes[4].Descriptor()
 }
 
 func (BracketPhase) Type() protoreflect.EnumType {
-	return &file_saga_v1_saga_proto_enumTypes[3]
+	return &file_saga_v1_saga_proto_enumTypes[4]
 }
 
 func (x BracketPhase) Number() protoreflect.EnumNumber {
@@ -230,7 +302,7 @@ func (x BracketPhase) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BracketPhase.Descriptor instead.
 func (BracketPhase) EnumDescriptor() ([]byte, []int) {
-	return file_saga_v1_saga_proto_rawDescGZIP(), []int{3}
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{4}
 }
 
 // OCOPhase is the granular state for SAGA_KIND_OCO.
@@ -239,6 +311,8 @@ type OCOPhase int32
 const (
 	OCOPhase_OCO_PHASE_UNSPECIFIED OCOPhase = 0
 	OCOPhase_OCO_PHASE_STARTED     OCOPhase = 1
+	// Long OCO: shares reserved against long inventory.
+	// Short OCO: capacity reserved against the open short position.
 	OCOPhase_OCO_PHASE_SHARES_HELD OCOPhase = 2
 	OCOPhase_OCO_PHASE_EXIT_PLACED OCOPhase = 3
 )
@@ -270,11 +344,11 @@ func (x OCOPhase) String() string {
 }
 
 func (OCOPhase) Descriptor() protoreflect.EnumDescriptor {
-	return file_saga_v1_saga_proto_enumTypes[4].Descriptor()
+	return file_saga_v1_saga_proto_enumTypes[5].Descriptor()
 }
 
 func (OCOPhase) Type() protoreflect.EnumType {
-	return &file_saga_v1_saga_proto_enumTypes[4]
+	return &file_saga_v1_saga_proto_enumTypes[5]
 }
 
 func (x OCOPhase) Number() protoreflect.EnumNumber {
@@ -283,7 +357,7 @@ func (x OCOPhase) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use OCOPhase.Descriptor instead.
 func (OCOPhase) EnumDescriptor() ([]byte, []int) {
-	return file_saga_v1_saga_proto_rawDescGZIP(), []int{4}
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{5}
 }
 
 type PlaceSagaRequest struct {
@@ -403,8 +477,12 @@ type SingleOrderPlan struct {
 	// Optional: when set, the new order replaces this existing order ID
 	// (cancel-and-place).
 	ReplaceOrderId string `protobuf:"bytes,7,opt,name=replace_order_id,json=replaceOrderId,proto3" json:"replace_order_id,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// SELL+SHORT = sell-to-open; BUY+SHORT = buy-to-cover. Server
+	// validates legal combos (e.g. BUY+SHORT requires existing short
+	// >= quantity in symbol).
+	PositionSide  v1.PositionSide `protobuf:"varint,8,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SingleOrderPlan) Reset() {
@@ -486,6 +564,13 @@ func (x *SingleOrderPlan) GetReplaceOrderId() string {
 	return ""
 }
 
+func (x *SingleOrderPlan) GetPositionSide() v1.PositionSide {
+	if x != nil {
+		return x.PositionSide
+	}
+	return v1.PositionSide(0)
+}
+
 type BracketPlan struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Symbol          string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
@@ -494,8 +579,11 @@ type BracketPlan struct {
 	EntryQuantity   int64                  `protobuf:"varint,4,opt,name=entry_quantity,json=entryQuantity,proto3" json:"entry_quantity,omitempty"`
 	TakeProfitPrice int64                  `protobuf:"varint,5,opt,name=take_profit_price,json=takeProfitPrice,proto3" json:"take_profit_price,omitempty"`
 	StopLossPrice   int64                  `protobuf:"varint,6,opt,name=stop_loss_price,json=stopLossPrice,proto3" json:"stop_loss_price,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// LONG bracket -> entry BUY+LONG, exits SELL+LONG.
+	// SHORT bracket -> entry SELL+SHORT, exits BUY+SHORT.
+	PositionSide  v1.PositionSide `protobuf:"varint,7,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *BracketPlan) Reset() {
@@ -570,6 +658,13 @@ func (x *BracketPlan) GetStopLossPrice() int64 {
 	return 0
 }
 
+func (x *BracketPlan) GetPositionSide() v1.PositionSide {
+	if x != nil {
+		return x.PositionSide
+	}
+	return v1.PositionSide(0)
+}
+
 // OCOPlan: sell (or cover) `quantity` shares with two exit orders that
 // are mutually exclusive — whichever fills first cancels the other at
 // the orderbook layer. exit_side identifies which side the OCO orders
@@ -581,8 +676,13 @@ type OCOPlan struct {
 	Quantity        int64                  `protobuf:"varint,3,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	TakeProfitPrice int64                  `protobuf:"varint,4,opt,name=take_profit_price,json=takeProfitPrice,proto3" json:"take_profit_price,omitempty"`
 	StopLossPrice   int64                  `protobuf:"varint,5,opt,name=stop_loss_price,json=stopLossPrice,proto3" json:"stop_loss_price,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// LONG = exiting long inventory (exit_side typically SELL).
+	// SHORT = covering a short (exit_side typically BUY). Determines
+	// whether the saga's pre-place step holds long shares or short
+	// cover-capacity.
+	PositionSide  v1.PositionSide `protobuf:"varint,6,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *OCOPlan) Reset() {
@@ -648,6 +748,13 @@ func (x *OCOPlan) GetStopLossPrice() int64 {
 		return x.StopLossPrice
 	}
 	return 0
+}
+
+func (x *OCOPlan) GetPositionSide() v1.PositionSide {
+	if x != nil {
+		return x.PositionSide
+	}
+	return v1.PositionSide(0)
 }
 
 type PlaceSagaResponse struct {
@@ -912,6 +1019,8 @@ type SingleOrderDetails struct {
 	AmountHeld     int64                  `protobuf:"varint,8,opt,name=amount_held,json=amountHeld,proto3" json:"amount_held,omitempty"`
 	CashSettled    int64                  `protobuf:"varint,9,opt,name=cash_settled,json=cashSettled,proto3" json:"cash_settled,omitempty"`
 	OrderId        string                 `protobuf:"bytes,10,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	PositionSide   v1.PositionSide        `protobuf:"varint,11,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
+	Initiator      Initiator              `protobuf:"varint,12,opt,name=initiator,proto3,enum=saga.v1.Initiator" json:"initiator,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1016,6 +1125,20 @@ func (x *SingleOrderDetails) GetOrderId() string {
 	return ""
 }
 
+func (x *SingleOrderDetails) GetPositionSide() v1.PositionSide {
+	if x != nil {
+		return x.PositionSide
+	}
+	return v1.PositionSide(0)
+}
+
+func (x *SingleOrderDetails) GetInitiator() Initiator {
+	if x != nil {
+		return x.Initiator
+	}
+	return Initiator_INITIATOR_UNSPECIFIED
+}
+
 type BracketDetails struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Phase             BracketPhase           `protobuf:"varint,1,opt,name=phase,proto3,enum=saga.v1.BracketPhase" json:"phase,omitempty"`
@@ -1027,6 +1150,8 @@ type BracketDetails struct {
 	EntryOrderId      string                 `protobuf:"bytes,7,opt,name=entry_order_id,json=entryOrderId,proto3" json:"entry_order_id,omitempty"`
 	TakeProfitOrderId string                 `protobuf:"bytes,8,opt,name=take_profit_order_id,json=takeProfitOrderId,proto3" json:"take_profit_order_id,omitempty"`
 	StopLossOrderId   string                 `protobuf:"bytes,9,opt,name=stop_loss_order_id,json=stopLossOrderId,proto3" json:"stop_loss_order_id,omitempty"`
+	PositionSide      v1.PositionSide        `protobuf:"varint,10,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
+	Initiator         Initiator              `protobuf:"varint,11,opt,name=initiator,proto3,enum=saga.v1.Initiator" json:"initiator,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1124,6 +1249,20 @@ func (x *BracketDetails) GetStopLossOrderId() string {
 	return ""
 }
 
+func (x *BracketDetails) GetPositionSide() v1.PositionSide {
+	if x != nil {
+		return x.PositionSide
+	}
+	return v1.PositionSide(0)
+}
+
+func (x *BracketDetails) GetInitiator() Initiator {
+	if x != nil {
+		return x.Initiator
+	}
+	return Initiator_INITIATOR_UNSPECIFIED
+}
+
 type OCODetails struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Phase             OCOPhase               `protobuf:"varint,1,opt,name=phase,proto3,enum=saga.v1.OCOPhase" json:"phase,omitempty"`
@@ -1134,6 +1273,8 @@ type OCODetails struct {
 	TakeProfitOrderId string                 `protobuf:"bytes,6,opt,name=take_profit_order_id,json=takeProfitOrderId,proto3" json:"take_profit_order_id,omitempty"`
 	StopLossOrderId   string                 `protobuf:"bytes,7,opt,name=stop_loss_order_id,json=stopLossOrderId,proto3" json:"stop_loss_order_id,omitempty"`
 	SettledQuantity   int64                  `protobuf:"varint,8,opt,name=settled_quantity,json=settledQuantity,proto3" json:"settled_quantity,omitempty"`
+	PositionSide      v1.PositionSide        `protobuf:"varint,9,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
+	Initiator         Initiator              `protobuf:"varint,10,opt,name=initiator,proto3,enum=saga.v1.Initiator" json:"initiator,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1222,6 +1363,20 @@ func (x *OCODetails) GetSettledQuantity() int64 {
 		return x.SettledQuantity
 	}
 	return 0
+}
+
+func (x *OCODetails) GetPositionSide() v1.PositionSide {
+	if x != nil {
+		return x.PositionSide
+	}
+	return v1.PositionSide(0)
+}
+
+func (x *OCODetails) GetInitiator() Initiator {
+	if x != nil {
+		return x.Initiator
+	}
+	return Initiator_INITIATOR_UNSPECIFIED
 }
 
 type CancelSagaRequest struct {
@@ -1428,7 +1583,7 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"\fsingle_order\x18\x02 \x01(\v2\x18.saga.v1.SingleOrderPlanH\x00R\vsingleOrder\x120\n" +
 	"\abracket\x18\x03 \x01(\v2\x14.saga.v1.BracketPlanH\x00R\abracket\x12$\n" +
 	"\x03oco\x18\x04 \x01(\v2\x10.saga.v1.OCOPlanH\x00R\x03ocoB\x06\n" +
-	"\x04plan\"\xa4\x02\n" +
+	"\x04plan\"\xe5\x02\n" +
 	"\x0fSingleOrderPlan\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +
@@ -1437,7 +1592,8 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"\n" +
 	"order_type\x18\x05 \x01(\x0e2\x17.orderbook.v1.OrderTypeR\torderType\x12=\n" +
 	"\rtime_in_force\x18\x06 \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\x12(\n" +
-	"\x10replace_order_id\x18\a \x01(\tR\x0ereplaceOrderId\"\xf4\x01\n" +
+	"\x10replace_order_id\x18\a \x01(\tR\x0ereplaceOrderId\x12?\n" +
+	"\rposition_side\x18\b \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\"\xb5\x02\n" +
 	"\vBracketPlan\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x121\n" +
 	"\n" +
@@ -1446,13 +1602,15 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"entryPrice\x12%\n" +
 	"\x0eentry_quantity\x18\x04 \x01(\x03R\rentryQuantity\x12*\n" +
 	"\x11take_profit_price\x18\x05 \x01(\x03R\x0ftakeProfitPrice\x12&\n" +
-	"\x0fstop_loss_price\x18\x06 \x01(\x03R\rstopLossPrice\"\xc2\x01\n" +
+	"\x0fstop_loss_price\x18\x06 \x01(\x03R\rstopLossPrice\x12?\n" +
+	"\rposition_side\x18\a \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\"\x83\x02\n" +
 	"\aOCOPlan\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12/\n" +
 	"\texit_side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\bexitSide\x12\x1a\n" +
 	"\bquantity\x18\x03 \x01(\x03R\bquantity\x12*\n" +
 	"\x11take_profit_price\x18\x04 \x01(\x03R\x0ftakeProfitPrice\x12&\n" +
-	"\x0fstop_loss_price\x18\x05 \x01(\x03R\rstopLossPrice\",\n" +
+	"\x0fstop_loss_price\x18\x05 \x01(\x03R\rstopLossPrice\x12?\n" +
+	"\rposition_side\x18\x06 \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\",\n" +
 	"\x11PlaceSagaResponse\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\")\n" +
 	"\x0eGetSagaRequest\x12\x17\n" +
@@ -1473,7 +1631,7 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"\abracket\x18\n" +
 	" \x01(\v2\x17.saga.v1.BracketDetailsH\x00R\abracket\x12'\n" +
 	"\x03oco\x18\v \x01(\v2\x13.saga.v1.OCODetailsH\x00R\x03ocoB\t\n" +
-	"\adetails\"\x9e\x03\n" +
+	"\adetails\"\x91\x04\n" +
 	"\x12SingleOrderDetails\x12/\n" +
 	"\x05phase\x18\x01 \x01(\x0e2\x19.saga.v1.SingleOrderPhaseR\x05phase\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +
@@ -1487,7 +1645,9 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"amountHeld\x12!\n" +
 	"\fcash_settled\x18\t \x01(\x03R\vcashSettled\x12\x19\n" +
 	"\border_id\x18\n" +
-	" \x01(\tR\aorderId\"\x90\x03\n" +
+	" \x01(\tR\aorderId\x12?\n" +
+	"\rposition_side\x18\v \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\x120\n" +
+	"\tinitiator\x18\f \x01(\x0e2\x12.saga.v1.InitiatorR\tinitiator\"\x83\x04\n" +
 	"\x0eBracketDetails\x12+\n" +
 	"\x05phase\x18\x01 \x01(\x0e2\x15.saga.v1.BracketPhaseR\x05phase\x121\n" +
 	"\n" +
@@ -1499,7 +1659,10 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"\x0fstop_loss_price\x18\x06 \x01(\x03R\rstopLossPrice\x12$\n" +
 	"\x0eentry_order_id\x18\a \x01(\tR\fentryOrderId\x12/\n" +
 	"\x14take_profit_order_id\x18\b \x01(\tR\x11takeProfitOrderId\x12+\n" +
-	"\x12stop_loss_order_id\x18\t \x01(\tR\x0fstopLossOrderId\"\xdf\x02\n" +
+	"\x12stop_loss_order_id\x18\t \x01(\tR\x0fstopLossOrderId\x12?\n" +
+	"\rposition_side\x18\n" +
+	" \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\x120\n" +
+	"\tinitiator\x18\v \x01(\x0e2\x12.saga.v1.InitiatorR\tinitiator\"\xd2\x03\n" +
 	"\n" +
 	"OCODetails\x12'\n" +
 	"\x05phase\x18\x01 \x01(\x0e2\x11.saga.v1.OCOPhaseR\x05phase\x12/\n" +
@@ -1509,7 +1672,10 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"\x0fstop_loss_price\x18\x05 \x01(\x03R\rstopLossPrice\x12/\n" +
 	"\x14take_profit_order_id\x18\x06 \x01(\tR\x11takeProfitOrderId\x12+\n" +
 	"\x12stop_loss_order_id\x18\a \x01(\tR\x0fstopLossOrderId\x12)\n" +
-	"\x10settled_quantity\x18\b \x01(\x03R\x0fsettledQuantity\",\n" +
+	"\x10settled_quantity\x18\b \x01(\x03R\x0fsettledQuantity\x12?\n" +
+	"\rposition_side\x18\t \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\x120\n" +
+	"\tinitiator\x18\n" +
+	" \x01(\x0e2\x12.saga.v1.InitiatorR\tinitiator\",\n" +
 	"\x11CancelSagaRequest\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\"\x14\n" +
 	"\x12CancelSagaResponse\"\x9d\x01\n" +
@@ -1525,18 +1691,25 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"\x15SAGA_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16SAGA_KIND_SINGLE_ORDER\x10\x01\x12\x15\n" +
 	"\x11SAGA_KIND_BRACKET\x10\x02\x12\x11\n" +
-	"\rSAGA_KIND_OCO\x10\x03*t\n" +
+	"\rSAGA_KIND_OCO\x10\x03*\x90\x01\n" +
 	"\n" +
 	"SagaStatus\x12\x1b\n" +
 	"\x17SAGA_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12SAGA_STATUS_ACTIVE\x10\x01\x12\x19\n" +
 	"\x15SAGA_STATUS_COMPLETED\x10\x02\x12\x16\n" +
-	"\x12SAGA_STATUS_FAILED\x10\x03*\x9d\x01\n" +
+	"\x12SAGA_STATUS_FAILED\x10\x03\x12\x1a\n" +
+	"\x16SAGA_STATUS_LIQUIDATED\x10\x04*U\n" +
+	"\tInitiator\x12\x19\n" +
+	"\x15INITIATOR_UNSPECIFIED\x10\x00\x12\x12\n" +
+	"\x0eINITIATOR_USER\x10\x01\x12\x19\n" +
+	"\x15INITIATOR_MARGIN_CALL\x10\x02*\xe9\x01\n" +
 	"\x10SingleOrderPhase\x12\"\n" +
 	"\x1eSINGLE_ORDER_PHASE_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aSINGLE_ORDER_PHASE_STARTED\x10\x01\x12 \n" +
 	"\x1cSINGLE_ORDER_PHASE_CASH_HELD\x10\x02\x12#\n" +
-	"\x1fSINGLE_ORDER_PHASE_ORDER_PLACED\x10\x03*n\n" +
+	"\x1fSINGLE_ORDER_PHASE_ORDER_PLACED\x10\x03\x12&\n" +
+	"\"SINGLE_ORDER_PHASE_COLLATERAL_HELD\x10\x04\x12\"\n" +
+	"\x1eSINGLE_ORDER_PHASE_SHARES_HELD\x10\x05*n\n" +
 	"\fBracketPhase\x12\x1d\n" +
 	"\x19BRACKET_PHASE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bBRACKET_PHASE_PENDING_ENTRY\x10\x01\x12\x1e\n" +
@@ -1564,73 +1737,84 @@ func file_saga_v1_saga_proto_rawDescGZIP() []byte {
 	return file_saga_v1_saga_proto_rawDescData
 }
 
-var file_saga_v1_saga_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_saga_v1_saga_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
 var file_saga_v1_saga_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_saga_v1_saga_proto_goTypes = []any{
 	(SagaKind)(0),                 // 0: saga.v1.SagaKind
 	(SagaStatus)(0),               // 1: saga.v1.SagaStatus
-	(SingleOrderPhase)(0),         // 2: saga.v1.SingleOrderPhase
-	(BracketPhase)(0),             // 3: saga.v1.BracketPhase
-	(OCOPhase)(0),                 // 4: saga.v1.OCOPhase
-	(*PlaceSagaRequest)(nil),      // 5: saga.v1.PlaceSagaRequest
-	(*SingleOrderPlan)(nil),       // 6: saga.v1.SingleOrderPlan
-	(*BracketPlan)(nil),           // 7: saga.v1.BracketPlan
-	(*OCOPlan)(nil),               // 8: saga.v1.OCOPlan
-	(*PlaceSagaResponse)(nil),     // 9: saga.v1.PlaceSagaResponse
-	(*GetSagaRequest)(nil),        // 10: saga.v1.GetSagaRequest
-	(*GetSagaResponse)(nil),       // 11: saga.v1.GetSagaResponse
-	(*SingleOrderDetails)(nil),    // 12: saga.v1.SingleOrderDetails
-	(*BracketDetails)(nil),        // 13: saga.v1.BracketDetails
-	(*OCODetails)(nil),            // 14: saga.v1.OCODetails
-	(*CancelSagaRequest)(nil),     // 15: saga.v1.CancelSagaRequest
-	(*CancelSagaResponse)(nil),    // 16: saga.v1.CancelSagaResponse
-	(*ListSagasRequest)(nil),      // 17: saga.v1.ListSagasRequest
-	(*ListSagasResponse)(nil),     // 18: saga.v1.ListSagasResponse
-	(v1.Side)(0),                  // 19: orderbook.v1.Side
-	(v1.OrderType)(0),             // 20: orderbook.v1.OrderType
-	(v1.TimeInForce)(0),           // 21: orderbook.v1.TimeInForce
-	(*timestamppb.Timestamp)(nil), // 22: google.protobuf.Timestamp
+	(Initiator)(0),                // 2: saga.v1.Initiator
+	(SingleOrderPhase)(0),         // 3: saga.v1.SingleOrderPhase
+	(BracketPhase)(0),             // 4: saga.v1.BracketPhase
+	(OCOPhase)(0),                 // 5: saga.v1.OCOPhase
+	(*PlaceSagaRequest)(nil),      // 6: saga.v1.PlaceSagaRequest
+	(*SingleOrderPlan)(nil),       // 7: saga.v1.SingleOrderPlan
+	(*BracketPlan)(nil),           // 8: saga.v1.BracketPlan
+	(*OCOPlan)(nil),               // 9: saga.v1.OCOPlan
+	(*PlaceSagaResponse)(nil),     // 10: saga.v1.PlaceSagaResponse
+	(*GetSagaRequest)(nil),        // 11: saga.v1.GetSagaRequest
+	(*GetSagaResponse)(nil),       // 12: saga.v1.GetSagaResponse
+	(*SingleOrderDetails)(nil),    // 13: saga.v1.SingleOrderDetails
+	(*BracketDetails)(nil),        // 14: saga.v1.BracketDetails
+	(*OCODetails)(nil),            // 15: saga.v1.OCODetails
+	(*CancelSagaRequest)(nil),     // 16: saga.v1.CancelSagaRequest
+	(*CancelSagaResponse)(nil),    // 17: saga.v1.CancelSagaResponse
+	(*ListSagasRequest)(nil),      // 18: saga.v1.ListSagasRequest
+	(*ListSagasResponse)(nil),     // 19: saga.v1.ListSagasResponse
+	(v1.Side)(0),                  // 20: orderbook.v1.Side
+	(v1.OrderType)(0),             // 21: orderbook.v1.OrderType
+	(v1.TimeInForce)(0),           // 22: orderbook.v1.TimeInForce
+	(v1.PositionSide)(0),          // 23: orderbook.v1.PositionSide
+	(*timestamppb.Timestamp)(nil), // 24: google.protobuf.Timestamp
 }
 var file_saga_v1_saga_proto_depIdxs = []int32{
-	6,  // 0: saga.v1.PlaceSagaRequest.single_order:type_name -> saga.v1.SingleOrderPlan
-	7,  // 1: saga.v1.PlaceSagaRequest.bracket:type_name -> saga.v1.BracketPlan
-	8,  // 2: saga.v1.PlaceSagaRequest.oco:type_name -> saga.v1.OCOPlan
-	19, // 3: saga.v1.SingleOrderPlan.side:type_name -> orderbook.v1.Side
-	20, // 4: saga.v1.SingleOrderPlan.order_type:type_name -> orderbook.v1.OrderType
-	21, // 5: saga.v1.SingleOrderPlan.time_in_force:type_name -> orderbook.v1.TimeInForce
-	19, // 6: saga.v1.BracketPlan.entry_side:type_name -> orderbook.v1.Side
-	19, // 7: saga.v1.OCOPlan.exit_side:type_name -> orderbook.v1.Side
-	0,  // 8: saga.v1.GetSagaResponse.kind:type_name -> saga.v1.SagaKind
-	1,  // 9: saga.v1.GetSagaResponse.status:type_name -> saga.v1.SagaStatus
-	22, // 10: saga.v1.GetSagaResponse.started_at:type_name -> google.protobuf.Timestamp
-	22, // 11: saga.v1.GetSagaResponse.ended_at:type_name -> google.protobuf.Timestamp
-	12, // 12: saga.v1.GetSagaResponse.single_order:type_name -> saga.v1.SingleOrderDetails
-	13, // 13: saga.v1.GetSagaResponse.bracket:type_name -> saga.v1.BracketDetails
-	14, // 14: saga.v1.GetSagaResponse.oco:type_name -> saga.v1.OCODetails
-	2,  // 15: saga.v1.SingleOrderDetails.phase:type_name -> saga.v1.SingleOrderPhase
-	19, // 16: saga.v1.SingleOrderDetails.side:type_name -> orderbook.v1.Side
-	20, // 17: saga.v1.SingleOrderDetails.order_type:type_name -> orderbook.v1.OrderType
-	21, // 18: saga.v1.SingleOrderDetails.time_in_force:type_name -> orderbook.v1.TimeInForce
-	3,  // 19: saga.v1.BracketDetails.phase:type_name -> saga.v1.BracketPhase
-	19, // 20: saga.v1.BracketDetails.entry_side:type_name -> orderbook.v1.Side
-	4,  // 21: saga.v1.OCODetails.phase:type_name -> saga.v1.OCOPhase
-	19, // 22: saga.v1.OCODetails.exit_side:type_name -> orderbook.v1.Side
-	0,  // 23: saga.v1.ListSagasRequest.kind:type_name -> saga.v1.SagaKind
-	1,  // 24: saga.v1.ListSagasRequest.status:type_name -> saga.v1.SagaStatus
-	11, // 25: saga.v1.ListSagasResponse.sagas:type_name -> saga.v1.GetSagaResponse
-	5,  // 26: saga.v1.SagaService.Place:input_type -> saga.v1.PlaceSagaRequest
-	10, // 27: saga.v1.SagaService.Get:input_type -> saga.v1.GetSagaRequest
-	15, // 28: saga.v1.SagaService.Cancel:input_type -> saga.v1.CancelSagaRequest
-	17, // 29: saga.v1.SagaService.List:input_type -> saga.v1.ListSagasRequest
-	9,  // 30: saga.v1.SagaService.Place:output_type -> saga.v1.PlaceSagaResponse
-	11, // 31: saga.v1.SagaService.Get:output_type -> saga.v1.GetSagaResponse
-	16, // 32: saga.v1.SagaService.Cancel:output_type -> saga.v1.CancelSagaResponse
-	18, // 33: saga.v1.SagaService.List:output_type -> saga.v1.ListSagasResponse
-	30, // [30:34] is the sub-list for method output_type
-	26, // [26:30] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	7,  // 0: saga.v1.PlaceSagaRequest.single_order:type_name -> saga.v1.SingleOrderPlan
+	8,  // 1: saga.v1.PlaceSagaRequest.bracket:type_name -> saga.v1.BracketPlan
+	9,  // 2: saga.v1.PlaceSagaRequest.oco:type_name -> saga.v1.OCOPlan
+	20, // 3: saga.v1.SingleOrderPlan.side:type_name -> orderbook.v1.Side
+	21, // 4: saga.v1.SingleOrderPlan.order_type:type_name -> orderbook.v1.OrderType
+	22, // 5: saga.v1.SingleOrderPlan.time_in_force:type_name -> orderbook.v1.TimeInForce
+	23, // 6: saga.v1.SingleOrderPlan.position_side:type_name -> orderbook.v1.PositionSide
+	20, // 7: saga.v1.BracketPlan.entry_side:type_name -> orderbook.v1.Side
+	23, // 8: saga.v1.BracketPlan.position_side:type_name -> orderbook.v1.PositionSide
+	20, // 9: saga.v1.OCOPlan.exit_side:type_name -> orderbook.v1.Side
+	23, // 10: saga.v1.OCOPlan.position_side:type_name -> orderbook.v1.PositionSide
+	0,  // 11: saga.v1.GetSagaResponse.kind:type_name -> saga.v1.SagaKind
+	1,  // 12: saga.v1.GetSagaResponse.status:type_name -> saga.v1.SagaStatus
+	24, // 13: saga.v1.GetSagaResponse.started_at:type_name -> google.protobuf.Timestamp
+	24, // 14: saga.v1.GetSagaResponse.ended_at:type_name -> google.protobuf.Timestamp
+	13, // 15: saga.v1.GetSagaResponse.single_order:type_name -> saga.v1.SingleOrderDetails
+	14, // 16: saga.v1.GetSagaResponse.bracket:type_name -> saga.v1.BracketDetails
+	15, // 17: saga.v1.GetSagaResponse.oco:type_name -> saga.v1.OCODetails
+	3,  // 18: saga.v1.SingleOrderDetails.phase:type_name -> saga.v1.SingleOrderPhase
+	20, // 19: saga.v1.SingleOrderDetails.side:type_name -> orderbook.v1.Side
+	21, // 20: saga.v1.SingleOrderDetails.order_type:type_name -> orderbook.v1.OrderType
+	22, // 21: saga.v1.SingleOrderDetails.time_in_force:type_name -> orderbook.v1.TimeInForce
+	23, // 22: saga.v1.SingleOrderDetails.position_side:type_name -> orderbook.v1.PositionSide
+	2,  // 23: saga.v1.SingleOrderDetails.initiator:type_name -> saga.v1.Initiator
+	4,  // 24: saga.v1.BracketDetails.phase:type_name -> saga.v1.BracketPhase
+	20, // 25: saga.v1.BracketDetails.entry_side:type_name -> orderbook.v1.Side
+	23, // 26: saga.v1.BracketDetails.position_side:type_name -> orderbook.v1.PositionSide
+	2,  // 27: saga.v1.BracketDetails.initiator:type_name -> saga.v1.Initiator
+	5,  // 28: saga.v1.OCODetails.phase:type_name -> saga.v1.OCOPhase
+	20, // 29: saga.v1.OCODetails.exit_side:type_name -> orderbook.v1.Side
+	23, // 30: saga.v1.OCODetails.position_side:type_name -> orderbook.v1.PositionSide
+	2,  // 31: saga.v1.OCODetails.initiator:type_name -> saga.v1.Initiator
+	0,  // 32: saga.v1.ListSagasRequest.kind:type_name -> saga.v1.SagaKind
+	1,  // 33: saga.v1.ListSagasRequest.status:type_name -> saga.v1.SagaStatus
+	12, // 34: saga.v1.ListSagasResponse.sagas:type_name -> saga.v1.GetSagaResponse
+	6,  // 35: saga.v1.SagaService.Place:input_type -> saga.v1.PlaceSagaRequest
+	11, // 36: saga.v1.SagaService.Get:input_type -> saga.v1.GetSagaRequest
+	16, // 37: saga.v1.SagaService.Cancel:input_type -> saga.v1.CancelSagaRequest
+	18, // 38: saga.v1.SagaService.List:input_type -> saga.v1.ListSagasRequest
+	10, // 39: saga.v1.SagaService.Place:output_type -> saga.v1.PlaceSagaResponse
+	12, // 40: saga.v1.SagaService.Get:output_type -> saga.v1.GetSagaResponse
+	17, // 41: saga.v1.SagaService.Cancel:output_type -> saga.v1.CancelSagaResponse
+	19, // 42: saga.v1.SagaService.List:output_type -> saga.v1.ListSagasResponse
+	39, // [39:43] is the sub-list for method output_type
+	35, // [35:39] is the sub-list for method input_type
+	35, // [35:35] is the sub-list for extension type_name
+	35, // [35:35] is the sub-list for extension extendee
+	0,  // [0:35] is the sub-list for field type_name
 }
 
 func init() { file_saga_v1_saga_proto_init() }
@@ -1653,7 +1837,7 @@ func file_saga_v1_saga_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_saga_v1_saga_proto_rawDesc), len(file_saga_v1_saga_proto_rawDesc)),
-			NumEnums:      5,
+			NumEnums:      6,
 			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,

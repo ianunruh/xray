@@ -88,6 +88,34 @@ func (ob *OrderBook) EstimateMarketBuyCost(quantity int64) (int64, bool) {
 	return cost, true
 }
 
+// EstimateMarketSellProceeds is the mirror of EstimateMarketBuyCost,
+// walking the bid side to estimate proceeds from selling `quantity`
+// shares. Used by the short-open path to size collateral when the
+// order is a market SELL.
+func (ob *OrderBook) EstimateMarketSellProceeds(quantity int64) (int64, bool) {
+	if quantity <= 0 {
+		return 0, false
+	}
+	var proceeds, lastPrice int64
+	remaining := quantity
+	for order := range ob.Bids.All() {
+		if remaining <= 0 {
+			break
+		}
+		take := min(order.RemainingQty, remaining)
+		proceeds += take * order.Price
+		remaining -= take
+		lastPrice = order.Price
+	}
+	if lastPrice == 0 {
+		return 0, false
+	}
+	if remaining > 0 {
+		proceeds += remaining * lastPrice
+	}
+	return proceeds, true
+}
+
 // Apply updates the order book state from a domain event.
 func (ob *OrderBook) Apply(evt es.Event) error {
 	switch data := evt.Data.(type) {

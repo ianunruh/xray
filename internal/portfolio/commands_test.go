@@ -845,3 +845,457 @@ func TestCreditShares_Accumulation(t *testing.T) {
 	// Total cost = (100 * $150) + (50 * $100) = $15,000 + $5,000 = $20,000
 	assert.Equal(t, int64(200000000), p.Holdings["AAPL"].TotalCost)
 }
+
+// --- Short-selling tests ---
+
+// totalEncumberedCash sums every place cash can live on a portfolio.
+// Invariant: deposits - withdrawals - realized losses on shorts =
+// totalEncumberedCash (and inversely for realized gains).
+func totalEncumberedCash(p *portfolio.Portfolio) int64 {
+	total := p.CashBalance + p.CashHeld + p.CollateralPool + p.ProceedsPool
+	for _, h := range p.CollateralHeldBySaga {
+		total += h.Amount
+	}
+	return total
+}
+
+func TestHoldCollateral_HappyPath(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	deposit := portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000}
+	require.NoError(t, handler.Handle(ctx, deposit, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, deposit)
+	}))
+
+	hold := portfolio.HoldCollateral{
+		AccountID: "acct-1", OrderSagaID: "saga-1",
+		Symbol: "AAPL", Quantity: 100, Amount: 7500000,
+	}
+	require.NoError(t, handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCollateral(p, hold)
+	}))
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(2500000), p.CashBalance)
+	assert.Equal(t, int64(7500000), p.CollateralHeldBySaga["saga-1"].Amount)
+	assert.Equal(t, int64(10000000), totalEncumberedCash(p))
+}
+
+func TestHoldCollateral_InsufficientFunds(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	deposit := portfolio.DepositCash{AccountID: "acct-1", Amount: 5000000}
+	require.NoError(t, handler.Handle(ctx, deposit, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, deposit)
+	}))
+
+	hold := portfolio.HoldCollateral{
+		AccountID: "acct-1", OrderSagaID: "saga-1",
+		Symbol: "AAPL", Quantity: 100, Amount: 7500000,
+	}
+	err := handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCollateral(p, hold)
+	})
+	assert.ErrorIs(t, err, portfolio.ErrInsufficientFunds)
+}
+
+func TestHoldCollateral_RefusesWhenLong(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	setupPortfolioWithHolding(t, handler, ctx, "acct-1", "AAPL", 50, 1500000)
+	// Top up cash so the only failure point is the long-conflict check.
+	require.NoError(t, handler.Handle(ctx, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000}, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000})
+	}))
+
+	hold := portfolio.HoldCollateral{
+		AccountID: "acct-1", OrderSagaID: "saga-1",
+		Symbol: "AAPL", Quantity: 100, Amount: 7500000,
+	}
+	err := handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCollateral(p, hold)
+	})
+	assert.ErrorIs(t, err, portfolio.ErrShortHoldsLong)
+}
+
+func TestReleaseCollateral_HappyPath(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	require.NoError(t, handler.Handle(ctx, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000}, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000})
+	}))
+
+	hold := portfolio.HoldCollateral{
+		AccountID: "acct-1", OrderSagaID: "saga-1",
+		Symbol: "AAPL", Quantity: 100, Amount: 7500000,
+	}
+	require.NoError(t, handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCollateral(p, hold)
+	}))
+
+	release := portfolio.ReleaseCollateral{AccountID: "acct-1", OrderSagaID: "saga-1"}
+	require.NoError(t, handler.Handle(ctx, release, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteReleaseCollateral(p, release)
+	}))
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(10000000), p.CashBalance)
+	assert.Empty(t, p.CollateralHeldBySaga)
+}
+
+func TestOpenShort_HappyPath(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	// Deposit $100, hold $75 collateral, open short of 100 shares @ $150.
+	require.NoError(t, handler.Handle(ctx, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000}, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000})
+	}))
+
+	hold := portfolio.HoldCollateral{
+		AccountID: "acct-1", OrderSagaID: "saga-1",
+		Symbol: "AAPL", Quantity: 100, Amount: 7500000,
+	}
+	require.NoError(t, handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCollateral(p, hold)
+	}))
+
+	open := portfolio.OpenShort{
+		AccountID: "acct-1", OrderSagaID: "saga-1", TradeID: "trade-1",
+		Symbol: "AAPL", Quantity: 100, PricePerShare: 1500000,
+	}
+	require.NoError(t, handler.Handle(ctx, open, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteOpenShort(p, open)
+	}))
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+
+	short := p.ShortPositions["AAPL"]
+	require.NotNil(t, short)
+	assert.Equal(t, int64(100), short.Quantity)
+	assert.Equal(t, int64(150000000), short.ProceedsHeld) // 100 * 1.5M
+	assert.Equal(t, int64(7500000), short.CollateralHeld)
+	assert.Equal(t, int64(1500000), short.AvgOpenPrice)
+	assert.Equal(t, int64(150000000), p.ProceedsPool)
+	assert.Equal(t, int64(7500000), p.CollateralPool)
+	assert.Empty(t, p.CollateralHeldBySaga)
+	assert.Equal(t, int64(2500000), p.CashBalance)
+	assert.Equal(t, int64(160000000), totalEncumberedCash(p))
+}
+
+func TestOpenShort_WeightedAvgAcrossOpens(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	require.NoError(t, handler.Handle(ctx, portfolio.DepositCash{AccountID: "acct-1", Amount: 100000000}, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, portfolio.DepositCash{AccountID: "acct-1", Amount: 100000000})
+	}))
+
+	// Open 100 @ $150, then 50 @ $120 — weighted avg = (100*150 + 50*120) / 150 = 140.
+	for i, in := range []struct {
+		saga, trade  string
+		qty, price   int64
+		collateral   int64
+	}{
+		{"saga-1", "trade-1", 100, 1500000, 7500000},
+		{"saga-2", "trade-2", 50, 1200000, 3000000},
+	} {
+		_ = i
+		hold := portfolio.HoldCollateral{
+			AccountID: "acct-1", OrderSagaID: in.saga,
+			Symbol: "AAPL", Quantity: in.qty, Amount: in.collateral,
+		}
+		require.NoError(t, handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteHoldCollateral(p, hold)
+		}))
+		open := portfolio.OpenShort{
+			AccountID: "acct-1", OrderSagaID: in.saga, TradeID: in.trade,
+			Symbol: "AAPL", Quantity: in.qty, PricePerShare: in.price,
+		}
+		require.NoError(t, handler.Handle(ctx, open, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteOpenShort(p, open)
+		}))
+	}
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(150), p.ShortPositions["AAPL"].Quantity)
+	assert.Equal(t, int64(1400000), p.ShortPositions["AAPL"].AvgOpenPrice)
+}
+
+func TestOpenShort_Idempotent(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	require.NoError(t, handler.Handle(ctx, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000}, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000})
+	}))
+	require.NoError(t, handler.Handle(ctx, portfolio.HoldCollateral{AccountID: "acct-1", OrderSagaID: "saga-1", Symbol: "AAPL", Quantity: 100, Amount: 7500000}, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCollateral(p, portfolio.HoldCollateral{AccountID: "acct-1", OrderSagaID: "saga-1", Symbol: "AAPL", Quantity: 100, Amount: 7500000})
+	}))
+	open := portfolio.OpenShort{
+		AccountID: "acct-1", OrderSagaID: "saga-1", TradeID: "trade-1",
+		Symbol: "AAPL", Quantity: 100, PricePerShare: 1500000,
+	}
+	require.NoError(t, handler.Handle(ctx, open, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteOpenShort(p, open)
+	}))
+	// Redeliver — must be a no-op.
+	require.NoError(t, handler.Handle(ctx, open, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteOpenShort(p, open)
+	}))
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(100), p.ShortPositions["AAPL"].Quantity)
+}
+
+func TestHoldShortCover_InsufficientShortQty(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	require.NoError(t, handler.Handle(ctx, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000}, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000})
+	}))
+	openShort(t, handler, ctx, "acct-1", "AAPL", 100, 1500000, 7500000)
+
+	hold := portfolio.HoldShortCover{
+		AccountID: "acct-1", OrderSagaID: "cover-1",
+		Symbol: "AAPL", Quantity: 101,
+	}
+	err := handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShortCover(p, hold)
+	})
+	assert.ErrorIs(t, err, portfolio.ErrInsufficientShortQty)
+}
+
+func TestCoverShort_FullCloseProfit(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	// Deposit $100, open 100 @ $150 with $75 collateral, then cover at $120.
+	// Expected realized PnL = (150 - 120) * 100 = +3000.
+	require.NoError(t, handler.Handle(ctx, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000}, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000})
+	}))
+	openShort(t, handler, ctx, "acct-1", "AAPL", 100, 1500000, 7500000)
+
+	cover := portfolio.CoverShort{
+		AccountID: "acct-1", OrderSagaID: "cover-1", TradeID: "ctrade-1",
+		Symbol: "AAPL", Quantity: 100, CostPerShare: 1200000,
+	}
+	require.NoError(t, handler.Handle(ctx, cover, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteCoverShort(p, cover)
+	}))
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Empty(t, p.ShortPositions)
+	assert.Equal(t, int64(0), p.ProceedsPool)
+	assert.Equal(t, int64(0), p.CollateralPool)
+	// Realized PnL = (1500000 - 1200000) * 100 = 30M.
+	// Final cash = deposit 10M + realized 30M = 40M.
+	assert.Equal(t, int64(40000000), p.CashBalance)
+	assert.Equal(t, int64(40000000), totalEncumberedCash(p))
+}
+
+func TestCoverShort_FullCloseLoss(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	// Open 100 @ $150 with $75 collateral, cover at $180 — loss of $30/sh = $3000.
+	require.NoError(t, handler.Handle(ctx, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000}, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000})
+	}))
+	openShort(t, handler, ctx, "acct-1", "AAPL", 100, 1500000, 7500000)
+
+	cover := portfolio.CoverShort{
+		AccountID: "acct-1", OrderSagaID: "cover-1", TradeID: "ctrade-1",
+		Symbol: "AAPL", Quantity: 100, CostPerShare: 1800000,
+	}
+	require.NoError(t, handler.Handle(ctx, cover, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteCoverShort(p, cover)
+	}))
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	// Realized PnL = (1500000 - 1800000) * 100 = -30M. The 7.5M
+	// collateral isn't nearly enough to absorb the 30M loss, so cash
+	// goes negative: 10M deposit - 30M loss = -20M. (In a real system
+	// margin call would have fired long before; the test verifies the
+	// math, not the policy.)
+	assert.Equal(t, int64(-20000000), p.CashBalance)
+	assert.Empty(t, p.ShortPositions)
+	assert.Equal(t, int64(-20000000), totalEncumberedCash(p))
+}
+
+func TestCoverShort_PartialThenFull(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	require.NoError(t, handler.Handle(ctx, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000}, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000})
+	}))
+	openShort(t, handler, ctx, "acct-1", "AAPL", 100, 1500000, 7500000)
+
+	// Cover 40 of 100 at $120.
+	cover1 := portfolio.CoverShort{
+		AccountID: "acct-1", OrderSagaID: "cover-1", TradeID: "ctrade-1",
+		Symbol: "AAPL", Quantity: 40, CostPerShare: 1200000,
+	}
+	require.NoError(t, handler.Handle(ctx, cover1, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteCoverShort(p, cover1)
+	}))
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	short := p.ShortPositions["AAPL"]
+	require.NotNil(t, short)
+	assert.Equal(t, int64(60), short.Quantity)
+	// 40% of pool released: proceeds 60M of 150M -> 90M remaining,
+	// collateral 3M of 7.5M -> 4.5M remaining.
+	assert.Equal(t, int64(90000000), short.ProceedsHeld)
+	assert.Equal(t, int64(4500000), short.CollateralHeld)
+
+	// Now cover the remaining 60 at $130 (still profit).
+	cover2 := portfolio.CoverShort{
+		AccountID: "acct-1", OrderSagaID: "cover-2", TradeID: "ctrade-2",
+		Symbol: "AAPL", Quantity: 60, CostPerShare: 1300000,
+	}
+	require.NoError(t, handler.Handle(ctx, cover2, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteCoverShort(p, cover2)
+	}))
+
+	p, err = handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Empty(t, p.ShortPositions)
+	assert.Equal(t, int64(0), p.ProceedsPool)
+	assert.Equal(t, int64(0), p.CollateralPool)
+	// Realized PnL = (1500000-1200000)*40 + (1500000-1300000)*60
+	//              = 12M + 12M = 24M. Final cash = 10M + 24M = 34M.
+	assert.Equal(t, int64(34000000), p.CashBalance)
+	assert.Equal(t, int64(34000000), totalEncumberedCash(p))
+}
+
+func TestCoverShort_CannotGoThroughZero(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	require.NoError(t, handler.Handle(ctx, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000}, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000})
+	}))
+	openShort(t, handler, ctx, "acct-1", "AAPL", 100, 1500000, 7500000)
+
+	cover := portfolio.CoverShort{
+		AccountID: "acct-1", OrderSagaID: "cover-1", TradeID: "ctrade-1",
+		Symbol: "AAPL", Quantity: 101, CostPerShare: 1200000,
+	}
+	err := handler.Handle(ctx, cover, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteCoverShort(p, cover)
+	})
+	assert.ErrorIs(t, err, portfolio.ErrInsufficientShortQty)
+}
+
+func TestCoverShort_Idempotent(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	require.NoError(t, handler.Handle(ctx, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000}, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, portfolio.DepositCash{AccountID: "acct-1", Amount: 10000000})
+	}))
+	openShort(t, handler, ctx, "acct-1", "AAPL", 100, 1500000, 7500000)
+
+	cover := portfolio.CoverShort{
+		AccountID: "acct-1", OrderSagaID: "cover-1", TradeID: "ctrade-1",
+		Symbol: "AAPL", Quantity: 100, CostPerShare: 1200000,
+	}
+	require.NoError(t, handler.Handle(ctx, cover, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteCoverShort(p, cover)
+	}))
+	// Redeliver — must be a no-op.
+	require.NoError(t, handler.Handle(ctx, cover, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteCoverShort(p, cover)
+	}))
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(40000000), p.CashBalance)
+}
+
+func TestHoldCash_RefusesWhenShort(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+
+	require.NoError(t, handler.Handle(ctx, portfolio.DepositCash{AccountID: "acct-1", Amount: 20000000}, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteDepositCash(p, portfolio.DepositCash{AccountID: "acct-1", Amount: 20000000})
+	}))
+	openShort(t, handler, ctx, "acct-1", "AAPL", 100, 1500000, 7500000)
+
+	// Try to long-buy AAPL while AAPL short is open.
+	hold := portfolio.HoldCash{
+		AccountID: "acct-1", OrderSagaID: "buy-1",
+		Symbol: "AAPL", Amount: 1500000,
+	}
+	err := handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCash(p, hold)
+	})
+	assert.ErrorIs(t, err, portfolio.ErrLongHoldsShort)
+}
+
+// openShort is a helper that runs HoldCollateral + OpenShort for a fresh saga,
+// using deterministic saga/trade IDs derived from the symbol. Assumes the
+// account has enough cash for the collateral.
+func openShort(t *testing.T, handler *es.Handler[*portfolio.Portfolio], ctx context.Context, accountID, symbol string, qty, price, collateral int64) {
+	t.Helper()
+	sagaID := "open-" + symbol
+	tradeID := "otrade-" + symbol
+	hold := portfolio.HoldCollateral{
+		AccountID: accountID, OrderSagaID: sagaID,
+		Symbol: symbol, Quantity: qty, Amount: collateral,
+	}
+	require.NoError(t, handler.Handle(ctx, hold, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCollateral(p, hold)
+	}))
+	open := portfolio.OpenShort{
+		AccountID: accountID, OrderSagaID: sagaID, TradeID: tradeID,
+		Symbol: symbol, Quantity: qty, PricePerShare: price,
+	}
+	require.NoError(t, handler.Handle(ctx, open, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteOpenShort(p, open)
+	}))
+}

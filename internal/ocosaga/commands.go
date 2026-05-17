@@ -27,6 +27,7 @@ type StartOCOSaga struct {
 	Quantity        int64
 	TakeProfitPrice int64
 	StopLossPrice   int64
+	PositionSide    orderbookv1.PositionSide
 }
 
 func (c StartOCOSaga) AggregateID() string {
@@ -58,6 +59,7 @@ func ExecuteStartOCOSaga(saga *OCOSaga, cmd StartOCOSaga) ([]es.Event, error) {
 			TakeProfitPrice: cmd.TakeProfitPrice,
 			StopLossPrice:   cmd.StopLossPrice,
 			StartedAt:       timestamppb.New(now),
+			PositionSide:    cmd.PositionSide,
 		},
 	}
 	if err := saga.Apply(evt); err != nil {

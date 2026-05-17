@@ -99,6 +99,7 @@ func (s *Server) placeOCO(ctx context.Context, accountID string, plan *sagav1.OC
 		Quantity:        plan.Quantity,
 		TakeProfitPrice: plan.TakeProfitPrice,
 		StopLossPrice:   plan.StopLossPrice,
+		PositionSide:    plan.PositionSide,
 	}
 	if err := s.ocoSagaHandler.Handle(ctx, cmd, func(saga *ocosaga.OCOSaga) ([]es.Event, error) {
 		return ocosaga.ExecuteStartOCOSaga(saga, cmd)
@@ -121,6 +122,8 @@ func (s *Server) placeSingleOrder(ctx context.Context, accountID string, plan *s
 		OrderType:      plan.OrderType,
 		TimeInForce:    plan.TimeInForce,
 		ReplaceOrderID: plan.ReplaceOrderId,
+		PositionSide:   plan.PositionSide,
+		Initiator:      sagav1.Initiator_INITIATOR_USER,
 	}
 	err := s.orderSagaHandler.Handle(ctx, cmd, func(saga *ordersaga.OrderSaga) ([]es.Event, error) {
 		return ordersaga.ExecuteStartOrderSaga(saga, cmd)
@@ -150,6 +153,7 @@ func (s *Server) placeBracket(ctx context.Context, accountID string, plan *sagav
 		EntryQty:        plan.EntryQuantity,
 		TakeProfitPrice: plan.TakeProfitPrice,
 		StopLossPrice:   plan.StopLossPrice,
+		PositionSide:    plan.PositionSide,
 	}
 	if err := s.bracketHandler.Handle(ctx, startCmd, func(b *bracket.BracketSaga) ([]es.Event, error) {
 		return bracket.ExecuteStartSaga(b, startCmd)
@@ -372,6 +376,7 @@ func (s *Server) ocoDetails(ctx context.Context, sagaID string) (*sagav1.OCODeta
 		TakeProfitOrderId: o.TakeProfitOrderID,
 		StopLossOrderId:   o.StopLossOrderID,
 		SettledQuantity:   o.SettledQty,
+		PositionSide:      o.PositionSide,
 	}, nil
 }
 
@@ -404,6 +409,8 @@ func (s *Server) singleOrderDetails(ctx context.Context, sagaID string) (*sagav1
 		AmountHeld:     saga.AmountHeld,
 		CashSettled:    saga.CashSettled,
 		OrderId:        saga.OrderID,
+		PositionSide:   saga.PositionSide,
+		Initiator:      saga.Initiator,
 	}, nil
 }
 
@@ -428,6 +435,7 @@ func (s *Server) bracketDetails(ctx context.Context, sagaID string) (*sagav1.Bra
 		EntryOrderId:      entryOrderID,
 		TakeProfitOrderId: b.TakeProfitOrderID,
 		StopLossOrderId:   b.StopLossOrderID,
+		PositionSide:      b.PositionSide,
 	}, nil
 }
 
@@ -437,6 +445,10 @@ func orderSagaPhase(s ordersaga.Status) sagav1.SingleOrderPhase {
 		return sagav1.SingleOrderPhase_SINGLE_ORDER_PHASE_STARTED
 	case ordersaga.CashHeld:
 		return sagav1.SingleOrderPhase_SINGLE_ORDER_PHASE_CASH_HELD
+	case ordersaga.CollateralHeld:
+		return sagav1.SingleOrderPhase_SINGLE_ORDER_PHASE_COLLATERAL_HELD
+	case ordersaga.SharesHeld:
+		return sagav1.SingleOrderPhase_SINGLE_ORDER_PHASE_SHARES_HELD
 	case ordersaga.OrderPlaced:
 		return sagav1.SingleOrderPhase_SINGLE_ORDER_PHASE_ORDER_PLACED
 	default:

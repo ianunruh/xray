@@ -4,7 +4,7 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
-import type { OrderType, Side, TimeInForce } from "../../orderbook/v1/events_pb";
+import type { OrderType, PositionSide, Side, TimeInForce } from "../../orderbook/v1/events_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
@@ -92,6 +92,15 @@ export declare type SingleOrderPlan = Message<"saga.v1.SingleOrderPlan"> & {
    * @generated from field: string replace_order_id = 7;
    */
   replaceOrderId: string;
+
+  /**
+   * SELL+SHORT = sell-to-open; BUY+SHORT = buy-to-cover. Server
+   * validates legal combos (e.g. BUY+SHORT requires existing short
+   * >= quantity in symbol).
+   *
+   * @generated from field: orderbook.v1.PositionSide position_side = 8;
+   */
+  positionSide: PositionSide;
 };
 
 /**
@@ -133,6 +142,14 @@ export declare type BracketPlan = Message<"saga.v1.BracketPlan"> & {
    * @generated from field: int64 stop_loss_price = 6;
    */
   stopLossPrice: bigint;
+
+  /**
+   * LONG bracket -> entry BUY+LONG, exits SELL+LONG.
+   * SHORT bracket -> entry SELL+SHORT, exits BUY+SHORT.
+   *
+   * @generated from field: orderbook.v1.PositionSide position_side = 7;
+   */
+  positionSide: PositionSide;
 };
 
 /**
@@ -174,6 +191,16 @@ export declare type OCOPlan = Message<"saga.v1.OCOPlan"> & {
    * @generated from field: int64 stop_loss_price = 5;
    */
   stopLossPrice: bigint;
+
+  /**
+   * LONG = exiting long inventory (exit_side typically SELL).
+   * SHORT = covering a short (exit_side typically BUY). Determines
+   * whether the saga's pre-place step holds long shares or short
+   * cover-capacity.
+   *
+   * @generated from field: orderbook.v1.PositionSide position_side = 6;
+   */
+  positionSide: PositionSide;
 };
 
 /**
@@ -341,6 +368,16 @@ export declare type SingleOrderDetails = Message<"saga.v1.SingleOrderDetails"> &
    * @generated from field: string order_id = 10;
    */
   orderId: string;
+
+  /**
+   * @generated from field: orderbook.v1.PositionSide position_side = 11;
+   */
+  positionSide: PositionSide;
+
+  /**
+   * @generated from field: saga.v1.Initiator initiator = 12;
+   */
+  initiator: Initiator;
 };
 
 /**
@@ -397,6 +434,16 @@ export declare type BracketDetails = Message<"saga.v1.BracketDetails"> & {
    * @generated from field: string stop_loss_order_id = 9;
    */
   stopLossOrderId: string;
+
+  /**
+   * @generated from field: orderbook.v1.PositionSide position_side = 10;
+   */
+  positionSide: PositionSide;
+
+  /**
+   * @generated from field: saga.v1.Initiator initiator = 11;
+   */
+  initiator: Initiator;
 };
 
 /**
@@ -448,6 +495,16 @@ export declare type OCODetails = Message<"saga.v1.OCODetails"> & {
    * @generated from field: int64 settled_quantity = 8;
    */
   settledQuantity: bigint;
+
+  /**
+   * @generated from field: orderbook.v1.PositionSide position_side = 9;
+   */
+  positionSide: PositionSide;
+
+  /**
+   * @generated from field: saga.v1.Initiator initiator = 10;
+   */
+  initiator: Initiator;
 };
 
 /**
@@ -591,12 +648,54 @@ export enum SagaStatus {
    * @generated from enum value: SAGA_STATUS_FAILED = 3;
    */
   FAILED = 3,
+
+  /**
+   * The saga was cancelled mid-flight by a margin-call reactor forcing
+   * liquidation, not by the user or an action-failure budget. Distinct
+   * from FAILED so the UI and audit log can attribute it correctly,
+   * and so retry/backoff logic doesn't kick in. Underlying aggregate
+   * state is OrderSagaFailed{reason="margin_call"}; the projection
+   * surfaces this status based on the reason tag.
+   *
+   * @generated from enum value: SAGA_STATUS_LIQUIDATED = 4;
+   */
+  LIQUIDATED = 4,
 }
 
 /**
  * Describes the enum saga.v1.SagaStatus.
  */
 export declare const SagaStatusSchema: GenEnum<SagaStatus>;
+
+/**
+ * Initiator identifies what caused a saga to start. Lives in saga/v1
+ * because portfolio/v1 needs to reference it on OrderSagaStarted, and
+ * putting it the other way would force a saga -> portfolio import that
+ * closes a cycle (saga already imports orderbook for Side/PositionSide).
+ *
+ * @generated from enum saga.v1.Initiator
+ */
+export enum Initiator {
+  /**
+   * @generated from enum value: INITIATOR_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: INITIATOR_USER = 1;
+   */
+  USER = 1,
+
+  /**
+   * @generated from enum value: INITIATOR_MARGIN_CALL = 2;
+   */
+  MARGIN_CALL = 2,
+}
+
+/**
+ * Describes the enum saga.v1.Initiator.
+ */
+export declare const InitiatorSchema: GenEnum<Initiator>;
 
 /**
  * SingleOrderPhase is the granular state for SAGA_KIND_SINGLE_ORDER.
@@ -623,6 +722,22 @@ export enum SingleOrderPhase {
    * @generated from enum value: SINGLE_ORDER_PHASE_ORDER_PLACED = 3;
    */
   ORDER_PLACED = 3,
+
+  /**
+   * SELL+SHORT: extra cash collateral posted before sell-to-open.
+   *
+   * @generated from enum value: SINGLE_ORDER_PHASE_COLLATERAL_HELD = 4;
+   */
+  COLLATERAL_HELD = 4,
+
+  /**
+   * SELL+LONG and BUY+SHORT: shares (or short-position capacity)
+   * reserved before placing. Fills the existing asymmetry where
+   * those paths jumped straight from STARTED to ORDER_PLACED.
+   *
+   * @generated from enum value: SINGLE_ORDER_PHASE_SHARES_HELD = 5;
+   */
+  SHARES_HELD = 5,
 }
 
 /**
@@ -674,6 +789,9 @@ export enum OCOPhase {
   OCO_PHASE_STARTED = 1,
 
   /**
+   * Long OCO: shares reserved against long inventory.
+   * Short OCO: capacity reserved against the open short position.
+   *
    * @generated from enum value: OCO_PHASE_SHARES_HELD = 2;
    */
   OCO_PHASE_SHARES_HELD = 2,

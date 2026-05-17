@@ -29,6 +29,7 @@ type StartSaga struct {
 	EntryQty        int64
 	TakeProfitPrice int64
 	StopLossPrice   int64
+	PositionSide    orderbookv1.PositionSide
 }
 
 func (c StartSaga) AggregateID() string {
@@ -56,7 +57,8 @@ func ExecuteStartSaga(saga *BracketSaga, cmd StartSaga) ([]es.Event, error) {
 			StopLossPrice:   cmd.StopLossPrice,
 			// EntryOrderId is derived from the entry ordersaga at
 			// placement time and recorded back via RecordEntryFilled.
-			StartedAt: timestamppb.New(now),
+			StartedAt:    timestamppb.New(now),
+			PositionSide: cmd.PositionSide,
 		},
 	}
 

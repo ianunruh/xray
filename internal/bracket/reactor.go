@@ -83,14 +83,15 @@ func (r *Reactor) handleOne(ctx context.Context, evt es.Event) error {
 // ordersaga already exists, which we treat as success.
 func (r *Reactor) onBracketStarted(ctx context.Context, data *orderbookv1.SagaStarted) error {
 	cmd := ordersaga.StartOrderSaga{
-		SagaID:      EntryOrderSagaID(data.SagaId),
-		AccountID:   data.AccountId,
-		Symbol:      data.Symbol,
-		Side:        data.EntrySide,
-		Price:       data.EntryPrice,
-		Quantity:    data.EntryQuantity,
-		OrderType:   orderbookv1.OrderType_ORDER_TYPE_LIMIT,
-		TimeInForce: orderbookv1.TimeInForce_TIME_IN_FORCE_GTC,
+		SagaID:       EntryOrderSagaID(data.SagaId),
+		AccountID:    data.AccountId,
+		Symbol:       data.Symbol,
+		Side:         data.EntrySide,
+		Price:        data.EntryPrice,
+		Quantity:     data.EntryQuantity,
+		OrderType:    orderbookv1.OrderType_ORDER_TYPE_LIMIT,
+		TimeInForce:  orderbookv1.TimeInForce_TIME_IN_FORCE_GTC,
+		PositionSide: data.PositionSide,
 	}
 	if err := r.orderSagaHandler.Handle(ctx, cmd, func(s *ordersaga.OrderSaga) ([]es.Event, error) {
 		return ordersaga.ExecuteStartOrderSaga(s, cmd)
@@ -129,9 +130,10 @@ func (r *Reactor) prepareExit(ctx context.Context, b *BracketSaga) error {
 		exitSide = orderbookv1.Side_SIDE_BUY
 	}
 
-	// Spawn the exit OCO saga. It owns HoldShares, TP+SL placement,
-	// fill settlement, and release-on-failure. Idempotent: existing
-	// OCO saga with the same ID is treated as success.
+	// Spawn the exit OCO saga. It owns HoldShares (or HoldShortCover for
+	// SHORT brackets), TP+SL placement, fill settlement, and release-on-
+	// failure. Idempotent: existing OCO saga with the same ID is treated
+	// as success.
 	ocoID := ExitOCOSagaID(b.SagaID)
 	start := ocosaga.StartOCOSaga{
 		SagaID:          ocoID,
@@ -141,6 +143,7 @@ func (r *Reactor) prepareExit(ctx context.Context, b *BracketSaga) error {
 		Quantity:        b.EntryQty,
 		TakeProfitPrice: b.TakeProfitPrice,
 		StopLossPrice:   b.StopLossPrice,
+		PositionSide:    b.PositionSide,
 	}
 	if err := r.ocoSagaHandler.Handle(ctx, start, func(s *ocosaga.OCOSaga) ([]es.Event, error) {
 		return ocosaga.ExecuteStartOCOSaga(s, start)
@@ -277,6 +280,7 @@ func (r *Reactor) onBracketActionFailed(ctx context.Context, sagaID string) erro
 				EntrySide:     orderbook.SideToProto(b.EntrySide),
 				EntryPrice:    b.EntryPrice,
 				EntryQuantity: b.EntryQty,
+				PositionSide:  b.PositionSide,
 			})
 		}
 	case PendingExit:

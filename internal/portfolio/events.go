@@ -8,16 +8,22 @@ import (
 )
 
 const (
-	EventCashDeposited  = "CashDeposited"
-	EventCashWithdrawn  = "CashWithdrawn"
-	EventCashHeld       = "CashHeld"
-	EventCashReleased   = "CashReleased"
-	EventCashSettled    = "CashSettled"
-	EventSharesCredited = "SharesCredited"
-	EventSharesDebited  = "SharesDebited"
-	EventSharesHeld     = "SharesHeld"
-	EventSharesReleased = "SharesReleased"
-	EventSharesSettled  = "SharesSettled"
+	EventCashDeposited      = "CashDeposited"
+	EventCashWithdrawn      = "CashWithdrawn"
+	EventCashHeld           = "CashHeld"
+	EventCashReleased       = "CashReleased"
+	EventCashSettled        = "CashSettled"
+	EventSharesCredited     = "SharesCredited"
+	EventSharesDebited      = "SharesDebited"
+	EventSharesHeld         = "SharesHeld"
+	EventSharesReleased     = "SharesReleased"
+	EventSharesSettled      = "SharesSettled"
+	EventCollateralHeld     = "CollateralHeld"
+	EventCollateralReleased = "CollateralReleased"
+	EventShortOpened        = "ShortOpened"
+	EventShortCoverHeld     = "ShortCoverHeld"
+	EventShortCoverReleased = "ShortCoverReleased"
+	EventShortCovered       = "ShortCovered"
 )
 
 func RegisterEvents(r *es.Registry) {
@@ -31,4 +37,10 @@ func RegisterEvents(r *es.Registry) {
 	r.Register(EventSharesHeld, func() proto.Message { return new(portfoliov1.SharesHeld) })
 	r.Register(EventSharesReleased, func() proto.Message { return new(portfoliov1.SharesReleased) })
 	r.Register(EventSharesSettled, func() proto.Message { return new(portfoliov1.SharesSettled) })
+	r.Register(EventCollateralHeld, func() proto.Message { return new(portfoliov1.CollateralHeld) })
+	r.Register(EventCollateralReleased, func() proto.Message { return new(portfoliov1.CollateralReleased) })
+	r.Register(EventShortOpened, func() proto.Message { return new(portfoliov1.ShortOpened) })
+	r.Register(EventShortCoverHeld, func() proto.Message { return new(portfoliov1.ShortCoverHeld) })
+	r.Register(EventShortCoverReleased, func() proto.Message { return new(portfoliov1.ShortCoverReleased) })
+	r.Register(EventShortCovered, func() proto.Message { return new(portfoliov1.ShortCovered) })
 }

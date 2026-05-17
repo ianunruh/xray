@@ -73,17 +73,32 @@ func (r *Reactor) holdShares(ctx context.Context, sagaID string) error {
 	if saga.Status != Started {
 		return nil
 	}
-	cmd := portfolio.HoldShares{
-		AccountID:   saga.AccountID,
-		OrderSagaID: sagaID,
-		Symbol:      saga.Symbol,
-		Quantity:    saga.Quantity,
-	}
-	if err := r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-		return portfolio.ExecuteHoldShares(p, cmd)
-	}); err != nil {
-		r.log.Error("ocosaga: failed to hold shares", "saga_id", sagaID, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "hold_shares", err.Error())
+	if saga.PositionSide == orderbookv1.PositionSide_POSITION_SIDE_SHORT {
+		cmd := portfolio.HoldShortCover{
+			AccountID:   saga.AccountID,
+			OrderSagaID: sagaID,
+			Symbol:      saga.Symbol,
+			Quantity:    saga.Quantity,
+		}
+		if err := r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteHoldShortCover(p, cmd)
+		}); err != nil {
+			r.log.Error("ocosaga: failed to hold short cover", "saga_id", sagaID, "error", err)
+			return r.emitActionFailed(ctx, sagaID, "hold_short_cover", err.Error())
+		}
+	} else {
+		cmd := portfolio.HoldShares{
+			AccountID:   saga.AccountID,
+			OrderSagaID: sagaID,
+			Symbol:      saga.Symbol,
+			Quantity:    saga.Quantity,
+		}
+		if err := r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteHoldShares(p, cmd)
+		}); err != nil {
+			r.log.Error("ocosaga: failed to hold shares", "saga_id", sagaID, "error", err)
+			return r.emitActionFailed(ctx, sagaID, "hold_shares", err.Error())
+		}
 	}
 	recordCmd := RecordSharesHeld{SagaID: sagaID}
 	if err := r.sagaHandler.Handle(ctx, recordCmd, func(s *OCOSaga) ([]es.Event, error) {
@@ -165,20 +180,37 @@ func (r *Reactor) settleFill(ctx context.Context, sagaID, orderID string, data *
 		return nil
 	}
 
-	settleCmd := portfolio.SettleSale{
-		AccountID:     saga.AccountID,
-		OrderSagaID:   sagaID,
-		TradeID:       data.TradeId,
-		Symbol:        saga.Symbol,
-		Quantity:      data.Quantity,
-		PricePerShare: data.Price,
-		Proceeds:      data.Price * data.Quantity,
-	}
-	if err := r.portfolioHandler.Handle(ctx, settleCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-		return portfolio.ExecuteSettleSale(p, settleCmd)
-	}); err != nil {
-		r.log.Error("ocosaga: failed to settle fill", "saga_id", sagaID, "trade_id", data.TradeId, "error", err)
-		return r.emitActionFailed(ctx, sagaID, "settle_fill", err.Error())
+	if saga.PositionSide == orderbookv1.PositionSide_POSITION_SIDE_SHORT {
+		coverCmd := portfolio.CoverShort{
+			AccountID:    saga.AccountID,
+			OrderSagaID:  sagaID,
+			TradeID:      data.TradeId,
+			Symbol:       saga.Symbol,
+			Quantity:     data.Quantity,
+			CostPerShare: data.Price,
+		}
+		if err := r.portfolioHandler.Handle(ctx, coverCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteCoverShort(p, coverCmd)
+		}); err != nil {
+			r.log.Error("ocosaga: failed to cover short", "saga_id", sagaID, "trade_id", data.TradeId, "error", err)
+			return r.emitActionFailed(ctx, sagaID, "settle_fill", err.Error())
+		}
+	} else {
+		settleCmd := portfolio.SettleSale{
+			AccountID:     saga.AccountID,
+			OrderSagaID:   sagaID,
+			TradeID:       data.TradeId,
+			Symbol:        saga.Symbol,
+			Quantity:      data.Quantity,
+			PricePerShare: data.Price,
+			Proceeds:      data.Price * data.Quantity,
+		}
+		if err := r.portfolioHandler.Handle(ctx, settleCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteSettleSale(p, settleCmd)
+		}); err != nil {
+			r.log.Error("ocosaga: failed to settle fill", "saga_id", sagaID, "trade_id", data.TradeId, "error", err)
+			return r.emitActionFailed(ctx, sagaID, "settle_fill", err.Error())
+		}
 	}
 
 	fillCmd := RecordFill{
@@ -237,6 +269,25 @@ func (r *Reactor) releaseRemainingHolds(ctx context.Context, sagaID string) erro
 	p, err := r.portfolioHandler.Load(ctx, portfolio.AggregateID(saga.AccountID))
 	if err != nil {
 		return fmt.Errorf("load portfolio: %w", err)
+	}
+	if saga.PositionSide == orderbookv1.PositionSide_POSITION_SIDE_SHORT {
+		hold, ok := p.ShortCoverHoldsBySaga[sagaID]
+		if !ok || hold.Quantity <= 0 {
+			return nil
+		}
+		cmd := portfolio.ReleaseShortCover{
+			AccountID:   saga.AccountID,
+			OrderSagaID: sagaID,
+			Symbol:      hold.Symbol,
+			Quantity:    hold.Quantity,
+		}
+		if err := r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteReleaseShortCover(p, cmd)
+		}); err != nil {
+			r.log.Error("ocosaga: failed to release short cover", "saga_id", sagaID, "error", err)
+			return r.emitActionFailed(ctx, sagaID, "release_short_cover", err.Error())
+		}
+		return nil
 	}
 	hold, ok := p.ShareHoldsBySaga[sagaID]
 	if !ok || hold.Quantity <= 0 {

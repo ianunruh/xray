@@ -8,18 +8,20 @@ import (
 )
 
 const (
-	EventOrderSagaStarted      = "OrderSagaStarted"
-	EventOrderSagaCashHeld     = "OrderSagaCashHeld"
-	EventOrderSagaOrderPlaced  = "OrderSagaOrderPlaced"
-	EventOrderSagaFillRecorded = "OrderSagaFillRecorded"
-	EventOrderSagaCompleted    = "OrderSagaCompleted"
-	EventOrderSagaFailed       = "OrderSagaFailed"
-	EventOrderSagaActionFailed = "OrderSagaActionFailed"
+	EventOrderSagaStarted        = "OrderSagaStarted"
+	EventOrderSagaCashHeld       = "OrderSagaCashHeld"
+	EventOrderSagaCollateralHeld = "OrderSagaCollateralHeld"
+	EventOrderSagaOrderPlaced    = "OrderSagaOrderPlaced"
+	EventOrderSagaFillRecorded   = "OrderSagaFillRecorded"
+	EventOrderSagaCompleted      = "OrderSagaCompleted"
+	EventOrderSagaFailed         = "OrderSagaFailed"
+	EventOrderSagaActionFailed   = "OrderSagaActionFailed"
 )
 
 func RegisterEvents(r *es.Registry) {
 	r.Register(EventOrderSagaStarted, func() proto.Message { return new(portfoliov1.OrderSagaStarted) })
 	r.Register(EventOrderSagaCashHeld, func() proto.Message { return new(portfoliov1.OrderSagaCashHeld) })
+	r.Register(EventOrderSagaCollateralHeld, func() proto.Message { return new(portfoliov1.OrderSagaCollateralHeld) })
 	r.Register(EventOrderSagaOrderPlaced, func() proto.Message { return new(portfoliov1.OrderSagaOrderPlaced) })
 	r.Register(EventOrderSagaFillRecorded, func() proto.Message { return new(portfoliov1.OrderSagaFillRecorded) })
 	r.Register(EventOrderSagaCompleted, func() proto.Message { return new(portfoliov1.OrderSagaCompleted) })

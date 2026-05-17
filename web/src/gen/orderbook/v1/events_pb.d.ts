@@ -412,6 +412,14 @@ export declare type SagaStarted = Message<"orderbook.v1.SagaStarted"> & {
    * @generated from field: string account_id = 10;
    */
   accountId: string;
+
+  /**
+   * SHORT bracket: entry_side=SELL+SHORT (sell-to-open), exits derived
+   * as BUY+SHORT (buy-to-cover).
+   *
+   * @generated from field: orderbook.v1.PositionSide position_side = 11;
+   */
+  positionSide: PositionSide;
 };
 
 /**
@@ -608,6 +616,14 @@ export declare type OCOSagaStarted = Message<"orderbook.v1.OCOSagaStarted"> & {
    * @generated from field: google.protobuf.Timestamp started_at = 8;
    */
   startedAt?: Timestamp | undefined;
+
+  /**
+   * LONG = exiting long inventory (exit_side typically SELL).
+   * SHORT = covering a short (exit_side typically BUY).
+   *
+   * @generated from field: orderbook.v1.PositionSide position_side = 9;
+   */
+  positionSide: PositionSide;
 };
 
 /**
@@ -811,6 +827,38 @@ export enum Side {
  * Describes the enum orderbook.v1.Side.
  */
 export declare const SideSchema: GenEnum<Side>;
+
+/**
+ * PositionSide is order intent — distinct from Side, which is order
+ * direction at the book. A BUY can open a long or cover a short; a
+ * SELL can close a long or open a short. The orderbook itself does
+ * not care, but sagas and portfolio accounting do. Lives here (the
+ * shared leaf package) to avoid a circular import between portfolio
+ * and orderbook protos.
+ *
+ * @generated from enum orderbook.v1.PositionSide
+ */
+export enum PositionSide {
+  /**
+   * @generated from enum value: POSITION_SIDE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: POSITION_SIDE_LONG = 1;
+   */
+  LONG = 1,
+
+  /**
+   * @generated from enum value: POSITION_SIDE_SHORT = 2;
+   */
+  SHORT = 2,
+}
+
+/**
+ * Describes the enum orderbook.v1.PositionSide.
+ */
+export declare const PositionSideSchema: GenEnum<PositionSide>;
 
 /**
  * @generated from enum orderbook.v1.OrderType

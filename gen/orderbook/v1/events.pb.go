@@ -71,6 +71,61 @@ func (Side) EnumDescriptor() ([]byte, []int) {
 	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{0}
 }
 
+// PositionSide is order intent — distinct from Side, which is order
+// direction at the book. A BUY can open a long or cover a short; a
+// SELL can close a long or open a short. The orderbook itself does
+// not care, but sagas and portfolio accounting do. Lives here (the
+// shared leaf package) to avoid a circular import between portfolio
+// and orderbook protos.
+type PositionSide int32
+
+const (
+	PositionSide_POSITION_SIDE_UNSPECIFIED PositionSide = 0
+	PositionSide_POSITION_SIDE_LONG        PositionSide = 1
+	PositionSide_POSITION_SIDE_SHORT       PositionSide = 2
+)
+
+// Enum value maps for PositionSide.
+var (
+	PositionSide_name = map[int32]string{
+		0: "POSITION_SIDE_UNSPECIFIED",
+		1: "POSITION_SIDE_LONG",
+		2: "POSITION_SIDE_SHORT",
+	}
+	PositionSide_value = map[string]int32{
+		"POSITION_SIDE_UNSPECIFIED": 0,
+		"POSITION_SIDE_LONG":        1,
+		"POSITION_SIDE_SHORT":       2,
+	}
+)
+
+func (x PositionSide) Enum() *PositionSide {
+	p := new(PositionSide)
+	*p = x
+	return p
+}
+
+func (x PositionSide) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (PositionSide) Descriptor() protoreflect.EnumDescriptor {
+	return file_orderbook_v1_events_proto_enumTypes[1].Descriptor()
+}
+
+func (PositionSide) Type() protoreflect.EnumType {
+	return &file_orderbook_v1_events_proto_enumTypes[1]
+}
+
+func (x PositionSide) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use PositionSide.Descriptor instead.
+func (PositionSide) EnumDescriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{1}
+}
+
 type OrderType int32
 
 const (
@@ -110,11 +165,11 @@ func (x OrderType) String() string {
 }
 
 func (OrderType) Descriptor() protoreflect.EnumDescriptor {
-	return file_orderbook_v1_events_proto_enumTypes[1].Descriptor()
+	return file_orderbook_v1_events_proto_enumTypes[2].Descriptor()
 }
 
 func (OrderType) Type() protoreflect.EnumType {
-	return &file_orderbook_v1_events_proto_enumTypes[1]
+	return &file_orderbook_v1_events_proto_enumTypes[2]
 }
 
 func (x OrderType) Number() protoreflect.EnumNumber {
@@ -123,7 +178,7 @@ func (x OrderType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use OrderType.Descriptor instead.
 func (OrderType) EnumDescriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{1}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{2}
 }
 
 type TimeInForce int32
@@ -175,11 +230,11 @@ func (x TimeInForce) String() string {
 }
 
 func (TimeInForce) Descriptor() protoreflect.EnumDescriptor {
-	return file_orderbook_v1_events_proto_enumTypes[2].Descriptor()
+	return file_orderbook_v1_events_proto_enumTypes[3].Descriptor()
 }
 
 func (TimeInForce) Type() protoreflect.EnumType {
-	return &file_orderbook_v1_events_proto_enumTypes[2]
+	return &file_orderbook_v1_events_proto_enumTypes[3]
 }
 
 func (x TimeInForce) Number() protoreflect.EnumNumber {
@@ -188,7 +243,7 @@ func (x TimeInForce) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TimeInForce.Descriptor instead.
 func (TimeInForce) EnumDescriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{2}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{3}
 }
 
 // MarketPhase gates how the orderbook handles incoming orders. Default
@@ -236,11 +291,11 @@ func (x MarketPhase) String() string {
 }
 
 func (MarketPhase) Descriptor() protoreflect.EnumDescriptor {
-	return file_orderbook_v1_events_proto_enumTypes[3].Descriptor()
+	return file_orderbook_v1_events_proto_enumTypes[4].Descriptor()
 }
 
 func (MarketPhase) Type() protoreflect.EnumType {
-	return &file_orderbook_v1_events_proto_enumTypes[3]
+	return &file_orderbook_v1_events_proto_enumTypes[4]
 }
 
 func (x MarketPhase) Number() protoreflect.EnumNumber {
@@ -249,7 +304,7 @@ func (x MarketPhase) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use MarketPhase.Descriptor instead.
 func (MarketPhase) EnumDescriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{3}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{4}
 }
 
 // CrossType marks how a trade was produced. NONE = ordinary continuous
@@ -291,11 +346,11 @@ func (x CrossType) String() string {
 }
 
 func (CrossType) Descriptor() protoreflect.EnumDescriptor {
-	return file_orderbook_v1_events_proto_enumTypes[4].Descriptor()
+	return file_orderbook_v1_events_proto_enumTypes[5].Descriptor()
 }
 
 func (CrossType) Type() protoreflect.EnumType {
-	return &file_orderbook_v1_events_proto_enumTypes[4]
+	return &file_orderbook_v1_events_proto_enumTypes[5]
 }
 
 func (x CrossType) Number() protoreflect.EnumNumber {
@@ -304,7 +359,7 @@ func (x CrossType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CrossType.Descriptor instead.
 func (CrossType) EnumDescriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{4}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{5}
 }
 
 type OrderPlaced struct {
@@ -991,9 +1046,12 @@ type SagaStarted struct {
 	// entry_order_id is set on the SagaStarted event for backward
 	// compatibility with previously-stored events. New brackets derive
 	// the entry order ID from the entry ordersaga (ordersaga.OrderID).
-	EntryOrderId  string                 `protobuf:"bytes,8,opt,name=entry_order_id,json=entryOrderId,proto3" json:"entry_order_id,omitempty"`
-	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	AccountId     string                 `protobuf:"bytes,10,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	EntryOrderId string                 `protobuf:"bytes,8,opt,name=entry_order_id,json=entryOrderId,proto3" json:"entry_order_id,omitempty"`
+	StartedAt    *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	AccountId    string                 `protobuf:"bytes,10,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	// SHORT bracket: entry_side=SELL+SHORT (sell-to-open), exits derived
+	// as BUY+SHORT (buy-to-cover).
+	PositionSide  PositionSide `protobuf:"varint,11,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1096,6 +1154,13 @@ func (x *SagaStarted) GetAccountId() string {
 		return x.AccountId
 	}
 	return ""
+}
+
+func (x *SagaStarted) GetPositionSide() PositionSide {
+	if x != nil {
+		return x.PositionSide
+	}
+	return PositionSide_POSITION_SIDE_UNSPECIFIED
 }
 
 type EntryFilled struct {
@@ -1428,8 +1493,11 @@ type OCOSagaStarted struct {
 	TakeProfitPrice int64                  `protobuf:"varint,6,opt,name=take_profit_price,json=takeProfitPrice,proto3" json:"take_profit_price,omitempty"`
 	StopLossPrice   int64                  `protobuf:"varint,7,opt,name=stop_loss_price,json=stopLossPrice,proto3" json:"stop_loss_price,omitempty"`
 	StartedAt       *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// LONG = exiting long inventory (exit_side typically SELL).
+	// SHORT = covering a short (exit_side typically BUY).
+	PositionSide  PositionSide `protobuf:"varint,9,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *OCOSagaStarted) Reset() {
@@ -1516,6 +1584,13 @@ func (x *OCOSagaStarted) GetStartedAt() *timestamppb.Timestamp {
 		return x.StartedAt
 	}
 	return nil
+}
+
+func (x *OCOSagaStarted) GetPositionSide() PositionSide {
+	if x != nil {
+		return x.PositionSide
+	}
+	return PositionSide_POSITION_SIDE_UNSPECIFIED
 }
 
 type OCOSagaSharesHeld struct {
@@ -1971,7 +2046,7 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\vclose_price\x18\x03 \x01(\x03R\n" +
 	"closePrice\x12!\n" +
 	"\fclose_volume\x18\x04 \x01(\x03R\vcloseVolume\x12*\n" +
-	"\x02at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\"\x8d\x03\n" +
+	"\x02at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\"\xce\x03\n" +
 	"\vSagaStarted\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x121\n" +
@@ -1987,7 +2062,8 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\n" +
-	" \x01(\tR\taccountId\"\xbd\x01\n" +
+	" \x01(\tR\taccountId\x12?\n" +
+	"\rposition_side\x18\v \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\"\xbd\x01\n" +
 	"\vEntryFilled\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12/\n" +
 	"\x14take_profit_order_id\x18\x02 \x01(\tR\x11takeProfitOrderId\x12+\n" +
@@ -2011,7 +2087,7 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
 	"\x06action\x18\x02 \x01(\tR\x06action\x12\x1a\n" +
 	"\battempts\x18\x03 \x01(\x05R\battempts\x127\n" +
-	"\tfailed_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bfailedAt\"\xbc\x02\n" +
+	"\tfailed_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bfailedAt\"\xfd\x02\n" +
 	"\x0eOCOSagaStarted\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x1d\n" +
 	"\n" +
@@ -2022,7 +2098,8 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\x11take_profit_price\x18\x06 \x01(\x03R\x0ftakeProfitPrice\x12&\n" +
 	"\x0fstop_loss_price\x18\a \x01(\x03R\rstopLossPrice\x129\n" +
 	"\n" +
-	"started_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\"a\n" +
+	"started_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12?\n" +
+	"\rposition_side\x18\t \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\"a\n" +
 	"\x11OCOSagaSharesHeld\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x123\n" +
 	"\aheld_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x06heldAt\"\xc3\x01\n" +
@@ -2055,7 +2132,11 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\x04Side\x12\x14\n" +
 	"\x10SIDE_UNSPECIFIED\x10\x00\x12\f\n" +
 	"\bSIDE_BUY\x10\x01\x12\r\n" +
-	"\tSIDE_SELL\x10\x02*\x8b\x01\n" +
+	"\tSIDE_SELL\x10\x02*^\n" +
+	"\fPositionSide\x12\x1d\n" +
+	"\x19POSITION_SIDE_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12POSITION_SIDE_LONG\x10\x01\x12\x17\n" +
+	"\x13POSITION_SIDE_SHORT\x10\x02*\x8b\x01\n" +
 	"\tOrderType\x12\x1a\n" +
 	"\x16ORDER_TYPE_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10ORDER_TYPE_LIMIT\x10\x01\x12\x15\n" +
@@ -2094,72 +2175,75 @@ func file_orderbook_v1_events_proto_rawDescGZIP() []byte {
 	return file_orderbook_v1_events_proto_rawDescData
 }
 
-var file_orderbook_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_orderbook_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
 var file_orderbook_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_orderbook_v1_events_proto_goTypes = []any{
 	(Side)(0),                     // 0: orderbook.v1.Side
-	(OrderType)(0),                // 1: orderbook.v1.OrderType
-	(TimeInForce)(0),              // 2: orderbook.v1.TimeInForce
-	(MarketPhase)(0),              // 3: orderbook.v1.MarketPhase
-	(CrossType)(0),                // 4: orderbook.v1.CrossType
-	(*OrderPlaced)(nil),           // 5: orderbook.v1.OrderPlaced
-	(*OrderCancelled)(nil),        // 6: orderbook.v1.OrderCancelled
-	(*TradeExecuted)(nil),         // 7: orderbook.v1.TradeExecuted
-	(*StopTriggered)(nil),         // 8: orderbook.v1.StopTriggered
-	(*MarketClosed)(nil),          // 9: orderbook.v1.MarketClosed
-	(*MarketPhaseChanged)(nil),    // 10: orderbook.v1.MarketPhaseChanged
-	(*AuctionUncrossed)(nil),      // 11: orderbook.v1.AuctionUncrossed
-	(*OfficialCloseSet)(nil),      // 12: orderbook.v1.OfficialCloseSet
-	(*SagaStarted)(nil),           // 13: orderbook.v1.SagaStarted
-	(*EntryFilled)(nil),           // 14: orderbook.v1.EntryFilled
-	(*ExitFilled)(nil),            // 15: orderbook.v1.ExitFilled
-	(*SagaCompleted)(nil),         // 16: orderbook.v1.SagaCompleted
-	(*SagaFailed)(nil),            // 17: orderbook.v1.SagaFailed
-	(*SagaActionFailed)(nil),      // 18: orderbook.v1.SagaActionFailed
-	(*OCOSagaStarted)(nil),        // 19: orderbook.v1.OCOSagaStarted
-	(*OCOSagaSharesHeld)(nil),     // 20: orderbook.v1.OCOSagaSharesHeld
-	(*OCOSagaExitPlaced)(nil),     // 21: orderbook.v1.OCOSagaExitPlaced
-	(*OCOSagaFillRecorded)(nil),   // 22: orderbook.v1.OCOSagaFillRecorded
-	(*OCOSagaCompleted)(nil),      // 23: orderbook.v1.OCOSagaCompleted
-	(*OCOSagaFailed)(nil),         // 24: orderbook.v1.OCOSagaFailed
-	(*OCOSagaActionFailed)(nil),   // 25: orderbook.v1.OCOSagaActionFailed
-	(*timestamppb.Timestamp)(nil), // 26: google.protobuf.Timestamp
+	(PositionSide)(0),             // 1: orderbook.v1.PositionSide
+	(OrderType)(0),                // 2: orderbook.v1.OrderType
+	(TimeInForce)(0),              // 3: orderbook.v1.TimeInForce
+	(MarketPhase)(0),              // 4: orderbook.v1.MarketPhase
+	(CrossType)(0),                // 5: orderbook.v1.CrossType
+	(*OrderPlaced)(nil),           // 6: orderbook.v1.OrderPlaced
+	(*OrderCancelled)(nil),        // 7: orderbook.v1.OrderCancelled
+	(*TradeExecuted)(nil),         // 8: orderbook.v1.TradeExecuted
+	(*StopTriggered)(nil),         // 9: orderbook.v1.StopTriggered
+	(*MarketClosed)(nil),          // 10: orderbook.v1.MarketClosed
+	(*MarketPhaseChanged)(nil),    // 11: orderbook.v1.MarketPhaseChanged
+	(*AuctionUncrossed)(nil),      // 12: orderbook.v1.AuctionUncrossed
+	(*OfficialCloseSet)(nil),      // 13: orderbook.v1.OfficialCloseSet
+	(*SagaStarted)(nil),           // 14: orderbook.v1.SagaStarted
+	(*EntryFilled)(nil),           // 15: orderbook.v1.EntryFilled
+	(*ExitFilled)(nil),            // 16: orderbook.v1.ExitFilled
+	(*SagaCompleted)(nil),         // 17: orderbook.v1.SagaCompleted
+	(*SagaFailed)(nil),            // 18: orderbook.v1.SagaFailed
+	(*SagaActionFailed)(nil),      // 19: orderbook.v1.SagaActionFailed
+	(*OCOSagaStarted)(nil),        // 20: orderbook.v1.OCOSagaStarted
+	(*OCOSagaSharesHeld)(nil),     // 21: orderbook.v1.OCOSagaSharesHeld
+	(*OCOSagaExitPlaced)(nil),     // 22: orderbook.v1.OCOSagaExitPlaced
+	(*OCOSagaFillRecorded)(nil),   // 23: orderbook.v1.OCOSagaFillRecorded
+	(*OCOSagaCompleted)(nil),      // 24: orderbook.v1.OCOSagaCompleted
+	(*OCOSagaFailed)(nil),         // 25: orderbook.v1.OCOSagaFailed
+	(*OCOSagaActionFailed)(nil),   // 26: orderbook.v1.OCOSagaActionFailed
+	(*timestamppb.Timestamp)(nil), // 27: google.protobuf.Timestamp
 }
 var file_orderbook_v1_events_proto_depIdxs = []int32{
 	0,  // 0: orderbook.v1.OrderPlaced.side:type_name -> orderbook.v1.Side
-	26, // 1: orderbook.v1.OrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
-	1,  // 2: orderbook.v1.OrderPlaced.order_type:type_name -> orderbook.v1.OrderType
-	2,  // 3: orderbook.v1.OrderPlaced.time_in_force:type_name -> orderbook.v1.TimeInForce
-	26, // 4: orderbook.v1.TradeExecuted.executed_at:type_name -> google.protobuf.Timestamp
-	4,  // 5: orderbook.v1.TradeExecuted.cross_type:type_name -> orderbook.v1.CrossType
-	1,  // 6: orderbook.v1.StopTriggered.activated_as:type_name -> orderbook.v1.OrderType
-	26, // 7: orderbook.v1.MarketClosed.closed_at:type_name -> google.protobuf.Timestamp
-	3,  // 8: orderbook.v1.MarketPhaseChanged.phase:type_name -> orderbook.v1.MarketPhase
-	26, // 9: orderbook.v1.MarketPhaseChanged.at:type_name -> google.protobuf.Timestamp
+	27, // 1: orderbook.v1.OrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
+	2,  // 2: orderbook.v1.OrderPlaced.order_type:type_name -> orderbook.v1.OrderType
+	3,  // 3: orderbook.v1.OrderPlaced.time_in_force:type_name -> orderbook.v1.TimeInForce
+	27, // 4: orderbook.v1.TradeExecuted.executed_at:type_name -> google.protobuf.Timestamp
+	5,  // 5: orderbook.v1.TradeExecuted.cross_type:type_name -> orderbook.v1.CrossType
+	2,  // 6: orderbook.v1.StopTriggered.activated_as:type_name -> orderbook.v1.OrderType
+	27, // 7: orderbook.v1.MarketClosed.closed_at:type_name -> google.protobuf.Timestamp
+	4,  // 8: orderbook.v1.MarketPhaseChanged.phase:type_name -> orderbook.v1.MarketPhase
+	27, // 9: orderbook.v1.MarketPhaseChanged.at:type_name -> google.protobuf.Timestamp
 	0,  // 10: orderbook.v1.AuctionUncrossed.imbalance_side:type_name -> orderbook.v1.Side
-	4,  // 11: orderbook.v1.AuctionUncrossed.cross_type:type_name -> orderbook.v1.CrossType
-	26, // 12: orderbook.v1.AuctionUncrossed.at:type_name -> google.protobuf.Timestamp
-	26, // 13: orderbook.v1.OfficialCloseSet.at:type_name -> google.protobuf.Timestamp
+	5,  // 11: orderbook.v1.AuctionUncrossed.cross_type:type_name -> orderbook.v1.CrossType
+	27, // 12: orderbook.v1.AuctionUncrossed.at:type_name -> google.protobuf.Timestamp
+	27, // 13: orderbook.v1.OfficialCloseSet.at:type_name -> google.protobuf.Timestamp
 	0,  // 14: orderbook.v1.SagaStarted.entry_side:type_name -> orderbook.v1.Side
-	26, // 15: orderbook.v1.SagaStarted.started_at:type_name -> google.protobuf.Timestamp
-	26, // 16: orderbook.v1.EntryFilled.filled_at:type_name -> google.protobuf.Timestamp
-	26, // 17: orderbook.v1.ExitFilled.filled_at:type_name -> google.protobuf.Timestamp
-	26, // 18: orderbook.v1.SagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
-	26, // 19: orderbook.v1.SagaFailed.failed_at:type_name -> google.protobuf.Timestamp
-	26, // 20: orderbook.v1.SagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
-	0,  // 21: orderbook.v1.OCOSagaStarted.exit_side:type_name -> orderbook.v1.Side
-	26, // 22: orderbook.v1.OCOSagaStarted.started_at:type_name -> google.protobuf.Timestamp
-	26, // 23: orderbook.v1.OCOSagaSharesHeld.held_at:type_name -> google.protobuf.Timestamp
-	26, // 24: orderbook.v1.OCOSagaExitPlaced.placed_at:type_name -> google.protobuf.Timestamp
-	26, // 25: orderbook.v1.OCOSagaFillRecorded.recorded_at:type_name -> google.protobuf.Timestamp
-	26, // 26: orderbook.v1.OCOSagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
-	26, // 27: orderbook.v1.OCOSagaFailed.failed_at:type_name -> google.protobuf.Timestamp
-	26, // 28: orderbook.v1.OCOSagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
-	29, // [29:29] is the sub-list for method output_type
-	29, // [29:29] is the sub-list for method input_type
-	29, // [29:29] is the sub-list for extension type_name
-	29, // [29:29] is the sub-list for extension extendee
-	0,  // [0:29] is the sub-list for field type_name
+	27, // 15: orderbook.v1.SagaStarted.started_at:type_name -> google.protobuf.Timestamp
+	1,  // 16: orderbook.v1.SagaStarted.position_side:type_name -> orderbook.v1.PositionSide
+	27, // 17: orderbook.v1.EntryFilled.filled_at:type_name -> google.protobuf.Timestamp
+	27, // 18: orderbook.v1.ExitFilled.filled_at:type_name -> google.protobuf.Timestamp
+	27, // 19: orderbook.v1.SagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
+	27, // 20: orderbook.v1.SagaFailed.failed_at:type_name -> google.protobuf.Timestamp
+	27, // 21: orderbook.v1.SagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
+	0,  // 22: orderbook.v1.OCOSagaStarted.exit_side:type_name -> orderbook.v1.Side
+	27, // 23: orderbook.v1.OCOSagaStarted.started_at:type_name -> google.protobuf.Timestamp
+	1,  // 24: orderbook.v1.OCOSagaStarted.position_side:type_name -> orderbook.v1.PositionSide
+	27, // 25: orderbook.v1.OCOSagaSharesHeld.held_at:type_name -> google.protobuf.Timestamp
+	27, // 26: orderbook.v1.OCOSagaExitPlaced.placed_at:type_name -> google.protobuf.Timestamp
+	27, // 27: orderbook.v1.OCOSagaFillRecorded.recorded_at:type_name -> google.protobuf.Timestamp
+	27, // 28: orderbook.v1.OCOSagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
+	27, // 29: orderbook.v1.OCOSagaFailed.failed_at:type_name -> google.protobuf.Timestamp
+	27, // 30: orderbook.v1.OCOSagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
+	31, // [31:31] is the sub-list for method output_type
+	31, // [31:31] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_orderbook_v1_events_proto_init() }
@@ -2172,7 +2256,7 @@ func file_orderbook_v1_events_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_orderbook_v1_events_proto_rawDesc), len(file_orderbook_v1_events_proto_rawDesc)),
-			NumEnums:      5,
+			NumEnums:      6,
 			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   0,

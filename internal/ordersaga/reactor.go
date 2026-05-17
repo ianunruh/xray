@@ -8,6 +8,7 @@ import (
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
+	"github.com/ianunruh/xray/internal/margin"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/portfolio"
 	"github.com/ianunruh/xray/pkg/es"
@@ -57,6 +58,8 @@ func (r *Reactor) handleOne(ctx context.Context, evt es.Event) error {
 		return r.holdResources(ctx, data.SagaId)
 	case *portfoliov1.OrderSagaCashHeld:
 		return r.placeOrder(ctx, data.SagaId)
+	case *portfoliov1.OrderSagaCollateralHeld:
+		return r.placeOrder(ctx, data.SagaId)
 	case *portfoliov1.OrderSagaFillRecorded:
 		return r.maybeComplete(ctx, data.SagaId)
 	case *portfoliov1.OrderSagaFailed:
@@ -71,10 +74,13 @@ func (r *Reactor) handleOne(ctx context.Context, evt es.Event) error {
 	return nil
 }
 
-// holdResources runs the initial Hold step for a freshly-started saga:
-// cash hold for buys (walking the book + slippage buffer for market
-// orders), share hold for sells, or a zero-amount placeholder when no
-// hold is needed.
+// holdResources runs the initial Hold step. The four (side, position_side)
+// combos each take a different portfolio command:
+//
+//	BUY  + LONG   -> HoldCash       (existing long buy)
+//	SELL + LONG   -> HoldShares     (existing long sell)
+//	SELL + SHORT  -> HoldCollateral (sell to open)
+//	BUY  + SHORT  -> HoldShortCover (buy to cover)
 func (r *Reactor) holdResources(ctx context.Context, sagaID string) error {
 	saga, err := r.sagaHandler.Load(ctx, AggregateID(sagaID))
 	if err != nil {
@@ -84,57 +90,144 @@ func (r *Reactor) holdResources(ctx context.Context, sagaID string) error {
 		return nil
 	}
 
-	side := orderbook.SideToProto(saga.Side)
-	if saga.Side == orderbook.Sell {
-		shareQty := saga.Quantity
-		holdCmd := portfolio.HoldShares{
-			AccountID:   saga.AccountID,
-			OrderSagaID: sagaID,
-			Symbol:      saga.Symbol,
-			Quantity:    shareQty,
-		}
-		if err := r.portfolioHandler.Handle(ctx, holdCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-			return portfolio.ExecuteHoldShares(p, holdCmd)
-		}); err != nil {
-			r.log.Error("failed to hold shares", "saga_id", sagaID, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
-		}
-		return r.recordCashHeld(ctx, sagaID, shareQty)
+	switch {
+	case saga.Side == orderbook.Buy && saga.PositionSide != orderbookv1.PositionSide_POSITION_SIDE_SHORT:
+		return r.holdCashForBuy(ctx, saga)
+	case saga.Side == orderbook.Sell && saga.PositionSide != orderbookv1.PositionSide_POSITION_SIDE_SHORT:
+		return r.holdSharesForSell(ctx, saga)
+	case saga.Side == orderbook.Sell && saga.PositionSide == orderbookv1.PositionSide_POSITION_SIDE_SHORT:
+		return r.holdCollateralForShortOpen(ctx, saga)
+	case saga.Side == orderbook.Buy && saga.PositionSide == orderbookv1.PositionSide_POSITION_SIDE_SHORT:
+		return r.holdCapacityForCover(ctx, saga)
 	}
+	return nil
+}
 
-	var cashAmount int64
-	if saga.OrderType == orderbook.Market && side == orderbookv1.Side_SIDE_BUY {
-		book, err := r.orderbookHandler.Load(ctx, orderbook.AggregateID(saga.Symbol))
-		if err != nil {
-			r.log.Error("failed to load orderbook for market order hold", "saga_id", sagaID, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
-		}
-		swept, ok := book.EstimateMarketBuyCost(saga.Quantity)
-		if !ok {
-			r.log.Error("no ask liquidity for market buy hold", "saga_id", sagaID)
-			return r.emitActionFailed(ctx, sagaID, "hold_cash", "no ask liquidity for market buy")
-		}
-		// Pad for slippage between hold time and execution time. Round up
-		// so even a 1-unit estimate gets a buffer.
-		cashAmount = (swept*marketBuySlippageBps + slippageBpsScale - 1) / slippageBpsScale
-	} else {
-		cashAmount = computeHoldAmount(saga.OrderType, side, saga.Price, saga.Quantity)
+func (r *Reactor) holdCashForBuy(ctx context.Context, saga *OrderSaga) error {
+	cashAmount, err := r.estimateBuyCashHold(ctx, saga)
+	if err != nil {
+		return r.emitActionFailed(ctx, saga.SagaID, "hold_cash", err.Error())
 	}
-
 	if cashAmount > 0 {
 		holdCmd := portfolio.HoldCash{
 			AccountID:   saga.AccountID,
-			OrderSagaID: sagaID,
+			OrderSagaID: saga.SagaID,
+			Symbol:      saga.Symbol,
 			Amount:      cashAmount,
 		}
 		if err := r.portfolioHandler.Handle(ctx, holdCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
 			return portfolio.ExecuteHoldCash(p, holdCmd)
 		}); err != nil {
-			r.log.Error("failed to hold cash", "saga_id", sagaID, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "hold_cash", err.Error())
+			r.log.Error("failed to hold cash", "saga_id", saga.SagaID, "error", err)
+			return r.emitActionFailed(ctx, saga.SagaID, "hold_cash", err.Error())
 		}
 	}
-	return r.recordCashHeld(ctx, sagaID, cashAmount)
+	return r.recordCashHeld(ctx, saga.SagaID, cashAmount)
+}
+
+func (r *Reactor) estimateBuyCashHold(ctx context.Context, saga *OrderSaga) (int64, error) {
+	if saga.OrderType != orderbook.Market {
+		return saga.Price * saga.Quantity, nil
+	}
+	book, err := r.orderbookHandler.Load(ctx, orderbook.AggregateID(saga.Symbol))
+	if err != nil {
+		return 0, fmt.Errorf("load orderbook: %w", err)
+	}
+	swept, ok := book.EstimateMarketBuyCost(saga.Quantity)
+	if !ok {
+		return 0, errors.New("no ask liquidity for market buy")
+	}
+	return padForSlippage(swept), nil
+}
+
+func (r *Reactor) holdSharesForSell(ctx context.Context, saga *OrderSaga) error {
+	holdCmd := portfolio.HoldShares{
+		AccountID:   saga.AccountID,
+		OrderSagaID: saga.SagaID,
+		Symbol:      saga.Symbol,
+		Quantity:    saga.Quantity,
+	}
+	if err := r.portfolioHandler.Handle(ctx, holdCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShares(p, holdCmd)
+	}); err != nil {
+		r.log.Error("failed to hold shares", "saga_id", saga.SagaID, "error", err)
+		return r.emitActionFailed(ctx, saga.SagaID, "hold_shares", err.Error())
+	}
+	return r.recordCashHeld(ctx, saga.SagaID, saga.Quantity)
+}
+
+func (r *Reactor) holdCollateralForShortOpen(ctx context.Context, saga *OrderSaga) error {
+	proceeds, err := r.estimateShortOpenProceeds(ctx, saga)
+	if err != nil {
+		return r.emitActionFailed(ctx, saga.SagaID, "hold_collateral", err.Error())
+	}
+	// Collateral is sized off the *estimated* sale proceeds; if the
+	// fill actually clears at a worse price, ExecuteOpenShort's overflow
+	// path debits CashBalance directly.
+	collateral := margin.CollateralForShortOpen(proceeds/max64(saga.Quantity, 1), saga.Quantity)
+	if saga.OrderType == orderbook.Market {
+		// Pad for slippage on a market short the same way we pad market buys.
+		collateral = padForSlippage(collateral)
+	}
+
+	holdCmd := portfolio.HoldCollateral{
+		AccountID:   saga.AccountID,
+		OrderSagaID: saga.SagaID,
+		Symbol:      saga.Symbol,
+		Quantity:    saga.Quantity,
+		Amount:      collateral,
+	}
+	if err := r.portfolioHandler.Handle(ctx, holdCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldCollateral(p, holdCmd)
+	}); err != nil {
+		r.log.Error("failed to hold collateral", "saga_id", saga.SagaID, "error", err)
+		return r.emitActionFailed(ctx, saga.SagaID, "hold_collateral", err.Error())
+	}
+	return r.recordCollateralHeld(ctx, saga.SagaID, collateral)
+}
+
+func (r *Reactor) estimateShortOpenProceeds(ctx context.Context, saga *OrderSaga) (int64, error) {
+	if saga.OrderType != orderbook.Market {
+		return saga.Price * saga.Quantity, nil
+	}
+	book, err := r.orderbookHandler.Load(ctx, orderbook.AggregateID(saga.Symbol))
+	if err != nil {
+		return 0, fmt.Errorf("load orderbook: %w", err)
+	}
+	proceeds, ok := book.EstimateMarketSellProceeds(saga.Quantity)
+	if !ok {
+		return 0, errors.New("no bid liquidity for market short open")
+	}
+	return proceeds, nil
+}
+
+func (r *Reactor) holdCapacityForCover(ctx context.Context, saga *OrderSaga) error {
+	holdCmd := portfolio.HoldShortCover{
+		AccountID:   saga.AccountID,
+		OrderSagaID: saga.SagaID,
+		Symbol:      saga.Symbol,
+		Quantity:    saga.Quantity,
+	}
+	if err := r.portfolioHandler.Handle(ctx, holdCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteHoldShortCover(p, holdCmd)
+	}); err != nil {
+		r.log.Error("failed to hold short cover capacity", "saga_id", saga.SagaID, "error", err)
+		return r.emitActionFailed(ctx, saga.SagaID, "hold_short_cover", err.Error())
+	}
+	return r.recordCashHeld(ctx, saga.SagaID, saga.Quantity)
+}
+
+// padForSlippage rounds up swept*1.05 to give market orders a buffer
+// between hold time and execution time.
+func padForSlippage(amount int64) int64 {
+	return (amount*marketBuySlippageBps + slippageBpsScale - 1) / slippageBpsScale
+}
+
+func max64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func (r *Reactor) recordCashHeld(ctx context.Context, sagaID string, amount int64) error {
@@ -152,6 +245,21 @@ func (r *Reactor) recordCashHeld(ctx context.Context, sagaID string, amount int6
 	return nil
 }
 
+func (r *Reactor) recordCollateralHeld(ctx context.Context, sagaID string, amount int64) error {
+	cmd := RecordCollateralHeld{SagaID: sagaID, AmountHeld: amount}
+	if err := r.sagaHandler.Handle(ctx, cmd, func(saga *OrderSaga) ([]es.Event, error) {
+		return ExecuteRecordCollateralHeld(saga, cmd)
+	}); err != nil {
+		if errors.Is(err, ErrInvalidState) {
+			return nil
+		}
+		r.log.Error("failed to record collateral held", "saga_id", sagaID, "error", err)
+		return r.emitActionFailed(ctx, sagaID, "hold_collateral", err.Error())
+	}
+	r.log.Info("order saga collateral held", "saga_id", sagaID, "amount", amount)
+	return nil
+}
+
 // placeOrder runs the Place step once the saga has its hold. Order IDs
 // are deterministic, so retries are no-ops at the orderbook layer.
 func (r *Reactor) placeOrder(ctx context.Context, sagaID string) error {
@@ -159,7 +267,7 @@ func (r *Reactor) placeOrder(ctx context.Context, sagaID string) error {
 	if err != nil {
 		return fmt.Errorf("load saga: %w", err)
 	}
-	if saga.Status != CashHeld {
+	if !isHeldStatus(saga.Status) {
 		return nil
 	}
 
@@ -240,38 +348,9 @@ func (r *Reactor) settleTrade(ctx context.Context, sagaID string, data *orderboo
 	}
 	cashAmount := data.Price * data.Quantity
 
-	if saga.Side == orderbook.Sell {
-		settleCmd := portfolio.SettleSale{
-			AccountID:     saga.AccountID,
-			OrderSagaID:   sagaID,
-			TradeID:       data.TradeId,
-			Symbol:        saga.Symbol,
-			Quantity:      data.Quantity,
-			PricePerShare: data.Price,
-			Proceeds:      cashAmount,
-		}
-		if err := r.portfolioHandler.Handle(ctx, settleCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-			return portfolio.ExecuteSettleSale(p, settleCmd)
-		}); err != nil {
-			r.log.Error("failed to settle sale on portfolio", "saga_id", sagaID, "trade_id", data.TradeId, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "record_fills", err.Error())
-		}
-	} else {
-		settleCmd := portfolio.SettleTrade{
-			AccountID:    saga.AccountID,
-			OrderSagaID:  sagaID,
-			TradeID:      data.TradeId,
-			Amount:       cashAmount,
-			Symbol:       saga.Symbol,
-			Quantity:     data.Quantity,
-			CostPerShare: data.Price,
-		}
-		if err := r.portfolioHandler.Handle(ctx, settleCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-			return portfolio.ExecuteSettleTrade(p, settleCmd)
-		}); err != nil {
-			r.log.Error("failed to settle trade on portfolio", "saga_id", sagaID, "trade_id", data.TradeId, "error", err)
-			return r.emitActionFailed(ctx, sagaID, "record_fills", err.Error())
-		}
+	if err := r.applySettlement(ctx, saga, data, cashAmount); err != nil {
+		r.log.Error("failed to settle on portfolio", "saga_id", sagaID, "trade_id", data.TradeId, "error", err)
+		return r.emitActionFailed(ctx, sagaID, "record_fills", err.Error())
 	}
 
 	fillCmd := RecordFill{
@@ -307,37 +386,8 @@ func (r *Reactor) maybeComplete(ctx context.Context, sagaID string) error {
 }
 
 func (r *Reactor) completeSaga(ctx context.Context, saga *OrderSaga) error {
-	if saga.Side == orderbook.Sell {
-		remainingShares := saga.AmountHeld - saga.FilledQty
-		if remainingShares > 0 {
-			releaseCmd := portfolio.ReleaseShares{
-				AccountID:   saga.AccountID,
-				OrderSagaID: saga.SagaID,
-				Symbol:      saga.Symbol,
-				Quantity:    remainingShares,
-			}
-			if err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-				return portfolio.ExecuteReleaseShares(p, releaseCmd)
-			}); err != nil {
-				r.log.Error("failed to release remaining shares", "saga_id", saga.SagaID, "error", err)
-				return r.emitActionFailed(ctx, saga.SagaID, "complete", err.Error())
-			}
-		}
-	} else {
-		remaining := saga.AmountHeld - saga.CashSettled
-		if remaining > 0 {
-			releaseCmd := portfolio.ReleaseCash{
-				AccountID:   saga.AccountID,
-				OrderSagaID: saga.SagaID,
-				Amount:      remaining,
-			}
-			if err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-				return portfolio.ExecuteReleaseCash(p, releaseCmd)
-			}); err != nil {
-				r.log.Error("failed to release remaining cash", "saga_id", saga.SagaID, "error", err)
-				return r.emitActionFailed(ctx, saga.SagaID, "complete", err.Error())
-			}
-		}
+	if err := r.releaseUnusedHold(ctx, saga); err != nil {
+		return err
 	}
 
 	cmd := RecordCompleted{SagaID: saga.SagaID}
@@ -411,40 +461,13 @@ func (r *Reactor) releaseRemainingHoldsForSaga(ctx context.Context, saga *OrderS
 		return fmt.Errorf("load portfolio: %w", err)
 	}
 
-	if saga.Side == orderbook.Sell {
-		hold, ok := p.ShareHoldsBySaga[saga.SagaID]
-		if !ok || hold.Quantity <= 0 {
-			return nil
-		}
-		releaseCmd := portfolio.ReleaseShares{
-			AccountID:   saga.AccountID,
-			OrderSagaID: saga.SagaID,
-			Symbol:      hold.Symbol,
-			Quantity:    hold.Quantity,
-		}
-		if err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-			return portfolio.ExecuteReleaseShares(p, releaseCmd)
+	if cmd, ok := releaseCommandForFailure(p, saga); ok {
+		if err := r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return executeRelease(p, cmd)
 		}); err != nil {
-			r.log.Error("failed to release shares on failure", "saga_id", saga.SagaID, "error", err)
+			r.log.Error("failed to release hold on failure", "saga_id", saga.SagaID, "error", err)
 			return r.emitActionFailed(ctx, saga.SagaID, "release_resources_on_failure", err.Error())
 		}
-		return nil
-	}
-
-	remaining, ok := p.HoldsBySaga[saga.SagaID]
-	if !ok || remaining <= 0 {
-		return nil
-	}
-	releaseCmd := portfolio.ReleaseCash{
-		AccountID:   saga.AccountID,
-		OrderSagaID: saga.SagaID,
-		Amount:      remaining,
-	}
-	if err := r.portfolioHandler.Handle(ctx, releaseCmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
-		return portfolio.ExecuteReleaseCash(p, releaseCmd)
-	}); err != nil {
-		r.log.Error("failed to release cash on failure", "saga_id", saga.SagaID, "error", err)
-		return r.emitActionFailed(ctx, saga.SagaID, "release_resources_on_failure", err.Error())
 	}
 	return nil
 }
@@ -474,7 +497,7 @@ func (r *Reactor) retry(ctx context.Context, sagaID string) error {
 	switch saga.Status {
 	case Started:
 		return r.holdResources(ctx, sagaID)
-	case CashHeld:
+	case CashHeld, CollateralHeld, SharesHeld:
 		return r.placeOrder(ctx, sagaID)
 	case OrderPlaced:
 		// Check if the saga is past completion; otherwise just wait for
@@ -516,4 +539,170 @@ func computeHoldAmount(_ orderbook.OrderType, side orderbookv1.Side, price, quan
 		return 0
 	}
 	return price * quantity
+}
+
+// isHeldStatus reports whether the saga has completed any of the four
+// kinds of pre-place hold and is ready to place its order.
+func isHeldStatus(s Status) bool {
+	switch s {
+	case CashHeld, CollateralHeld, SharesHeld:
+		return true
+	}
+	return false
+}
+
+// applySettlement dispatches a fill to the appropriate portfolio
+// settlement command based on (Side, PositionSide).
+func (r *Reactor) applySettlement(ctx context.Context, saga *OrderSaga, data *orderbookv1.TradeExecuted, cashAmount int64) error {
+	isShort := saga.PositionSide == orderbookv1.PositionSide_POSITION_SIDE_SHORT
+	switch {
+	case saga.Side == orderbook.Sell && !isShort:
+		cmd := portfolio.SettleSale{
+			AccountID: saga.AccountID, OrderSagaID: saga.SagaID, TradeID: data.TradeId,
+			Symbol: saga.Symbol, Quantity: data.Quantity,
+			PricePerShare: data.Price, Proceeds: cashAmount,
+		}
+		return r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteSettleSale(p, cmd)
+		})
+	case saga.Side == orderbook.Buy && !isShort:
+		cmd := portfolio.SettleTrade{
+			AccountID: saga.AccountID, OrderSagaID: saga.SagaID, TradeID: data.TradeId,
+			Amount: cashAmount, Symbol: saga.Symbol, Quantity: data.Quantity,
+			CostPerShare: data.Price,
+		}
+		return r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteSettleTrade(p, cmd)
+		})
+	case saga.Side == orderbook.Sell && isShort:
+		cmd := portfolio.OpenShort{
+			AccountID: saga.AccountID, OrderSagaID: saga.SagaID, TradeID: data.TradeId,
+			Symbol: saga.Symbol, Quantity: data.Quantity, PricePerShare: data.Price,
+		}
+		return r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteOpenShort(p, cmd)
+		})
+	case saga.Side == orderbook.Buy && isShort:
+		cmd := portfolio.CoverShort{
+			AccountID: saga.AccountID, OrderSagaID: saga.SagaID, TradeID: data.TradeId,
+			Symbol: saga.Symbol, Quantity: data.Quantity, CostPerShare: data.Price,
+		}
+		return r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteCoverShort(p, cmd)
+		})
+	}
+	return nil
+}
+
+// releaseUnusedHold runs on saga completion to free whatever portion of
+// the pre-fill hold wasn't consumed by fills.
+func (r *Reactor) releaseUnusedHold(ctx context.Context, saga *OrderSaga) error {
+	isShort := saga.PositionSide == orderbookv1.PositionSide_POSITION_SIDE_SHORT
+	switch {
+	case saga.Side == orderbook.Sell && !isShort:
+		remaining := saga.AmountHeld - saga.FilledQty
+		if remaining > 0 {
+			cmd := portfolio.ReleaseShares{
+				AccountID: saga.AccountID, OrderSagaID: saga.SagaID,
+				Symbol: saga.Symbol, Quantity: remaining,
+			}
+			return r.handleReleaseOnComplete(ctx, saga, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteReleaseShares(p, cmd)
+			})
+		}
+	case saga.Side == orderbook.Buy && !isShort:
+		remaining := saga.AmountHeld - saga.CashSettled
+		if remaining > 0 {
+			cmd := portfolio.ReleaseCash{
+				AccountID: saga.AccountID, OrderSagaID: saga.SagaID, Amount: remaining,
+			}
+			return r.handleReleaseOnComplete(ctx, saga, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteReleaseCash(p, cmd)
+			})
+		}
+	case saga.Side == orderbook.Sell && isShort:
+		// Collateral was sized off the *estimated* sale proceeds; if the
+		// fill was partial the leftover collateral stays on the saga's
+		// CollateralHeldBySaga entry. ExecuteOpenShort consumes only what
+		// matches the actual fill, leaving the remainder for release here.
+		// (For a full fill there's nothing to release — applyShortOpened
+		// already deleted the bucket.)
+		p, err := r.portfolioHandler.Load(ctx, portfolio.AggregateID(saga.AccountID))
+		if err != nil {
+			return r.emitActionFailed(ctx, saga.SagaID, "complete", err.Error())
+		}
+		if _, ok := p.CollateralHeldBySaga[saga.SagaID]; ok {
+			cmd := portfolio.ReleaseCollateral{
+				AccountID: saga.AccountID, OrderSagaID: saga.SagaID,
+			}
+			return r.handleReleaseOnComplete(ctx, saga, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteReleaseCollateral(p, cmd)
+			})
+		}
+	case saga.Side == orderbook.Buy && isShort:
+		remaining := saga.AmountHeld - saga.FilledQty
+		if remaining > 0 {
+			cmd := portfolio.ReleaseShortCover{
+				AccountID: saga.AccountID, OrderSagaID: saga.SagaID,
+				Symbol: saga.Symbol, Quantity: remaining,
+			}
+			return r.handleReleaseOnComplete(ctx, saga, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+				return portfolio.ExecuteReleaseShortCover(p, cmd)
+			})
+		}
+	}
+	return nil
+}
+
+func (r *Reactor) handleReleaseOnComplete(ctx context.Context, saga *OrderSaga, cmd es.Command, exec func(*portfolio.Portfolio) ([]es.Event, error)) error {
+	if err := r.portfolioHandler.Handle(ctx, cmd, exec); err != nil {
+		r.log.Error("failed to release unused hold", "saga_id", saga.SagaID, "error", err)
+		return r.emitActionFailed(ctx, saga.SagaID, "complete", err.Error())
+	}
+	return nil
+}
+
+// releaseCommandForFailure picks the release command matching whatever
+// hold the saga has open on the portfolio. Returns ok=false if there's
+// nothing to release.
+func releaseCommandForFailure(p *portfolio.Portfolio, saga *OrderSaga) (es.Command, bool) {
+	if _, ok := p.CollateralHeldBySaga[saga.SagaID]; ok {
+		return portfolio.ReleaseCollateral{
+			AccountID: saga.AccountID, OrderSagaID: saga.SagaID,
+		}, true
+	}
+	if hold, ok := p.ShareHoldsBySaga[saga.SagaID]; ok && hold.Quantity > 0 {
+		return portfolio.ReleaseShares{
+			AccountID: saga.AccountID, OrderSagaID: saga.SagaID,
+			Symbol: hold.Symbol, Quantity: hold.Quantity,
+		}, true
+	}
+	if hold, ok := p.ShortCoverHoldsBySaga[saga.SagaID]; ok && hold.Quantity > 0 {
+		return portfolio.ReleaseShortCover{
+			AccountID: saga.AccountID, OrderSagaID: saga.SagaID,
+			Symbol: hold.Symbol, Quantity: hold.Quantity,
+		}, true
+	}
+	if amount, ok := p.HoldsBySaga[saga.SagaID]; ok && amount > 0 {
+		return portfolio.ReleaseCash{
+			AccountID: saga.AccountID, OrderSagaID: saga.SagaID, Amount: amount,
+		}, true
+	}
+	return nil, false
+}
+
+// executeRelease runs the right portfolio Execute* for the release
+// command returned by releaseCommandForFailure.
+func executeRelease(p *portfolio.Portfolio, cmd es.Command) ([]es.Event, error) {
+	switch c := cmd.(type) {
+	case portfolio.ReleaseCollateral:
+		return portfolio.ExecuteReleaseCollateral(p, c)
+	case portfolio.ReleaseShares:
+		return portfolio.ExecuteReleaseShares(p, c)
+	case portfolio.ReleaseShortCover:
+		return portfolio.ExecuteReleaseShortCover(p, c)
+	case portfolio.ReleaseCash:
+		return portfolio.ExecuteReleaseCash(p, c)
+	}
+	return nil, fmt.Errorf("unhandled release command type: %T", cmd)
 }

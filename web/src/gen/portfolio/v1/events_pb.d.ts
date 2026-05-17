@@ -5,7 +5,8 @@
 import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import type { OrderType, Side, TimeInForce } from "../../orderbook/v1/events_pb";
+import type { OrderType, PositionSide, Side, TimeInForce } from "../../orderbook/v1/events_pb";
+import type { Initiator } from "../../saga/v1/saga_pb";
 
 /**
  * Describes the file portfolio/v1/events.proto.
@@ -87,6 +88,14 @@ export declare type CashHeld = Message<"portfolio.v1.CashHeld"> & {
    * @generated from field: google.protobuf.Timestamp held_at = 4;
    */
   heldAt?: Timestamp | undefined;
+
+  /**
+   * Symbol the long-buy hold is for. Used by the aggregate to enforce
+   * the "no long position while short in symbol" rule at hold time.
+   *
+   * @generated from field: string symbol = 5;
+   */
+  symbol: string;
 };
 
 /**
@@ -379,6 +388,301 @@ export declare type SharesSettled = Message<"portfolio.v1.SharesSettled"> & {
 export declare const SharesSettledSchema: GenMessage<SharesSettled>;
 
 /**
+ * CollateralHeld locks cash above-and-beyond the eventual sale proceeds
+ * as collateral against a pending short-open saga. The hold amount is
+ * pre-computed by the caller from policy (e.g. 50% of notional under a
+ * Reg-T-style rule) so the aggregate stays policy-agnostic.
+ *
+ * @generated from message portfolio.v1.CollateralHeld
+ */
+export declare type CollateralHeld = Message<"portfolio.v1.CollateralHeld"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string order_saga_id = 2;
+   */
+  orderSagaId: string;
+
+  /**
+   * @generated from field: string symbol = 3;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: int64 quantity = 4;
+   */
+  quantity: bigint;
+
+  /**
+   * @generated from field: int64 amount = 5;
+   */
+  amount: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp held_at = 6;
+   */
+  heldAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.CollateralHeld.
+ * Use `create(CollateralHeldSchema)` to create a new message.
+ */
+export declare const CollateralHeldSchema: GenMessage<CollateralHeld>;
+
+/**
+ * CollateralReleased returns a pre-fill collateral hold to CashBalance,
+ * e.g. when the short-open saga aborts before the sell-to-open executes.
+ *
+ * @generated from message portfolio.v1.CollateralReleased
+ */
+export declare type CollateralReleased = Message<"portfolio.v1.CollateralReleased"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string order_saga_id = 2;
+   */
+  orderSagaId: string;
+
+  /**
+   * @generated from field: int64 amount = 3;
+   */
+  amount: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp released_at = 4;
+   */
+  releasedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.CollateralReleased.
+ * Use `create(CollateralReleasedSchema)` to create a new message.
+ */
+export declare const CollateralReleasedSchema: GenMessage<CollateralReleased>;
+
+/**
+ * ShortOpened settles a sell-to-open fill. Consumes the saga's collateral
+ * hold and moves both proceeds_held (sale proceeds) and collateral_held
+ * (extra margin) into the per-symbol short position's locked pools.
+ * new_avg_open_price is computed by the command — weighted across prior
+ * opens of the same short — so the applier is a pure assignment.
+ *
+ * @generated from message portfolio.v1.ShortOpened
+ */
+export declare type ShortOpened = Message<"portfolio.v1.ShortOpened"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string order_saga_id = 2;
+   */
+  orderSagaId: string;
+
+  /**
+   * @generated from field: string trade_id = 3;
+   */
+  tradeId: string;
+
+  /**
+   * @generated from field: string symbol = 4;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: int64 quantity = 5;
+   */
+  quantity: bigint;
+
+  /**
+   * @generated from field: int64 price_per_share = 6;
+   */
+  pricePerShare: bigint;
+
+  /**
+   * @generated from field: int64 proceeds_held = 7;
+   */
+  proceedsHeld: bigint;
+
+  /**
+   * @generated from field: int64 collateral_held = 8;
+   */
+  collateralHeld: bigint;
+
+  /**
+   * @generated from field: int64 new_avg_open_price = 9;
+   */
+  newAvgOpenPrice: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp opened_at = 10;
+   */
+  openedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.ShortOpened.
+ * Use `create(ShortOpenedSchema)` to create a new message.
+ */
+export declare const ShortOpenedSchema: GenMessage<ShortOpened>;
+
+/**
+ * ShortCoverHeld reserves capacity to buy-to-cover against an existing
+ * short. No cash side effect — cash comes from the short's pooled
+ * proceeds and collateral on settlement.
+ *
+ * @generated from message portfolio.v1.ShortCoverHeld
+ */
+export declare type ShortCoverHeld = Message<"portfolio.v1.ShortCoverHeld"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string order_saga_id = 2;
+   */
+  orderSagaId: string;
+
+  /**
+   * @generated from field: string symbol = 3;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: int64 quantity = 4;
+   */
+  quantity: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp held_at = 5;
+   */
+  heldAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.ShortCoverHeld.
+ * Use `create(ShortCoverHeldSchema)` to create a new message.
+ */
+export declare const ShortCoverHeldSchema: GenMessage<ShortCoverHeld>;
+
+/**
+ * @generated from message portfolio.v1.ShortCoverReleased
+ */
+export declare type ShortCoverReleased = Message<"portfolio.v1.ShortCoverReleased"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string order_saga_id = 2;
+   */
+  orderSagaId: string;
+
+  /**
+   * @generated from field: string symbol = 3;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: int64 quantity = 4;
+   */
+  quantity: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp released_at = 5;
+   */
+  releasedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.ShortCoverReleased.
+ * Use `create(ShortCoverReleasedSchema)` to create a new message.
+ */
+export declare const ShortCoverReleasedSchema: GenMessage<ShortCoverReleased>;
+
+/**
+ * ShortCovered settles a buy-to-cover fill. Cost is paid from the
+ * proportionally released proceeds_pool first, then collateral_pool,
+ * then CashBalance for any residual (loss beyond pooled collateral).
+ * realized_pnl uses the short's average open price, not the marginal
+ * proceeds_released ratio.
+ *
+ * @generated from message portfolio.v1.ShortCovered
+ */
+export declare type ShortCovered = Message<"portfolio.v1.ShortCovered"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string order_saga_id = 2;
+   */
+  orderSagaId: string;
+
+  /**
+   * @generated from field: string trade_id = 3;
+   */
+  tradeId: string;
+
+  /**
+   * @generated from field: string symbol = 4;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: int64 quantity = 5;
+   */
+  quantity: bigint;
+
+  /**
+   * @generated from field: int64 cost_per_share = 6;
+   */
+  costPerShare: bigint;
+
+  /**
+   * @generated from field: int64 cost = 7;
+   */
+  cost: bigint;
+
+  /**
+   * @generated from field: int64 proceeds_released = 8;
+   */
+  proceedsReleased: bigint;
+
+  /**
+   * @generated from field: int64 collateral_released = 9;
+   */
+  collateralReleased: bigint;
+
+  /**
+   * @generated from field: int64 realized_pnl = 10;
+   */
+  realizedPnl: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp covered_at = 11;
+   */
+  coveredAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.ShortCovered.
+ * Use `create(ShortCoveredSchema)` to create a new message.
+ */
+export declare const ShortCoveredSchema: GenMessage<ShortCovered>;
+
+/**
  * @generated from message portfolio.v1.OrderSagaStarted
  */
 export declare type OrderSagaStarted = Message<"portfolio.v1.OrderSagaStarted"> & {
@@ -431,6 +735,31 @@ export declare type OrderSagaStarted = Message<"portfolio.v1.OrderSagaStarted"> 
    * @generated from field: string replace_order_id = 10;
    */
   replaceOrderId: string;
+
+  /**
+   * Drives which portfolio hold the reactor issues:
+   *   BUY  + LONG   -> HoldCash
+   *   SELL + LONG   -> HoldShares
+   *   SELL + SHORT  -> HoldCollateral
+   *   BUY  + SHORT  -> HoldShortCover
+   *
+   * @generated from field: orderbook.v1.PositionSide position_side = 11;
+   */
+  positionSide: PositionSide;
+
+  /**
+   * cause_event_id, if set, points at the upstream event that triggered
+   * this saga — e.g. a MarginCallIssued event for forced-liquidation
+   * runs. Surfaces in the existing causation chain viewer.
+   *
+   * @generated from field: string cause_event_id = 12;
+   */
+  causeEventId: string;
+
+  /**
+   * @generated from field: saga.v1.Initiator initiator = 13;
+   */
+  initiator: Initiator;
 };
 
 /**
@@ -464,6 +793,36 @@ export declare type OrderSagaCashHeld = Message<"portfolio.v1.OrderSagaCashHeld"
  * Use `create(OrderSagaCashHeldSchema)` to create a new message.
  */
 export declare const OrderSagaCashHeldSchema: GenMessage<OrderSagaCashHeld>;
+
+/**
+ * OrderSagaCollateralHeld is the SELL+SHORT analog of OrderSagaCashHeld.
+ * amount_held is the additional collateral posted on top of the eventual
+ * sale proceeds.
+ *
+ * @generated from message portfolio.v1.OrderSagaCollateralHeld
+ */
+export declare type OrderSagaCollateralHeld = Message<"portfolio.v1.OrderSagaCollateralHeld"> & {
+  /**
+   * @generated from field: string saga_id = 1;
+   */
+  sagaId: string;
+
+  /**
+   * @generated from field: int64 amount_held = 2;
+   */
+  amountHeld: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp held_at = 3;
+   */
+  heldAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.OrderSagaCollateralHeld.
+ * Use `create(OrderSagaCollateralHeldSchema)` to create a new message.
+ */
+export declare const OrderSagaCollateralHeldSchema: GenMessage<OrderSagaCollateralHeld>;
 
 /**
  * @generated from message portfolio.v1.OrderSagaOrderPlaced
