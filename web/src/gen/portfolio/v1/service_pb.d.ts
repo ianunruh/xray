@@ -582,6 +582,16 @@ export declare type GetMarginSnapshotResponse = Message<"portfolio.v1.GetMarginS
    * @generated from field: repeated portfolio.v1.PositionMarginInfo positions = 14;
    */
   positions: PositionMarginInfo[];
+
+  /**
+   * buying_power is the cash truly available to back new orders —
+   * CashBalance after every long-buy hold, short collateral hold,
+   * and pool allocation. Distinct from equity: equity counts locked
+   * cash too (it's still yours, just earmarked).
+   *
+   * @generated from field: int64 buying_power = 15;
+   */
+  buyingPower: bigint;
 };
 
 /**

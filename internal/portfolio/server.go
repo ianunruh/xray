@@ -263,6 +263,10 @@ func buildMarginSnapshot(accountID string, p *Portfolio, marker Marker) *portfol
 		CashHeld:       p.CashHeld,
 		CollateralPool: p.CollateralPool,
 		ProceedsPool:   p.ProceedsPool,
+		// CashBalance is already net of every kind of hold (long buy,
+		// short collateral, etc.) — the aggregate decrements it
+		// whenever cash is locked. So buying power is just CashBalance.
+		BuyingPower: p.CashBalance,
 	}
 	for _, h := range p.CollateralHeldBySaga {
 		resp.CollateralHeldPreFill += h.Amount

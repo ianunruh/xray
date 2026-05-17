@@ -1192,8 +1192,13 @@ type GetMarginSnapshotResponse struct {
 	// mark is currently available. Equity treats their contribution
 	// as zero — callers should surface this to avoid acting on
 	// stale-by-omission snapshots.
-	MissingMarks  []string              `protobuf:"bytes,13,rep,name=missing_marks,json=missingMarks,proto3" json:"missing_marks,omitempty"`
-	Positions     []*PositionMarginInfo `protobuf:"bytes,14,rep,name=positions,proto3" json:"positions,omitempty"`
+	MissingMarks []string              `protobuf:"bytes,13,rep,name=missing_marks,json=missingMarks,proto3" json:"missing_marks,omitempty"`
+	Positions    []*PositionMarginInfo `protobuf:"bytes,14,rep,name=positions,proto3" json:"positions,omitempty"`
+	// buying_power is the cash truly available to back new orders —
+	// CashBalance after every long-buy hold, short collateral hold,
+	// and pool allocation. Distinct from equity: equity counts locked
+	// cash too (it's still yours, just earmarked).
+	BuyingPower   int64 `protobuf:"varint,15,opt,name=buying_power,json=buyingPower,proto3" json:"buying_power,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1324,6 +1329,13 @@ func (x *GetMarginSnapshotResponse) GetPositions() []*PositionMarginInfo {
 		return x.Positions
 	}
 	return nil
+}
+
+func (x *GetMarginSnapshotResponse) GetBuyingPower() int64 {
+	if x != nil {
+		return x.BuyingPower
+	}
+	return 0
 }
 
 type PositionMarginInfo struct {
@@ -1524,7 +1536,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"accountIds\"9\n" +
 	"\x18GetMarginSnapshotRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\"\xd2\x04\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\"\xf5\x04\n" +
 	"\x19GetMarginSnapshotResponse\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12!\n" +
@@ -1542,7 +1554,8 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\vmargin_call\x18\f \x01(\bR\n" +
 	"marginCall\x12#\n" +
 	"\rmissing_marks\x18\r \x03(\tR\fmissingMarks\x12>\n" +
-	"\tpositions\x18\x0e \x03(\v2 .portfolio.v1.PositionMarginInfoR\tpositions\"\xa1\x02\n" +
+	"\tpositions\x18\x0e \x03(\v2 .portfolio.v1.PositionMarginInfoR\tpositions\x12!\n" +
+	"\fbuying_power\x18\x0f \x01(\x03R\vbuyingPower\"\xa1\x02\n" +
 	"\x12PositionMarginInfo\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12.\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x1a.orderbook.v1.PositionSideR\x04side\x12\x1a\n" +

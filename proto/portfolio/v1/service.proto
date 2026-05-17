@@ -176,6 +176,12 @@ message GetMarginSnapshotResponse {
   repeated string missing_marks = 13;
 
   repeated PositionMarginInfo positions = 14;
+
+  // buying_power is the cash truly available to back new orders —
+  // CashBalance after every long-buy hold, short collateral hold,
+  // and pool allocation. Distinct from equity: equity counts locked
+  // cash too (it's still yours, just earmarked).
+  int64 buying_power = 15;
 }
 
 message PositionMarginInfo {

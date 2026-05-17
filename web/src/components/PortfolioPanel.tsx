@@ -397,6 +397,12 @@ export function PortfolioPanel({
             <>
               <div>
                 <Text size="xs" c="dimmed">
+                  Buying Power
+                </Text>
+                <Text fw={700}>{formatMoney(margin.buyingPower)}</Text>
+              </div>
+              <div>
+                <Text size="xs" c="dimmed">
                   Equity
                 </Text>
                 <Text fw={700}>{formatMoney(margin.equity)}</Text>

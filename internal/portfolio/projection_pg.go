@@ -138,6 +138,36 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 				`UPDATE projection_pending_orders SET status = $1, reason = $2, ended_at = $3 WHERE saga_id = $4`,
 				int32(portfoliov1.OrderStatus_ORDER_STATUS_FAILED), data.Reason, data.FailedAt.AsTime(), data.SagaId,
 			)
+
+		// Short-selling cash mutations. The aggregate is authoritative;
+		// we mirror its cash_balance arithmetic so the streamed view
+		// matches GetMarginSnapshot's cash_balance / buying_power.
+		case *portfoliov1.CollateralHeld:
+			batch.Queue(
+				`UPDATE projection_portfolios SET cash_balance = cash_balance - $1 WHERE account_id = $2`,
+				data.Amount, data.AccountId,
+			)
+		case *portfoliov1.CollateralReleased:
+			batch.Queue(
+				`UPDATE projection_portfolios SET cash_balance = cash_balance + $1 WHERE account_id = $2`,
+				data.Amount, data.AccountId,
+			)
+		case *portfoliov1.ShortOpened:
+			// Aggregate consumes the pre-fill collateral hold into the
+			// short's locked pool — cash-neutral when the hold matched
+			// the execution. Any overflow (executed collateral above
+			// the pre-held estimate) is taken straight from cash.
+			// Without the prior CollateralHeld amount in scope, treat
+			// the common case (overflow = 0) as cash-neutral. The rare
+			// overflow path will show up later as a margin-snapshot
+			// vs cash_balance discrepancy.
+		case *portfoliov1.ShortCovered:
+			// Net cash impact: pools (proceeds_released +
+			// collateral_released) return to cash; cost is paid.
+			batch.Queue(
+				`UPDATE projection_portfolios SET cash_balance = cash_balance + $1 WHERE account_id = $2`,
+				data.ProceedsReleased+data.CollateralReleased-data.Cost, data.AccountId,
+			)
 		}
 	}
 
