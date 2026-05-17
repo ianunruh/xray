@@ -610,6 +610,126 @@ export declare type GetMarginSnapshotResponse = Message<"portfolio.v1.GetMarginS
 export declare const GetMarginSnapshotResponseSchema: GenMessage<GetMarginSnapshotResponse>;
 
 /**
+ * MarginCallRecord is one row in the audit log: the issued snapshot
+ * plus, when present, the covered snapshot and the liquidation sagas
+ * the call spawned. Streamed by PortfolioService.ListMarginCalls,
+ * newest-first.
+ *
+ * @generated from message portfolio.v1.MarginCallRecord
+ */
+export declare type MarginCallRecord = Message<"portfolio.v1.MarginCallRecord"> & {
+  /**
+   * @generated from field: string call_id = 1;
+   */
+  callId: string;
+
+  /**
+   * @generated from field: string account_id = 2;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string trigger_trade_id = 3;
+   */
+  triggerTradeId: string;
+
+  /**
+   * @generated from field: string trigger_symbol = 4;
+   */
+  triggerSymbol: string;
+
+  /**
+   * @generated from field: int64 mark_price = 5;
+   */
+  markPrice: bigint;
+
+  /**
+   * @generated from field: int64 equity_at_issue = 6;
+   */
+  equityAtIssue: bigint;
+
+  /**
+   * @generated from field: int64 maintenance_requirement_at_issue = 7;
+   */
+  maintenanceRequirementAtIssue: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp issued_at = 8;
+   */
+  issuedAt?: Timestamp | undefined;
+
+  /**
+   * Set when the call has been resolved (covered or cleared).
+   *
+   * @generated from field: google.protobuf.Timestamp covered_at = 9;
+   */
+  coveredAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: int64 equity_at_cover = 10;
+   */
+  equityAtCover: bigint;
+
+  /**
+   * @generated from field: int64 maintenance_requirement_at_cover = 11;
+   */
+  maintenanceRequirementAtCover: bigint;
+
+  /**
+   * Saga IDs of every BUY-to-cover the margincall reactor spawned
+   * for this call. UI uses these to link to the diagnostics view.
+   *
+   * @generated from field: repeated string liquidation_saga_ids = 12;
+   */
+  liquidationSagaIds: string[];
+};
+
+/**
+ * Describes the message portfolio.v1.MarginCallRecord.
+ * Use `create(MarginCallRecordSchema)` to create a new message.
+ */
+export declare const MarginCallRecordSchema: GenMessage<MarginCallRecord>;
+
+/**
+ * @generated from message portfolio.v1.ListMarginCallsRequest
+ */
+export declare type ListMarginCallsRequest = Message<"portfolio.v1.ListMarginCallsRequest"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * Optional cap; 0 = no limit.
+   *
+   * @generated from field: int32 limit = 2;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message portfolio.v1.ListMarginCallsRequest.
+ * Use `create(ListMarginCallsRequestSchema)` to create a new message.
+ */
+export declare const ListMarginCallsRequestSchema: GenMessage<ListMarginCallsRequest>;
+
+/**
+ * @generated from message portfolio.v1.ListMarginCallsResponse
+ */
+export declare type ListMarginCallsResponse = Message<"portfolio.v1.ListMarginCallsResponse"> & {
+  /**
+   * @generated from field: repeated portfolio.v1.MarginCallRecord calls = 1;
+   */
+  calls: MarginCallRecord[];
+};
+
+/**
+ * Describes the message portfolio.v1.ListMarginCallsResponse.
+ * Use `create(ListMarginCallsResponseSchema)` to create a new message.
+ */
+export declare const ListMarginCallsResponseSchema: GenMessage<ListMarginCallsResponse>;
+
+/**
  * PreviewOrderImpact simulates the hold + fill an order would create
  * and returns the resulting margin state. Used by the UI to surface
  * "would this put me in margin call" before the user submits.
@@ -905,6 +1025,14 @@ export declare const PortfolioService: GenService<{
     methodKind: "unary";
     input: typeof PreviewOrderImpactRequestSchema;
     output: typeof PreviewOrderImpactResponseSchema;
+  },
+  /**
+   * @generated from rpc portfolio.v1.PortfolioService.ListMarginCalls
+   */
+  listMarginCalls: {
+    methodKind: "unary";
+    input: typeof ListMarginCallsRequestSchema;
+    output: typeof ListMarginCallsResponseSchema;
   },
 }>;
 

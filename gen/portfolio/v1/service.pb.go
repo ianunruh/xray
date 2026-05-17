@@ -1349,6 +1349,242 @@ func (x *GetMarginSnapshotResponse) GetBuyingPower() int64 {
 	return 0
 }
 
+// MarginCallRecord is one row in the audit log: the issued snapshot
+// plus, when present, the covered snapshot and the liquidation sagas
+// the call spawned. Streamed by PortfolioService.ListMarginCalls,
+// newest-first.
+type MarginCallRecord struct {
+	state                         protoimpl.MessageState `protogen:"open.v1"`
+	CallId                        string                 `protobuf:"bytes,1,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
+	AccountId                     string                 `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	TriggerTradeId                string                 `protobuf:"bytes,3,opt,name=trigger_trade_id,json=triggerTradeId,proto3" json:"trigger_trade_id,omitempty"`
+	TriggerSymbol                 string                 `protobuf:"bytes,4,opt,name=trigger_symbol,json=triggerSymbol,proto3" json:"trigger_symbol,omitempty"`
+	MarkPrice                     int64                  `protobuf:"varint,5,opt,name=mark_price,json=markPrice,proto3" json:"mark_price,omitempty"`
+	EquityAtIssue                 int64                  `protobuf:"varint,6,opt,name=equity_at_issue,json=equityAtIssue,proto3" json:"equity_at_issue,omitempty"`
+	MaintenanceRequirementAtIssue int64                  `protobuf:"varint,7,opt,name=maintenance_requirement_at_issue,json=maintenanceRequirementAtIssue,proto3" json:"maintenance_requirement_at_issue,omitempty"`
+	IssuedAt                      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at,omitempty"`
+	// Set when the call has been resolved (covered or cleared).
+	CoveredAt                     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=covered_at,json=coveredAt,proto3" json:"covered_at,omitempty"`
+	EquityAtCover                 int64                  `protobuf:"varint,10,opt,name=equity_at_cover,json=equityAtCover,proto3" json:"equity_at_cover,omitempty"`
+	MaintenanceRequirementAtCover int64                  `protobuf:"varint,11,opt,name=maintenance_requirement_at_cover,json=maintenanceRequirementAtCover,proto3" json:"maintenance_requirement_at_cover,omitempty"`
+	// Saga IDs of every BUY-to-cover the margincall reactor spawned
+	// for this call. UI uses these to link to the diagnostics view.
+	LiquidationSagaIds []string `protobuf:"bytes,12,rep,name=liquidation_saga_ids,json=liquidationSagaIds,proto3" json:"liquidation_saga_ids,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *MarginCallRecord) Reset() {
+	*x = MarginCallRecord{}
+	mi := &file_portfolio_v1_service_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MarginCallRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MarginCallRecord) ProtoMessage() {}
+
+func (x *MarginCallRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_portfolio_v1_service_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MarginCallRecord.ProtoReflect.Descriptor instead.
+func (*MarginCallRecord) Descriptor() ([]byte, []int) {
+	return file_portfolio_v1_service_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *MarginCallRecord) GetCallId() string {
+	if x != nil {
+		return x.CallId
+	}
+	return ""
+}
+
+func (x *MarginCallRecord) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *MarginCallRecord) GetTriggerTradeId() string {
+	if x != nil {
+		return x.TriggerTradeId
+	}
+	return ""
+}
+
+func (x *MarginCallRecord) GetTriggerSymbol() string {
+	if x != nil {
+		return x.TriggerSymbol
+	}
+	return ""
+}
+
+func (x *MarginCallRecord) GetMarkPrice() int64 {
+	if x != nil {
+		return x.MarkPrice
+	}
+	return 0
+}
+
+func (x *MarginCallRecord) GetEquityAtIssue() int64 {
+	if x != nil {
+		return x.EquityAtIssue
+	}
+	return 0
+}
+
+func (x *MarginCallRecord) GetMaintenanceRequirementAtIssue() int64 {
+	if x != nil {
+		return x.MaintenanceRequirementAtIssue
+	}
+	return 0
+}
+
+func (x *MarginCallRecord) GetIssuedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.IssuedAt
+	}
+	return nil
+}
+
+func (x *MarginCallRecord) GetCoveredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CoveredAt
+	}
+	return nil
+}
+
+func (x *MarginCallRecord) GetEquityAtCover() int64 {
+	if x != nil {
+		return x.EquityAtCover
+	}
+	return 0
+}
+
+func (x *MarginCallRecord) GetMaintenanceRequirementAtCover() int64 {
+	if x != nil {
+		return x.MaintenanceRequirementAtCover
+	}
+	return 0
+}
+
+func (x *MarginCallRecord) GetLiquidationSagaIds() []string {
+	if x != nil {
+		return x.LiquidationSagaIds
+	}
+	return nil
+}
+
+type ListMarginCallsRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	AccountId string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	// Optional cap; 0 = no limit.
+	Limit         int32 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMarginCallsRequest) Reset() {
+	*x = ListMarginCallsRequest{}
+	mi := &file_portfolio_v1_service_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMarginCallsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMarginCallsRequest) ProtoMessage() {}
+
+func (x *ListMarginCallsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_portfolio_v1_service_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMarginCallsRequest.ProtoReflect.Descriptor instead.
+func (*ListMarginCallsRequest) Descriptor() ([]byte, []int) {
+	return file_portfolio_v1_service_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *ListMarginCallsRequest) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *ListMarginCallsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ListMarginCallsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Calls         []*MarginCallRecord    `protobuf:"bytes,1,rep,name=calls,proto3" json:"calls,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMarginCallsResponse) Reset() {
+	*x = ListMarginCallsResponse{}
+	mi := &file_portfolio_v1_service_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMarginCallsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMarginCallsResponse) ProtoMessage() {}
+
+func (x *ListMarginCallsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_portfolio_v1_service_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMarginCallsResponse.ProtoReflect.Descriptor instead.
+func (*ListMarginCallsResponse) Descriptor() ([]byte, []int) {
+	return file_portfolio_v1_service_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ListMarginCallsResponse) GetCalls() []*MarginCallRecord {
+	if x != nil {
+		return x.Calls
+	}
+	return nil
+}
+
 // PreviewOrderImpact simulates the hold + fill an order would create
 // and returns the resulting margin state. Used by the UI to surface
 // "would this put me in margin call" before the user submits.
@@ -1367,7 +1603,7 @@ type PreviewOrderImpactRequest struct {
 
 func (x *PreviewOrderImpactRequest) Reset() {
 	*x = PreviewOrderImpactRequest{}
-	mi := &file_portfolio_v1_service_proto_msgTypes[19]
+	mi := &file_portfolio_v1_service_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1379,7 +1615,7 @@ func (x *PreviewOrderImpactRequest) String() string {
 func (*PreviewOrderImpactRequest) ProtoMessage() {}
 
 func (x *PreviewOrderImpactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_service_proto_msgTypes[19]
+	mi := &file_portfolio_v1_service_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1392,7 +1628,7 @@ func (x *PreviewOrderImpactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewOrderImpactRequest.ProtoReflect.Descriptor instead.
 func (*PreviewOrderImpactRequest) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_service_proto_rawDescGZIP(), []int{19}
+	return file_portfolio_v1_service_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *PreviewOrderImpactRequest) GetAccountId() string {
@@ -1471,7 +1707,7 @@ type PreviewOrderImpactResponse struct {
 
 func (x *PreviewOrderImpactResponse) Reset() {
 	*x = PreviewOrderImpactResponse{}
-	mi := &file_portfolio_v1_service_proto_msgTypes[20]
+	mi := &file_portfolio_v1_service_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1483,7 +1719,7 @@ func (x *PreviewOrderImpactResponse) String() string {
 func (*PreviewOrderImpactResponse) ProtoMessage() {}
 
 func (x *PreviewOrderImpactResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_service_proto_msgTypes[20]
+	mi := &file_portfolio_v1_service_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1496,7 +1732,7 @@ func (x *PreviewOrderImpactResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewOrderImpactResponse.ProtoReflect.Descriptor instead.
 func (*PreviewOrderImpactResponse) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_service_proto_rawDescGZIP(), []int{20}
+	return file_portfolio_v1_service_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *PreviewOrderImpactResponse) GetBuyingPowerImpact() int64 {
@@ -1576,7 +1812,7 @@ type PositionMarginInfo struct {
 
 func (x *PositionMarginInfo) Reset() {
 	*x = PositionMarginInfo{}
-	mi := &file_portfolio_v1_service_proto_msgTypes[21]
+	mi := &file_portfolio_v1_service_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1588,7 +1824,7 @@ func (x *PositionMarginInfo) String() string {
 func (*PositionMarginInfo) ProtoMessage() {}
 
 func (x *PositionMarginInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_service_proto_msgTypes[21]
+	mi := &file_portfolio_v1_service_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1601,7 +1837,7 @@ func (x *PositionMarginInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PositionMarginInfo.ProtoReflect.Descriptor instead.
 func (*PositionMarginInfo) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_service_proto_rawDescGZIP(), []int{21}
+	return file_portfolio_v1_service_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *PositionMarginInfo) GetSymbol() string {
@@ -1773,7 +2009,30 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"marginCall\x12#\n" +
 	"\rmissing_marks\x18\r \x03(\tR\fmissingMarks\x12>\n" +
 	"\tpositions\x18\x0e \x03(\v2 .portfolio.v1.PositionMarginInfoR\tpositions\x12!\n" +
-	"\fbuying_power\x18\x0f \x01(\x03R\vbuyingPower\"\xa5\x02\n" +
+	"\fbuying_power\x18\x0f \x01(\x03R\vbuyingPower\"\xc2\x04\n" +
+	"\x10MarginCallRecord\x12\x17\n" +
+	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\x12(\n" +
+	"\x10trigger_trade_id\x18\x03 \x01(\tR\x0etriggerTradeId\x12%\n" +
+	"\x0etrigger_symbol\x18\x04 \x01(\tR\rtriggerSymbol\x12\x1d\n" +
+	"\n" +
+	"mark_price\x18\x05 \x01(\x03R\tmarkPrice\x12&\n" +
+	"\x0fequity_at_issue\x18\x06 \x01(\x03R\requityAtIssue\x12G\n" +
+	" maintenance_requirement_at_issue\x18\a \x01(\x03R\x1dmaintenanceRequirementAtIssue\x127\n" +
+	"\tissued_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\x129\n" +
+	"\n" +
+	"covered_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcoveredAt\x12&\n" +
+	"\x0fequity_at_cover\x18\n" +
+	" \x01(\x03R\requityAtCover\x12G\n" +
+	" maintenance_requirement_at_cover\x18\v \x01(\x03R\x1dmaintenanceRequirementAtCover\x120\n" +
+	"\x14liquidation_saga_ids\x18\f \x03(\tR\x12liquidationSagaIds\"M\n" +
+	"\x16ListMarginCallsRequest\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"O\n" +
+	"\x17ListMarginCallsResponse\x124\n" +
+	"\x05calls\x18\x01 \x03(\v2\x1e.portfolio.v1.MarginCallRecordR\x05calls\"\xa5\x02\n" +
 	"\x19PreviewOrderImpactRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12\x16\n" +
@@ -1809,7 +2068,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\x16ORDER_STATUS_CASH_HELD\x10\x02\x12\x1d\n" +
 	"\x19ORDER_STATUS_ORDER_PLACED\x10\x03\x12\x1a\n" +
 	"\x16ORDER_STATUS_COMPLETED\x10\x04\x12\x17\n" +
-	"\x13ORDER_STATUS_FAILED\x10\x052\xa3\x06\n" +
+	"\x13ORDER_STATUS_FAILED\x10\x052\x83\a\n" +
 	"\x10PortfolioService\x12F\n" +
 	"\aDeposit\x12\x1c.portfolio.v1.DepositRequest\x1a\x1d.portfolio.v1.DepositResponse\x12I\n" +
 	"\bWithdraw\x12\x1d.portfolio.v1.WithdrawRequest\x1a\x1e.portfolio.v1.WithdrawResponse\x12U\n" +
@@ -1819,7 +2078,8 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\x06GetPnL\x12\x1b.portfolio.v1.GetPnLRequest\x1a\x1c.portfolio.v1.GetPnLResponse\x12[\n" +
 	"\x0eListPortfolios\x12#.portfolio.v1.ListPortfoliosRequest\x1a$.portfolio.v1.ListPortfoliosResponse\x12d\n" +
 	"\x11GetMarginSnapshot\x12&.portfolio.v1.GetMarginSnapshotRequest\x1a'.portfolio.v1.GetMarginSnapshotResponse\x12g\n" +
-	"\x12PreviewOrderImpact\x12'.portfolio.v1.PreviewOrderImpactRequest\x1a(.portfolio.v1.PreviewOrderImpactResponseB7Z5github.com/ianunruh/xray/gen/portfolio/v1;portfoliov1b\x06proto3"
+	"\x12PreviewOrderImpact\x12'.portfolio.v1.PreviewOrderImpactRequest\x1a(.portfolio.v1.PreviewOrderImpactResponse\x12^\n" +
+	"\x0fListMarginCalls\x12$.portfolio.v1.ListMarginCallsRequest\x1a%.portfolio.v1.ListMarginCallsResponseB7Z5github.com/ianunruh/xray/gen/portfolio/v1;portfoliov1b\x06proto3"
 
 var (
 	file_portfolio_v1_service_proto_rawDescOnce sync.Once
@@ -1834,7 +2094,7 @@ func file_portfolio_v1_service_proto_rawDescGZIP() []byte {
 }
 
 var file_portfolio_v1_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_portfolio_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_portfolio_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_portfolio_v1_service_proto_goTypes = []any{
 	(OrderStatus)(0),                   // 0: portfolio.v1.OrderStatus
 	(*DepositRequest)(nil),             // 1: portfolio.v1.DepositRequest
@@ -1856,58 +2116,66 @@ var file_portfolio_v1_service_proto_goTypes = []any{
 	(*ListPortfoliosResponse)(nil),     // 17: portfolio.v1.ListPortfoliosResponse
 	(*GetMarginSnapshotRequest)(nil),   // 18: portfolio.v1.GetMarginSnapshotRequest
 	(*GetMarginSnapshotResponse)(nil),  // 19: portfolio.v1.GetMarginSnapshotResponse
-	(*PreviewOrderImpactRequest)(nil),  // 20: portfolio.v1.PreviewOrderImpactRequest
-	(*PreviewOrderImpactResponse)(nil), // 21: portfolio.v1.PreviewOrderImpactResponse
-	(*PositionMarginInfo)(nil),         // 22: portfolio.v1.PositionMarginInfo
-	(v1.Side)(0),                       // 23: orderbook.v1.Side
-	(v1.OrderType)(0),                  // 24: orderbook.v1.OrderType
-	(v1.TimeInForce)(0),                // 25: orderbook.v1.TimeInForce
-	(*timestamppb.Timestamp)(nil),      // 26: google.protobuf.Timestamp
-	(v1.PositionSide)(0),               // 27: orderbook.v1.PositionSide
+	(*MarginCallRecord)(nil),           // 20: portfolio.v1.MarginCallRecord
+	(*ListMarginCallsRequest)(nil),     // 21: portfolio.v1.ListMarginCallsRequest
+	(*ListMarginCallsResponse)(nil),    // 22: portfolio.v1.ListMarginCallsResponse
+	(*PreviewOrderImpactRequest)(nil),  // 23: portfolio.v1.PreviewOrderImpactRequest
+	(*PreviewOrderImpactResponse)(nil), // 24: portfolio.v1.PreviewOrderImpactResponse
+	(*PositionMarginInfo)(nil),         // 25: portfolio.v1.PositionMarginInfo
+	(v1.Side)(0),                       // 26: orderbook.v1.Side
+	(v1.OrderType)(0),                  // 27: orderbook.v1.OrderType
+	(v1.TimeInForce)(0),                // 28: orderbook.v1.TimeInForce
+	(*timestamppb.Timestamp)(nil),      // 29: google.protobuf.Timestamp
+	(v1.PositionSide)(0),               // 30: orderbook.v1.PositionSide
 }
 var file_portfolio_v1_service_proto_depIdxs = []int32{
 	9,  // 0: portfolio.v1.GetPortfolioResponse.holdings:type_name -> portfolio.v1.Holding
 	10, // 1: portfolio.v1.GetPortfolioResponse.pending_orders:type_name -> portfolio.v1.PendingOrder
-	23, // 2: portfolio.v1.PendingOrder.side:type_name -> orderbook.v1.Side
-	24, // 3: portfolio.v1.PendingOrder.order_type:type_name -> orderbook.v1.OrderType
-	25, // 4: portfolio.v1.PendingOrder.time_in_force:type_name -> orderbook.v1.TimeInForce
+	26, // 2: portfolio.v1.PendingOrder.side:type_name -> orderbook.v1.Side
+	27, // 3: portfolio.v1.PendingOrder.order_type:type_name -> orderbook.v1.OrderType
+	28, // 4: portfolio.v1.PendingOrder.time_in_force:type_name -> orderbook.v1.TimeInForce
 	0,  // 5: portfolio.v1.PendingOrder.status:type_name -> portfolio.v1.OrderStatus
-	26, // 6: portfolio.v1.PendingOrder.started_at:type_name -> google.protobuf.Timestamp
-	26, // 7: portfolio.v1.PendingOrder.ended_at:type_name -> google.protobuf.Timestamp
+	29, // 6: portfolio.v1.PendingOrder.started_at:type_name -> google.protobuf.Timestamp
+	29, // 7: portfolio.v1.PendingOrder.ended_at:type_name -> google.protobuf.Timestamp
 	14, // 8: portfolio.v1.GetPnLResponse.positions:type_name -> portfolio.v1.PositionPnL
 	15, // 9: portfolio.v1.GetPnLResponse.history:type_name -> portfolio.v1.PnLEntry
-	27, // 10: portfolio.v1.PositionPnL.position_side:type_name -> orderbook.v1.PositionSide
-	23, // 11: portfolio.v1.PnLEntry.side:type_name -> orderbook.v1.Side
-	26, // 12: portfolio.v1.PnLEntry.settled_at:type_name -> google.protobuf.Timestamp
-	27, // 13: portfolio.v1.PnLEntry.position_side:type_name -> orderbook.v1.PositionSide
-	22, // 14: portfolio.v1.GetMarginSnapshotResponse.positions:type_name -> portfolio.v1.PositionMarginInfo
-	23, // 15: portfolio.v1.PreviewOrderImpactRequest.side:type_name -> orderbook.v1.Side
-	27, // 16: portfolio.v1.PreviewOrderImpactRequest.position_side:type_name -> orderbook.v1.PositionSide
-	24, // 17: portfolio.v1.PreviewOrderImpactRequest.order_type:type_name -> orderbook.v1.OrderType
-	27, // 18: portfolio.v1.PositionMarginInfo.side:type_name -> orderbook.v1.PositionSide
-	1,  // 19: portfolio.v1.PortfolioService.Deposit:input_type -> portfolio.v1.DepositRequest
-	3,  // 20: portfolio.v1.PortfolioService.Withdraw:input_type -> portfolio.v1.WithdrawRequest
-	5,  // 21: portfolio.v1.PortfolioService.CreditShares:input_type -> portfolio.v1.CreditSharesRequest
-	7,  // 22: portfolio.v1.PortfolioService.GetPortfolio:input_type -> portfolio.v1.GetPortfolioRequest
-	11, // 23: portfolio.v1.PortfolioService.StreamPortfolio:input_type -> portfolio.v1.StreamPortfolioRequest
-	12, // 24: portfolio.v1.PortfolioService.GetPnL:input_type -> portfolio.v1.GetPnLRequest
-	16, // 25: portfolio.v1.PortfolioService.ListPortfolios:input_type -> portfolio.v1.ListPortfoliosRequest
-	18, // 26: portfolio.v1.PortfolioService.GetMarginSnapshot:input_type -> portfolio.v1.GetMarginSnapshotRequest
-	20, // 27: portfolio.v1.PortfolioService.PreviewOrderImpact:input_type -> portfolio.v1.PreviewOrderImpactRequest
-	2,  // 28: portfolio.v1.PortfolioService.Deposit:output_type -> portfolio.v1.DepositResponse
-	4,  // 29: portfolio.v1.PortfolioService.Withdraw:output_type -> portfolio.v1.WithdrawResponse
-	6,  // 30: portfolio.v1.PortfolioService.CreditShares:output_type -> portfolio.v1.CreditSharesResponse
-	8,  // 31: portfolio.v1.PortfolioService.GetPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
-	8,  // 32: portfolio.v1.PortfolioService.StreamPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
-	13, // 33: portfolio.v1.PortfolioService.GetPnL:output_type -> portfolio.v1.GetPnLResponse
-	17, // 34: portfolio.v1.PortfolioService.ListPortfolios:output_type -> portfolio.v1.ListPortfoliosResponse
-	19, // 35: portfolio.v1.PortfolioService.GetMarginSnapshot:output_type -> portfolio.v1.GetMarginSnapshotResponse
-	21, // 36: portfolio.v1.PortfolioService.PreviewOrderImpact:output_type -> portfolio.v1.PreviewOrderImpactResponse
-	28, // [28:37] is the sub-list for method output_type
-	19, // [19:28] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	30, // 10: portfolio.v1.PositionPnL.position_side:type_name -> orderbook.v1.PositionSide
+	26, // 11: portfolio.v1.PnLEntry.side:type_name -> orderbook.v1.Side
+	29, // 12: portfolio.v1.PnLEntry.settled_at:type_name -> google.protobuf.Timestamp
+	30, // 13: portfolio.v1.PnLEntry.position_side:type_name -> orderbook.v1.PositionSide
+	25, // 14: portfolio.v1.GetMarginSnapshotResponse.positions:type_name -> portfolio.v1.PositionMarginInfo
+	29, // 15: portfolio.v1.MarginCallRecord.issued_at:type_name -> google.protobuf.Timestamp
+	29, // 16: portfolio.v1.MarginCallRecord.covered_at:type_name -> google.protobuf.Timestamp
+	20, // 17: portfolio.v1.ListMarginCallsResponse.calls:type_name -> portfolio.v1.MarginCallRecord
+	26, // 18: portfolio.v1.PreviewOrderImpactRequest.side:type_name -> orderbook.v1.Side
+	30, // 19: portfolio.v1.PreviewOrderImpactRequest.position_side:type_name -> orderbook.v1.PositionSide
+	27, // 20: portfolio.v1.PreviewOrderImpactRequest.order_type:type_name -> orderbook.v1.OrderType
+	30, // 21: portfolio.v1.PositionMarginInfo.side:type_name -> orderbook.v1.PositionSide
+	1,  // 22: portfolio.v1.PortfolioService.Deposit:input_type -> portfolio.v1.DepositRequest
+	3,  // 23: portfolio.v1.PortfolioService.Withdraw:input_type -> portfolio.v1.WithdrawRequest
+	5,  // 24: portfolio.v1.PortfolioService.CreditShares:input_type -> portfolio.v1.CreditSharesRequest
+	7,  // 25: portfolio.v1.PortfolioService.GetPortfolio:input_type -> portfolio.v1.GetPortfolioRequest
+	11, // 26: portfolio.v1.PortfolioService.StreamPortfolio:input_type -> portfolio.v1.StreamPortfolioRequest
+	12, // 27: portfolio.v1.PortfolioService.GetPnL:input_type -> portfolio.v1.GetPnLRequest
+	16, // 28: portfolio.v1.PortfolioService.ListPortfolios:input_type -> portfolio.v1.ListPortfoliosRequest
+	18, // 29: portfolio.v1.PortfolioService.GetMarginSnapshot:input_type -> portfolio.v1.GetMarginSnapshotRequest
+	23, // 30: portfolio.v1.PortfolioService.PreviewOrderImpact:input_type -> portfolio.v1.PreviewOrderImpactRequest
+	21, // 31: portfolio.v1.PortfolioService.ListMarginCalls:input_type -> portfolio.v1.ListMarginCallsRequest
+	2,  // 32: portfolio.v1.PortfolioService.Deposit:output_type -> portfolio.v1.DepositResponse
+	4,  // 33: portfolio.v1.PortfolioService.Withdraw:output_type -> portfolio.v1.WithdrawResponse
+	6,  // 34: portfolio.v1.PortfolioService.CreditShares:output_type -> portfolio.v1.CreditSharesResponse
+	8,  // 35: portfolio.v1.PortfolioService.GetPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
+	8,  // 36: portfolio.v1.PortfolioService.StreamPortfolio:output_type -> portfolio.v1.GetPortfolioResponse
+	13, // 37: portfolio.v1.PortfolioService.GetPnL:output_type -> portfolio.v1.GetPnLResponse
+	17, // 38: portfolio.v1.PortfolioService.ListPortfolios:output_type -> portfolio.v1.ListPortfoliosResponse
+	19, // 39: portfolio.v1.PortfolioService.GetMarginSnapshot:output_type -> portfolio.v1.GetMarginSnapshotResponse
+	24, // 40: portfolio.v1.PortfolioService.PreviewOrderImpact:output_type -> portfolio.v1.PreviewOrderImpactResponse
+	22, // 41: portfolio.v1.PortfolioService.ListMarginCalls:output_type -> portfolio.v1.ListMarginCallsResponse
+	32, // [32:42] is the sub-list for method output_type
+	22, // [22:32] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_portfolio_v1_service_proto_init() }
@@ -1921,7 +2189,7 @@ func file_portfolio_v1_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_portfolio_v1_service_proto_rawDesc), len(file_portfolio_v1_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   22,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

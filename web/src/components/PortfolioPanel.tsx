@@ -20,6 +20,7 @@ import { formatMoney, formatPrice, formatQuantity, moneyToPrice } from "../forma
 import { PositionSide, Side } from "../gen/orderbook/v1/events_pb";
 import { OrderStatus } from "../gen/portfolio/v1/service_pb";
 import { usePortfolio } from "../hooks/usePortfolio";
+import { useMarginCalls } from "../hooks/useMarginCalls";
 import { useMarginSnapshot } from "../hooks/useMarginSnapshot";
 import { portfolioClient, sagaClient } from "../client";
 
@@ -289,6 +290,7 @@ export function PortfolioPanel({
 }) {
   const portfolio = usePortfolio(accountId);
   const margin = useMarginSnapshot(accountId);
+  const marginCalls = useMarginCalls(accountId);
   const [depositOpened, depositHandlers] = useDisclosure(false);
   const [withdrawOpened, withdrawHandlers] = useDisclosure(false);
   const [creditOpened, creditHandlers] = useDisclosure(false);
@@ -648,6 +650,83 @@ export function PortfolioPanel({
                     </Table.Td>
                   </Table.Tr>
                 ))}
+              </Table.Tbody>
+            </Table>
+          </>
+        )}
+
+        {marginCalls.length > 0 && (
+          <>
+            <Title order={6}>Margin Calls</Title>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Issued</Table.Th>
+                  <Table.Th>Trigger</Table.Th>
+                  <Table.Th ta="right">Mark</Table.Th>
+                  <Table.Th ta="right">Equity at issue</Table.Th>
+                  <Table.Th ta="right">Maint. req.</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>Liquidations</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {marginCalls.map((c) => {
+                  const isActive = !c.coveredAt;
+                  const issued = c.issuedAt
+                    ? new Date(Number(c.issuedAt.seconds) * 1000).toLocaleString()
+                    : "";
+                  return (
+                    <Table.Tr key={c.callId}>
+                      <Table.Td>
+                        <Text size="xs">{issued}</Text>
+                      </Table.Td>
+                      <Table.Td>{c.triggerSymbol}</Table.Td>
+                      <Table.Td ta="right">{formatMoney(c.markPrice)}</Table.Td>
+                      <Table.Td ta="right">
+                        {formatMoney(c.equityAtIssue)}
+                      </Table.Td>
+                      <Table.Td ta="right">
+                        {formatMoney(c.maintenanceRequirementAtIssue)}
+                      </Table.Td>
+                      <Table.Td>
+                        {isActive ? (
+                          <Badge size="xs" color="red" variant="filled">
+                            ACTIVE
+                          </Badge>
+                        ) : (
+                          <Badge size="xs" color="gray" variant="light">
+                            COVERED
+                          </Badge>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap={4} wrap="nowrap">
+                          {c.liquidationSagaIds.length === 0 ? (
+                            <Text size="xs" c="dimmed">
+                              —
+                            </Text>
+                          ) : (
+                            c.liquidationSagaIds.map((sid) => (
+                              <ActionIcon
+                                key={sid}
+                                size="xs"
+                                variant="subtle"
+                                color="grape"
+                                onClick={() =>
+                                  onJumpToAggregate?.(`order-saga:${sid}`)
+                                }
+                                title="View liquidation saga in Diagnostics"
+                              >
+                                ⇢
+                              </ActionIcon>
+                            ))
+                          )}
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })}
               </Table.Tbody>
             </Table>
           </>

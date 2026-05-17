@@ -38,13 +38,14 @@ type Marker interface {
 type Server struct {
 	portfoliov1connect.UnimplementedPortfolioServiceHandler
 
-	portfolioHandler *es.Handler[*Portfolio]
-	orderbookHandler *es.Handler[*orderbook.OrderBook]
-	reader           PortfolioReader
-	pnlReader        PnLReader
-	marker           Marker
-	broker           *PortfolioBroker
-	log              *slog.Logger
+	portfolioHandler  *es.Handler[*Portfolio]
+	orderbookHandler  *es.Handler[*orderbook.OrderBook]
+	reader            PortfolioReader
+	pnlReader         PnLReader
+	marker            Marker
+	marginCallsReader MarginCallsReader
+	broker            *PortfolioBroker
+	log               *slog.Logger
 }
 
 func NewServer(
@@ -53,17 +54,19 @@ func NewServer(
 	reader PortfolioReader,
 	pnlReader PnLReader,
 	marker Marker,
+	marginCallsReader MarginCallsReader,
 	broker *PortfolioBroker,
 	log *slog.Logger,
 ) *Server {
 	return &Server{
-		portfolioHandler: portfolioHandler,
-		orderbookHandler: orderbookHandler,
-		reader:           reader,
-		pnlReader:        pnlReader,
-		marker:           marker,
-		broker:           broker,
-		log:              log,
+		portfolioHandler:  portfolioHandler,
+		orderbookHandler:  orderbookHandler,
+		reader:            reader,
+		pnlReader:         pnlReader,
+		marker:            marker,
+		marginCallsReader: marginCallsReader,
+		broker:            broker,
+		log:               log,
 	}
 }
 
@@ -205,6 +208,18 @@ func (s *Server) GetMarginSnapshot(ctx context.Context, req *connect.Request[por
 	}
 	resp := buildMarginSnapshot(accountID, p, s.marker)
 	return connect.NewResponse(resp), nil
+}
+
+func (s *Server) ListMarginCalls(ctx context.Context, req *connect.Request[portfoliov1.ListMarginCallsRequest]) (*connect.Response[portfoliov1.ListMarginCallsResponse], error) {
+	if s.marginCallsReader == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("margin calls reader not configured"))
+	}
+	calls, err := s.marginCallsReader.ListMarginCalls(ctx, req.Msg.AccountId, req.Msg.Limit)
+	if err != nil {
+		s.log.Error("ListMarginCalls failed", "account_id", req.Msg.AccountId, "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&portfoliov1.ListMarginCallsResponse{Calls: calls}), nil
 }
 
 func (s *Server) PreviewOrderImpact(ctx context.Context, req *connect.Request[portfoliov1.PreviewOrderImpactRequest]) (*connect.Response[portfoliov1.PreviewOrderImpactResponse], error) {

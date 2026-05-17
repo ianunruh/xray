@@ -148,6 +148,7 @@ func main() {
 	shortsProjection := portfolio.NewPgShortsBySymbolProjection(pool)
 	activeUserSagasProjection := portfolio.NewPgActiveUserSagasProjection(pool)
 	activeCallsProjection := portfolio.NewInMemoryActiveMarginCalls()
+	marginCallsProjection := portfolio.NewPgMarginCallsProjection(pool)
 	broker := orderbook.NewBroker()
 	portfolioBroker := portfolio.NewPortfolioBroker()
 	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, ocoSagaHandler, obHandler, log)
@@ -170,7 +171,7 @@ func main() {
 		// never reaches the reactor before its prior ShortOpened has
 		// been committed to PG.
 		natsstore.NewProjectionConsumer(js, registry, log, "margin-call").
-			WithPersistent(store, shortsProjection, activeUserSagasProjection, marginReactor),
+			WithPersistent(store, shortsProjection, activeUserSagasProjection, marginCallsProjection, marginReactor),
 		natsstore.NewProjectionConsumer(js, registry, log, "trade-projection").
 			WithPersistent(store, tradeProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "order-projection").
@@ -203,7 +204,7 @@ func main() {
 	go rec.Run(ctx)
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, dailyCloseProjection, broker)
-	portfolioSrv := portfolio.NewServer(portfolioHandler, obHandler, portfolioProjection, pnlProjection, markProjection, portfolioBroker, log)
+	portfolioSrv := portfolio.NewServer(portfolioHandler, obHandler, portfolioProjection, pnlProjection, markProjection, marginCallsProjection, portfolioBroker, log)
 	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, ocoSagaHandler, obHandler, sagaProjection, log)
 	diagnosticsSrv := diagnostics.NewServer(store, registry, log)
 

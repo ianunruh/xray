@@ -17,6 +17,7 @@ service PortfolioService {
   rpc ListPortfolios(ListPortfoliosRequest) returns (ListPortfoliosResponse);
   rpc GetMarginSnapshot(GetMarginSnapshotRequest) returns (GetMarginSnapshotResponse);
   rpc PreviewOrderImpact(PreviewOrderImpactRequest) returns (PreviewOrderImpactResponse);
+  rpc ListMarginCalls(ListMarginCallsRequest) returns (ListMarginCallsResponse);
 }
 
 message DepositRequest {
@@ -187,6 +188,40 @@ message GetMarginSnapshotResponse {
   // and pool allocation. Distinct from equity: equity counts locked
   // cash too (it's still yours, just earmarked).
   int64 buying_power = 15;
+}
+
+// MarginCallRecord is one row in the audit log: the issued snapshot
+// plus, when present, the covered snapshot and the liquidation sagas
+// the call spawned. Streamed by PortfolioService.ListMarginCalls,
+// newest-first.
+message MarginCallRecord {
+  string call_id = 1;
+  string account_id = 2;
+  string trigger_trade_id = 3;
+  string trigger_symbol = 4;
+  int64 mark_price = 5;
+  int64 equity_at_issue = 6;
+  int64 maintenance_requirement_at_issue = 7;
+  google.protobuf.Timestamp issued_at = 8;
+
+  // Set when the call has been resolved (covered or cleared).
+  google.protobuf.Timestamp covered_at = 9;
+  int64 equity_at_cover = 10;
+  int64 maintenance_requirement_at_cover = 11;
+
+  // Saga IDs of every BUY-to-cover the margincall reactor spawned
+  // for this call. UI uses these to link to the diagnostics view.
+  repeated string liquidation_saga_ids = 12;
+}
+
+message ListMarginCallsRequest {
+  string account_id = 1;
+  // Optional cap; 0 = no limit.
+  int32 limit = 2;
+}
+
+message ListMarginCallsResponse {
+  repeated MarginCallRecord calls = 1;
 }
 
 // PreviewOrderImpact simulates the hold + fill an order would create
