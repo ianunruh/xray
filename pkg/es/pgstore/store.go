@@ -24,6 +24,12 @@ const (
 		WHERE aggregate_id = $1
 		ORDER BY version`
 
+	queryLoadLatest = `SELECT id, causation_id, correlation_id, aggregate_id, type, version, data, timestamp, position
+		FROM events
+		WHERE aggregate_id = $1
+		ORDER BY version DESC
+		LIMIT $2`
+
 	queryLoadFrom = `SELECT id, causation_id, correlation_id, aggregate_id, type, version, data, timestamp, position
 		FROM events
 		WHERE aggregate_id = $1 AND version >= $2
@@ -79,7 +85,8 @@ const (
 		FROM events
 		WHERE ($1 = '' OR aggregate_id ILIKE '%' || $1 || '%')
 		GROUP BY aggregate_id
-		ORDER BY max(timestamp) DESC`
+		ORDER BY max(timestamp) DESC
+		LIMIT $2`
 )
 
 // AggregateSummary describes one aggregate's event stream stats.
@@ -112,6 +119,13 @@ func New(pool *pgxpool.Pool) *Store {
 // Load returns all events for the given aggregate ID, ordered by version.
 func (s *Store) Load(ctx context.Context, aggregateID string) ([]es.RawEvent, error) {
 	return s.queryEvents(ctx, queryLoad, aggregateID)
+}
+
+// LoadLatest returns up to limit most recent events for the aggregate,
+// ordered by version DESC. Used by the diagnostics panel where the
+// full stream may be very large and only the tail is useful.
+func (s *Store) LoadLatest(ctx context.Context, aggregateID string, limit int) ([]es.RawEvent, error) {
+	return s.queryEvents(ctx, queryLoadLatest, aggregateID, limit)
 }
 
 // LoadFrom returns events for the given aggregate starting from fromVersion (inclusive).
@@ -264,10 +278,11 @@ func (s *Store) TruncateProjections(ctx context.Context) error {
 	return err
 }
 
-// ListAggregates returns a summary of every aggregate stream, optionally
-// filtered by a substring match on aggregate_id (case-insensitive).
-func (s *Store) ListAggregates(ctx context.Context, filter string) ([]AggregateSummary, error) {
-	rows, err := s.pool.Query(ctx, queryListAggregates, filter)
+// ListAggregates returns up to limit aggregate-stream summaries ordered
+// by most-recent activity, optionally filtered by a substring match on
+// aggregate_id (case-insensitive).
+func (s *Store) ListAggregates(ctx context.Context, filter string, limit int) ([]AggregateSummary, error) {
+	rows, err := s.pool.Query(ctx, queryListAggregates, filter, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query aggregates: %w", err)
 	}

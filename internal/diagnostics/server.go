@@ -16,6 +16,13 @@ import (
 	"github.com/ianunruh/xray/pkg/es/pgstore"
 )
 
+// Hard caps for diagnostics responses. Aggregates and events tables in
+// production grow large; the panel only needs the most recent slice.
+const (
+	maxListedAggregates = 250
+	maxEventsPerAggregate = 1000
+)
+
 // Server implements the DiagnosticsService Connect handler.
 type Server struct {
 	diagnosticsv1connect.UnimplementedDiagnosticsServiceHandler
@@ -41,7 +48,7 @@ func NewServer(store *pgstore.Store, registry *es.Registry, log *slog.Logger) *S
 }
 
 func (s *Server) ListAggregates(ctx context.Context, req *connect.Request[diagnosticsv1.ListAggregatesRequest]) (*connect.Response[diagnosticsv1.ListAggregatesResponse], error) {
-	summaries, err := s.store.ListAggregates(ctx, req.Msg.Filter)
+	summaries, err := s.store.ListAggregates(ctx, req.Msg.Filter, maxListedAggregates)
 	if err != nil {
 		s.log.Warn("ListAggregates failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -68,7 +75,7 @@ func (s *Server) GetAggregateEvents(ctx context.Context, req *connect.Request[di
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("aggregate_id is required"))
 	}
 
-	raws, err := s.store.Load(ctx, aggregateID)
+	raws, err := s.store.LoadLatest(ctx, aggregateID, maxEventsPerAggregate)
 	if err != nil {
 		s.log.Warn("GetAggregateEvents load failed", "aggregate_id", aggregateID, "error", err)
 		return nil, connect.NewError(connect.CodeInternal, err)

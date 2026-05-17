@@ -57,7 +57,7 @@ export function DiagnosticsPanel({
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [textFilter, setTextFilter] = useState("");
   const [sortField, setSortField] = useState<SortField>("version");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   async function loadAggregates() {
@@ -305,22 +305,14 @@ export function DiagnosticsPanel({
             </Text>
           </Group>
 
-          <Box pos="relative" h={500}>
+          <Box pos="relative">
             <LoadingOverlay
               visible={eventsLoading}
               zIndex={2}
               overlayProps={{ blur: 1 }}
             />
-            <ScrollArea h={500}>
             <Table highlightOnHover striped>
-              <Table.Thead
-                style={{
-                  position: "sticky",
-                  top: 0,
-                  background: "var(--mantine-color-body)",
-                  zIndex: 1,
-                }}
-              >
+              <Table.Thead>
                 <Table.Tr>
                   <Table.Th
                     onClick={() => toggleSort("version")}
@@ -358,7 +350,6 @@ export function DiagnosticsPanel({
                 ))}
               </Table.Tbody>
             </Table>
-            </ScrollArea>
           </Box>
         </Stack>
       </Group>
