@@ -29,8 +29,9 @@ function crossBadge(ct: CrossType) {
   }
 }
 
-// TradeTable renders a "Recent Trades" panel from a pre-sorted (newest-first)
-// array of trades. The live TradeList and the replay view both feed it.
+// TradeTable renders a "Recent Trades" panel from a pre-sorted
+// (newest-first) array of trades. The live + replay bodies in
+// MarketPanel both feed it.
 export function TradeTable({
   trades,
   title = "Recent Trades",

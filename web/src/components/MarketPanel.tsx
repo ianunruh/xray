@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Badge,
   Card,
@@ -165,23 +165,35 @@ function TickerCell({
   );
 }
 
-function useLastTrade(symbol: string): Trade | undefined {
-  const [trade, setTrade] = useState<Trade | undefined>(undefined);
-  const onTrade = useCallback((t: Trade) => setTrade(t), []);
+const LIVE_TRADE_HISTORY = 100;
+
+// useLiveTrades opens a single trades stream and retains the most
+// recent LIVE_TRADE_HISTORY trades. Used to drive both the ticker's
+// last-trade cell and the trades table below the depth grid.
+function useLiveTrades(symbol: string): Trade[] {
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const onTrade = useCallback((t: Trade) => {
+    setTrades((prev) => [t, ...prev].slice(0, LIVE_TRADE_HISTORY));
+  }, []);
   useStream(
     (signal) => orderBookClient.streamTrades({ symbol }, { signal }),
     onTrade,
     [symbol],
   );
-  return trade;
+  // Reset history when symbol changes so the table doesn't briefly
+  // show prior-symbol rows before the new stream catches up.
+  useEffect(() => {
+    setTrades([]);
+  }, [symbol]);
+  return trades;
 }
 
 function LiveBody({ symbol }: { symbol: string }) {
   const { bids, asks, maxQuantity } = useSharedMarketDepth();
-  const lastTrade = useLastTrade(symbol);
+  const trades = useLiveTrades(symbol);
   return (
     <>
-      <MarketTicker bid={bids[0]} ask={asks[0]} lastTrade={lastTrade} />
+      <MarketTicker bid={bids[0]} ask={asks[0]} lastTrade={trades[0]} />
       <CandleChart symbol={symbol} />
       <Grid>
         <Grid.Col span={6}>
@@ -201,6 +213,7 @@ function LiveBody({ symbol }: { symbol: string }) {
           />
         </Grid.Col>
       </Grid>
+      <TradeTable trades={trades} />
     </>
   );
 }
