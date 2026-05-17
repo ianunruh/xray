@@ -48,6 +48,9 @@ const (
 	// OrderBookServiceOpenAuctionProcedure is the fully-qualified name of the OrderBookService's
 	// OpenAuction RPC.
 	OrderBookServiceOpenAuctionProcedure = "/orderbook.v1.OrderBookService/OpenAuction"
+	// OrderBookServiceBeginClosingAuctionProcedure is the fully-qualified name of the
+	// OrderBookService's BeginClosingAuction RPC.
+	OrderBookServiceBeginClosingAuctionProcedure = "/orderbook.v1.OrderBookService/BeginClosingAuction"
 	// OrderBookServiceUncrossProcedure is the fully-qualified name of the OrderBookService's Uncross
 	// RPC.
 	OrderBookServiceUncrossProcedure = "/orderbook.v1.OrderBookService/Uncross"
@@ -90,6 +93,7 @@ type OrderBookServiceClient interface {
 	ReplaceOrder(context.Context, *connect.Request[v1.ReplaceOrderRequest]) (*connect.Response[v1.ReplaceOrderResponse], error)
 	CloseMarket(context.Context, *connect.Request[v1.CloseMarketRequest]) (*connect.Response[v1.CloseMarketResponse], error)
 	OpenAuction(context.Context, *connect.Request[v1.OpenAuctionRequest]) (*connect.Response[v1.OpenAuctionResponse], error)
+	BeginClosingAuction(context.Context, *connect.Request[v1.BeginClosingAuctionRequest]) (*connect.Response[v1.BeginClosingAuctionResponse], error)
 	Uncross(context.Context, *connect.Request[v1.UncrossRequest]) (*connect.Response[v1.UncrossResponse], error)
 	GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error)
 	GetMarketDepth(context.Context, *connect.Request[v1.GetMarketDepthRequest]) (*connect.Response[v1.GetMarketDepthResponse], error)
@@ -142,6 +146,12 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			httpClient,
 			baseURL+OrderBookServiceOpenAuctionProcedure,
 			connect.WithSchema(orderBookServiceMethods.ByName("OpenAuction")),
+			connect.WithClientOptions(opts...),
+		),
+		beginClosingAuction: connect.NewClient[v1.BeginClosingAuctionRequest, v1.BeginClosingAuctionResponse](
+			httpClient,
+			baseURL+OrderBookServiceBeginClosingAuctionProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("BeginClosingAuction")),
 			connect.WithClientOptions(opts...),
 		),
 		uncross: connect.NewClient[v1.UncrossRequest, v1.UncrossResponse](
@@ -215,22 +225,23 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 
 // orderBookServiceClient implements OrderBookServiceClient.
 type orderBookServiceClient struct {
-	placeOrder        *connect.Client[v1.PlaceOrderRequest, v1.PlaceOrderResponse]
-	cancelOrder       *connect.Client[v1.CancelOrderRequest, v1.CancelOrderResponse]
-	replaceOrder      *connect.Client[v1.ReplaceOrderRequest, v1.ReplaceOrderResponse]
-	closeMarket       *connect.Client[v1.CloseMarketRequest, v1.CloseMarketResponse]
-	openAuction       *connect.Client[v1.OpenAuctionRequest, v1.OpenAuctionResponse]
-	uncross           *connect.Client[v1.UncrossRequest, v1.UncrossResponse]
-	getOrderBook      *connect.Client[v1.GetOrderBookRequest, v1.GetOrderBookResponse]
-	getMarketDepth    *connect.Client[v1.GetMarketDepthRequest, v1.GetMarketDepthResponse]
-	getOrder          *connect.Client[v1.GetOrderRequest, v1.GetOrderResponse]
-	listTrades        *connect.Client[v1.ListTradesRequest, v1.ListTradesResponse]
-	listOrders        *connect.Client[v1.ListOrdersRequest, v1.ListOrdersResponse]
-	listSymbols       *connect.Client[v1.ListSymbolsRequest, v1.ListSymbolsResponse]
-	streamMarketDepth *connect.Client[v1.StreamMarketDepthRequest, v1.GetMarketDepthResponse]
-	streamTrades      *connect.Client[v1.StreamTradesRequest, v1.Trade]
-	getCandles        *connect.Client[v1.GetCandlesRequest, v1.GetCandlesResponse]
-	streamCandles     *connect.Client[v1.StreamCandlesRequest, v1.Candle]
+	placeOrder          *connect.Client[v1.PlaceOrderRequest, v1.PlaceOrderResponse]
+	cancelOrder         *connect.Client[v1.CancelOrderRequest, v1.CancelOrderResponse]
+	replaceOrder        *connect.Client[v1.ReplaceOrderRequest, v1.ReplaceOrderResponse]
+	closeMarket         *connect.Client[v1.CloseMarketRequest, v1.CloseMarketResponse]
+	openAuction         *connect.Client[v1.OpenAuctionRequest, v1.OpenAuctionResponse]
+	beginClosingAuction *connect.Client[v1.BeginClosingAuctionRequest, v1.BeginClosingAuctionResponse]
+	uncross             *connect.Client[v1.UncrossRequest, v1.UncrossResponse]
+	getOrderBook        *connect.Client[v1.GetOrderBookRequest, v1.GetOrderBookResponse]
+	getMarketDepth      *connect.Client[v1.GetMarketDepthRequest, v1.GetMarketDepthResponse]
+	getOrder            *connect.Client[v1.GetOrderRequest, v1.GetOrderResponse]
+	listTrades          *connect.Client[v1.ListTradesRequest, v1.ListTradesResponse]
+	listOrders          *connect.Client[v1.ListOrdersRequest, v1.ListOrdersResponse]
+	listSymbols         *connect.Client[v1.ListSymbolsRequest, v1.ListSymbolsResponse]
+	streamMarketDepth   *connect.Client[v1.StreamMarketDepthRequest, v1.GetMarketDepthResponse]
+	streamTrades        *connect.Client[v1.StreamTradesRequest, v1.Trade]
+	getCandles          *connect.Client[v1.GetCandlesRequest, v1.GetCandlesResponse]
+	streamCandles       *connect.Client[v1.StreamCandlesRequest, v1.Candle]
 }
 
 // PlaceOrder calls orderbook.v1.OrderBookService.PlaceOrder.
@@ -256,6 +267,11 @@ func (c *orderBookServiceClient) CloseMarket(ctx context.Context, req *connect.R
 // OpenAuction calls orderbook.v1.OrderBookService.OpenAuction.
 func (c *orderBookServiceClient) OpenAuction(ctx context.Context, req *connect.Request[v1.OpenAuctionRequest]) (*connect.Response[v1.OpenAuctionResponse], error) {
 	return c.openAuction.CallUnary(ctx, req)
+}
+
+// BeginClosingAuction calls orderbook.v1.OrderBookService.BeginClosingAuction.
+func (c *orderBookServiceClient) BeginClosingAuction(ctx context.Context, req *connect.Request[v1.BeginClosingAuctionRequest]) (*connect.Response[v1.BeginClosingAuctionResponse], error) {
+	return c.beginClosingAuction.CallUnary(ctx, req)
 }
 
 // Uncross calls orderbook.v1.OrderBookService.Uncross.
@@ -320,6 +336,7 @@ type OrderBookServiceHandler interface {
 	ReplaceOrder(context.Context, *connect.Request[v1.ReplaceOrderRequest]) (*connect.Response[v1.ReplaceOrderResponse], error)
 	CloseMarket(context.Context, *connect.Request[v1.CloseMarketRequest]) (*connect.Response[v1.CloseMarketResponse], error)
 	OpenAuction(context.Context, *connect.Request[v1.OpenAuctionRequest]) (*connect.Response[v1.OpenAuctionResponse], error)
+	BeginClosingAuction(context.Context, *connect.Request[v1.BeginClosingAuctionRequest]) (*connect.Response[v1.BeginClosingAuctionResponse], error)
 	Uncross(context.Context, *connect.Request[v1.UncrossRequest]) (*connect.Response[v1.UncrossResponse], error)
 	GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error)
 	GetMarketDepth(context.Context, *connect.Request[v1.GetMarketDepthRequest]) (*connect.Response[v1.GetMarketDepthResponse], error)
@@ -368,6 +385,12 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 		OrderBookServiceOpenAuctionProcedure,
 		svc.OpenAuction,
 		connect.WithSchema(orderBookServiceMethods.ByName("OpenAuction")),
+		connect.WithHandlerOptions(opts...),
+	)
+	orderBookServiceBeginClosingAuctionHandler := connect.NewUnaryHandler(
+		OrderBookServiceBeginClosingAuctionProcedure,
+		svc.BeginClosingAuction,
+		connect.WithSchema(orderBookServiceMethods.ByName("BeginClosingAuction")),
 		connect.WithHandlerOptions(opts...),
 	)
 	orderBookServiceUncrossHandler := connect.NewUnaryHandler(
@@ -448,6 +471,8 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 			orderBookServiceCloseMarketHandler.ServeHTTP(w, r)
 		case OrderBookServiceOpenAuctionProcedure:
 			orderBookServiceOpenAuctionHandler.ServeHTTP(w, r)
+		case OrderBookServiceBeginClosingAuctionProcedure:
+			orderBookServiceBeginClosingAuctionHandler.ServeHTTP(w, r)
 		case OrderBookServiceUncrossProcedure:
 			orderBookServiceUncrossHandler.ServeHTTP(w, r)
 		case OrderBookServiceGetOrderBookProcedure:
@@ -497,6 +522,10 @@ func (UnimplementedOrderBookServiceHandler) CloseMarket(context.Context, *connec
 
 func (UnimplementedOrderBookServiceHandler) OpenAuction(context.Context, *connect.Request[v1.OpenAuctionRequest]) (*connect.Response[v1.OpenAuctionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.OpenAuction is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) BeginClosingAuction(context.Context, *connect.Request[v1.BeginClosingAuctionRequest]) (*connect.Response[v1.BeginClosingAuctionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.BeginClosingAuction is not implemented"))
 }
 
 func (UnimplementedOrderBookServiceHandler) Uncross(context.Context, *connect.Request[v1.UncrossRequest]) (*connect.Response[v1.UncrossResponse], error) {

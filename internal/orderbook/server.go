@@ -180,6 +180,26 @@ func (s *Server) OpenAuction(ctx context.Context, req *connect.Request[orderbook
 	return connect.NewResponse(&orderbookv1.OpenAuctionResponse{}), nil
 }
 
+func (s *Server) BeginClosingAuction(ctx context.Context, req *connect.Request[orderbookv1.BeginClosingAuctionRequest]) (*connect.Response[orderbookv1.BeginClosingAuctionResponse], error) {
+	msg := req.Msg
+
+	cmd := BeginClosingAuction{
+		Symbol: msg.Symbol,
+		Reason: msg.Reason,
+	}
+
+	err := s.handler.Handle(ctx, cmd, func(book *OrderBook) ([]es.Event, error) {
+		return ExecuteBeginClosingAuction(book, cmd)
+	})
+	if err != nil {
+		s.log.Warn("BeginClosingAuction failed", "symbol", msg.Symbol, "error", err)
+		return nil, mapError(err)
+	}
+
+	s.log.Info("BeginClosingAuction", "symbol", msg.Symbol, "reason", cmd.Reason)
+	return connect.NewResponse(&orderbookv1.BeginClosingAuctionResponse{}), nil
+}
+
 func (s *Server) Uncross(ctx context.Context, req *connect.Request[orderbookv1.UncrossRequest]) (*connect.Response[orderbookv1.UncrossResponse], error) {
 	msg := req.Msg
 
@@ -508,7 +528,10 @@ func mapError(err error) *connect.Error {
 	case ErrInsufficientLiquidity:
 		return connect.NewError(connect.CodeFailedPrecondition, unwrapped)
 	case ErrAuctionRejectsIOC, ErrAuctionRejectsMarket, ErrMarketClosed,
-		ErrAlreadyInAuction, ErrNotInAuction, ErrCannotOpenAuction:
+		ErrAlreadyInAuction, ErrNotInAuction, ErrCannotOpenAuction,
+		ErrAtOpenOutsideAuction, ErrAtCloseOutsideAcceptanceWindow,
+		ErrAuctionStopNotAllowed, ErrCannotBeginClosing,
+		ErrClosingAuctionRejectsRegular:
 		return connect.NewError(connect.CodeFailedPrecondition, unwrapped)
 	case ErrOrderNotFound, ErrNoRemainingQty:
 		return connect.NewError(connect.CodeNotFound, unwrapped)

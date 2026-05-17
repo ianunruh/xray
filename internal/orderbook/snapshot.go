@@ -51,6 +51,11 @@ func (ob *OrderBook) RestoreSnapshot(msg proto.Message) error {
 	} else {
 		ob.OpeningBook.Reset()
 	}
+	if ob.ClosingBook == nil {
+		ob.ClosingBook = newAuctionBook()
+	} else {
+		ob.ClosingBook.Reset()
+	}
 
 	for _, os := range snap.Orders {
 		order := &Order{
@@ -70,6 +75,8 @@ func (ob *OrderBook) RestoreSnapshot(msg proto.Message) error {
 		switch {
 		case order.TimeInForce == AtOpen:
 			ob.OpeningBook.Insert(order)
+		case order.TimeInForce == AtClose:
+			ob.ClosingBook.Insert(order)
 		case order.OrderType == StopMarket || order.OrderType == StopLimit:
 			switch order.Side {
 			case Buy:

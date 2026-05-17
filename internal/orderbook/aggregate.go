@@ -33,6 +33,10 @@ type OrderBook struct {
 	// the continuous Bids/Asks so depth streams stay clean — the uncross
 	// algorithm merges them in at clearing time.
 	OpeningBook *auctionBook
+	// ClosingBook holds AT_CLOSE orders (MOC/LOC) staged for the next
+	// closing uncross. AT_CLOSE is accepted while CONTINUOUS or
+	// CLOSING_AUCTION; orders may sit here for a while before clearing.
+	ClosingBook *auctionBook
 	// LastTradePrice tracks the most recent continuous-trade print; the
 	// uncross algorithm uses it as the tie-break reference when the
 	// matched range is balanced and brackets the prior print.
@@ -50,6 +54,7 @@ func NewOrderBook(id string) *OrderBook {
 		SellStops:   newSellStopSide(),
 		OCOGroups:   make(map[string]map[string]struct{}),
 		OpeningBook: newAuctionBook(),
+		ClosingBook: newAuctionBook(),
 	}
 	ob.SetID(id)
 	return ob
@@ -142,6 +147,10 @@ func (ob *OrderBook) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 		ob.OpeningBook.Insert(order)
 		return
 	}
+	if order.TimeInForce == AtClose {
+		ob.ClosingBook.Insert(order)
+		return
+	}
 
 	if order.OrderType == StopMarket || order.OrderType == StopLimit {
 		switch order.Side {
@@ -191,6 +200,8 @@ func (ob *OrderBook) applyOrderCancelled(data *orderbookv1.OrderCancelled) {
 	switch {
 	case order.TimeInForce == AtOpen:
 		ob.OpeningBook.Remove(order.ID, order.Side)
+	case order.TimeInForce == AtClose:
+		ob.ClosingBook.Remove(order.ID, order.Side)
 	case order.OrderType == StopMarket || order.OrderType == StopLimit:
 		switch order.Side {
 		case Buy:

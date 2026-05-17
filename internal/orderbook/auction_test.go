@@ -588,6 +588,198 @@ func TestAtOpen_CancellableDuringAuction(t *testing.T) {
 	assert.Equal(t, 0, book.OpeningBook.Len(), "cancelled AT_OPEN should leave the auction book")
 }
 
+// -- AT_CLOSE / closing auction ------------------------------------------
+
+func placeLOC(t *testing.T, book *orderbook.OrderBook, account string, side orderbook.Side, price, quantity int64) {
+	t.Helper()
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        side,
+		Price:       price,
+		Quantity:    quantity,
+		TimeInForce: orderbook.AtClose,
+		AccountID:   account,
+	})
+	require.NoError(t, err)
+}
+
+func placeMOC(t *testing.T, book *orderbook.OrderBook, account string, side orderbook.Side, quantity int64) {
+	t.Helper()
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        side,
+		Quantity:    quantity,
+		OrderType:   orderbook.Market,
+		TimeInForce: orderbook.AtClose,
+		AccountID:   account,
+	})
+	require.NoError(t, err)
+}
+
+func beginClosingAuction(t *testing.T, book *orderbook.OrderBook) {
+	t.Helper()
+	_, err := orderbook.ExecuteBeginClosingAuction(book, orderbook.BeginClosingAuction{Symbol: "AAPL"})
+	require.NoError(t, err)
+}
+
+func TestAtClose_AcceptedDuringContinuous_RestsInClosingBook(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	placeLOC(t, book, "acct-1", orderbook.Buy, 1500000, 100)
+
+	assert.Equal(t, 0, book.Bids.Len(), "AT_CLOSE must not appear in continuous bids")
+	assert.Equal(t, 1, book.ClosingBook.Len())
+}
+
+func TestAtClose_RejectedDuringOpeningAuction(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	openAuction(t, book)
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:      "AAPL",
+		Side:        orderbook.Buy,
+		Price:       1500000,
+		Quantity:    100,
+		TimeInForce: orderbook.AtClose,
+	})
+	assert.ErrorIs(t, err, orderbook.ErrAtCloseOutsideAcceptanceWindow)
+}
+
+func TestBeginClosingAuction_FromContinuous(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+
+	events, err := orderbook.ExecuteBeginClosingAuction(book, orderbook.BeginClosingAuction{
+		Symbol: "AAPL",
+		Reason: "session_close",
+	})
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+
+	changed := events[0].Data.(*orderbookv1.MarketPhaseChanged)
+	assert.Equal(t, orderbookv1.MarketPhase_MARKET_PHASE_CLOSING_AUCTION, changed.Phase)
+	assert.Equal(t, orderbook.PhaseClosingAuction, book.Phase)
+}
+
+func TestBeginClosingAuction_RejectedFromOpeningAuction(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	openAuction(t, book)
+
+	_, err := orderbook.ExecuteBeginClosingAuction(book, orderbook.BeginClosingAuction{Symbol: "AAPL"})
+	assert.ErrorIs(t, err, orderbook.ErrCannotBeginClosing)
+}
+
+func TestPlaceOrder_RegularOrderRejectedDuringClosingAuction(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	beginClosingAuction(t, book)
+
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:   "AAPL",
+		Side:     orderbook.Buy,
+		Price:    1500000,
+		Quantity: 100,
+	})
+	assert.ErrorIs(t, err, orderbook.ErrClosingAuctionRejectsRegular)
+}
+
+func TestPlaceOrder_AtCloseAcceptedDuringClosingAuction(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	beginClosingAuction(t, book)
+
+	placeLOC(t, book, "acct-1", orderbook.Sell, 1500000, 100)
+	assert.Equal(t, 1, book.ClosingBook.Len())
+}
+
+func TestUncross_ClosingAuction_FlipsToClosed_WithCrossTypeClosing(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	// Stage AT_CLOSE on both sides during continuous trading.
+	placeLOC(t, book, "acct-1", orderbook.Buy, 1500000, 100)
+	placeLOC(t, book, "acct-2", orderbook.Sell, 1500000, 100)
+
+	beginClosingAuction(t, book)
+
+	events := runUncross(t, book)
+	header := events[0].Data.(*orderbookv1.AuctionUncrossed)
+	assert.Equal(t, orderbookv1.CrossType_CROSS_TYPE_CLOSING, header.CrossType)
+	assert.Equal(t, int64(1500000), header.ClearingPrice)
+	assert.Equal(t, int64(100), header.MatchedQty)
+
+	// Phase should flip to CLOSED.
+	assert.Equal(t, orderbook.PhaseClosed, book.Phase)
+
+	// All trades carry cross_type=CLOSING.
+	for _, evt := range events {
+		if trade, ok := evt.Data.(*orderbookv1.TradeExecuted); ok {
+			assert.Equal(t, orderbookv1.CrossType_CROSS_TYPE_CLOSING, trade.CrossType)
+		}
+	}
+}
+
+func TestUncross_ClosingAuction_SuppressesStopTriggers(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	// Seed a stop that would trigger if the clearing price dropped below $148.
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:    "AAPL",
+		Side:      orderbook.Sell,
+		StopPrice: 1480000,
+		Quantity:  50,
+		OrderType: orderbook.StopMarket,
+	})
+	require.NoError(t, err)
+
+	placeLOC(t, book, "acct-1", orderbook.Buy, 1470000, 50)
+	placeLOC(t, book, "acct-2", orderbook.Sell, 1470000, 50)
+
+	beginClosingAuction(t, book)
+	events := runUncross(t, book)
+
+	// Closing uncross flips to CLOSED — stops shouldn't activate.
+	for _, evt := range events {
+		_, ok := evt.Data.(*orderbookv1.StopTriggered)
+		assert.False(t, ok, "stops must not trigger on closing uncross (book is dead)")
+	}
+}
+
+func TestUncross_ClosingAuction_UnfilledAtClose_Cancelled(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	placeLOC(t, book, "acct-1", orderbook.Buy, 1480000, 50) // won't fill — no offsetting sell
+	beginClosingAuction(t, book)
+
+	events := runUncross(t, book)
+
+	var sawCancel bool
+	for _, evt := range events {
+		if c, ok := evt.Data.(*orderbookv1.OrderCancelled); ok {
+			assert.Equal(t, "missed_auction", c.Reason)
+			sawCancel = true
+		}
+	}
+	assert.True(t, sawCancel)
+	assert.Equal(t, 0, book.ClosingBook.Len())
+}
+
+func TestPlaceOrder_RejectedAfterClosed(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	beginClosingAuction(t, book)
+	runUncross(t, book)
+	require.Equal(t, orderbook.PhaseClosed, book.Phase)
+
+	_, err := orderbook.ExecutePlaceOrder(book, orderbook.PlaceOrder{
+		Symbol:   "AAPL",
+		Side:     orderbook.Buy,
+		Price:    1500000,
+		Quantity: 100,
+	})
+	assert.ErrorIs(t, err, orderbook.ErrMarketClosed)
+}
+
+func TestOpenAuction_FromClosed_StartsNextSession(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	beginClosingAuction(t, book)
+	runUncross(t, book)
+	require.Equal(t, orderbook.PhaseClosed, book.Phase)
+
+	openAuction(t, book)
+	assert.Equal(t, orderbook.PhaseAuction, book.Phase)
+}
+
 func TestUncross_TriggersPreExistingStop(t *testing.T) {
 	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
 

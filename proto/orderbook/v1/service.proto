@@ -21,6 +21,7 @@ service OrderBookService {
   rpc ReplaceOrder(ReplaceOrderRequest) returns (ReplaceOrderResponse);
   rpc CloseMarket(CloseMarketRequest) returns (CloseMarketResponse);
   rpc OpenAuction(OpenAuctionRequest) returns (OpenAuctionResponse);
+  rpc BeginClosingAuction(BeginClosingAuctionRequest) returns (BeginClosingAuctionResponse);
   rpc Uncross(UncrossRequest) returns (UncrossResponse);
   rpc GetOrderBook(GetOrderBookRequest) returns (GetOrderBookResponse);
   rpc GetMarketDepth(GetMarketDepthRequest) returns (GetMarketDepthResponse);
@@ -89,6 +90,14 @@ message OpenAuctionRequest {
 }
 
 message OpenAuctionResponse {}
+
+message BeginClosingAuctionRequest {
+  string symbol = 1;
+  // reason is recorded on MarketPhaseChanged; defaults to "session_close".
+  string reason = 2;
+}
+
+message BeginClosingAuctionResponse {}
 
 message UncrossRequest {
   string symbol = 1;

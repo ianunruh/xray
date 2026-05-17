@@ -23,6 +23,18 @@ func (c OpenAuction) AggregateID() string {
 	return AggregateID(c.Symbol)
 }
 
+// BeginClosingAuction freezes continuous matching and enters the
+// closing-auction phase. Only AT_CLOSE orders and cancellations are
+// accepted from here until Uncross fires.
+type BeginClosingAuction struct {
+	Symbol string
+	Reason string
+}
+
+func (c BeginClosingAuction) AggregateID() string {
+	return AggregateID(c.Symbol)
+}
+
 // Uncross runs the equilibrium-price auction algorithm and flips back
 // to continuous matching. The cross type (opening vs closing) and
 // destination phase are derived from the current Phase.
@@ -70,9 +82,39 @@ func ExecuteOpenAuction(book *OrderBook, cmd OpenAuction) ([]es.Event, error) {
 	return []es.Event{evt}, nil
 }
 
+// ExecuteBeginClosingAuction emits MarketPhaseChanged(CLOSING_AUCTION).
+// Valid only from CONTINUOUS.
+func ExecuteBeginClosingAuction(book *OrderBook, cmd BeginClosingAuction) ([]es.Event, error) {
+	if book.Phase != PhaseContinuous {
+		return nil, ErrCannotBeginClosing
+	}
+
+	now := time.Now()
+	reason := cmd.Reason
+	if reason == "" {
+		reason = "session_close"
+	}
+
+	evt := es.Event{
+		AggregateID: book.AggregateID(),
+		Type:        EventMarketPhaseChanged,
+		Timestamp:   now,
+		Data: &orderbookv1.MarketPhaseChanged{
+			Symbol: cmd.Symbol,
+			Phase:  orderbookv1.MarketPhase_MARKET_PHASE_CLOSING_AUCTION,
+			Reason: reason,
+			At:     timestamppb.New(now),
+		},
+	}
+	if err := book.Apply(evt); err != nil {
+		return nil, fmt.Errorf("apply phase changed: %w", err)
+	}
+	return []es.Event{evt}, nil
+}
+
 // ExecuteUncross runs the auction uncross. From AUCTION, it produces
 // opening-cross trades and flips to CONTINUOUS; from CLOSING_AUCTION
-// (step 3) it produces closing-cross trades and flips to CLOSED.
+// it produces closing-cross trades and flips to CLOSED.
 func ExecuteUncross(book *OrderBook, cmd Uncross) ([]es.Event, error) {
 	var ct CrossType
 	var nextPhase MarketPhase
@@ -172,6 +214,8 @@ func cancelMissedAuctionOrders(book *OrderBook, ct CrossType, events []es.Event,
 	switch ct {
 	case CrossOpening:
 		ab = book.OpeningBook
+	case CrossClosing:
+		ab = book.ClosingBook
 	}
 	if ab == nil {
 		return events
@@ -540,6 +584,8 @@ func collectUncrossInputs(book *OrderBook, ct CrossType) uncrossInputs {
 	switch ct {
 	case CrossOpening:
 		ab = book.OpeningBook
+	case CrossClosing:
+		ab = book.ClosingBook
 	}
 
 	inp := uncrossInputs{}
@@ -597,6 +643,8 @@ func eligibleAuctionOrders(book *OrderBook, clearing int64, ct CrossType) (buys,
 	switch ct {
 	case CrossOpening:
 		ab = book.OpeningBook
+	case CrossClosing:
+		ab = book.ClosingBook
 	}
 
 	var marketBuys, marketSells []*Order
