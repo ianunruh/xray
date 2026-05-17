@@ -131,7 +131,7 @@ func ExecuteUncross(book *OrderBook, cmd Uncross) ([]es.Event, error) {
 	}
 
 	now := time.Now()
-	events, _ := uncross(book, ct, now)
+	events, res := uncross(book, ct, now)
 
 	phaseEvt := es.Event{
 		AggregateID: book.AggregateID(),
@@ -154,6 +154,31 @@ func ExecuteUncross(book *OrderBook, cmd Uncross) ([]es.Event, error) {
 	// triggered stops would have nowhere to match — skip.
 	if nextPhase == PhaseContinuous {
 		events = triggerStops(book, events, now)
+	}
+
+	// Emit the canonical end-of-day mark on closing uncross, even if
+	// matched_qty is zero (consumers still want to know the session
+	// ended). When no trades cleared, fall back to the last continuous
+	// trade price as the close.
+	if ct == CrossClosing {
+		closePrice := res.ClearingPrice
+		if closePrice == 0 {
+			closePrice = book.LastTradePrice
+		}
+		closeEvt := es.Event{
+			AggregateID: book.AggregateID(),
+			Type:        EventOfficialCloseSet,
+			Timestamp:   now,
+			Data: &orderbookv1.OfficialCloseSet{
+				Symbol:      book.Symbol,
+				SessionDate: now.UTC().Format("2006-01-02"),
+				ClosePrice:  closePrice,
+				CloseVolume: res.MatchedQty,
+				At:          timestamppb.New(now),
+			},
+		}
+		_ = book.Apply(closeEvt)
+		events = append(events, closeEvt)
 	}
 
 	return events, nil

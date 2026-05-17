@@ -15,6 +15,7 @@ const (
 	EventMarketClosed       = "MarketClosed"
 	EventMarketPhaseChanged = "MarketPhaseChanged"
 	EventAuctionUncrossed   = "AuctionUncrossed"
+	EventOfficialCloseSet   = "OfficialCloseSet"
 )
 
 func RegisterEvents(r *es.Registry) {
@@ -25,4 +26,5 @@ func RegisterEvents(r *es.Registry) {
 	r.Register(EventMarketClosed, func() proto.Message { return new(orderbookv1.MarketClosed) })
 	r.Register(EventMarketPhaseChanged, func() proto.Message { return new(orderbookv1.MarketPhaseChanged) })
 	r.Register(EventAuctionUncrossed, func() proto.Message { return new(orderbookv1.AuctionUncrossed) })
+	r.Register(EventOfficialCloseSet, func() proto.Message { return new(orderbookv1.OfficialCloseSet) })
 }

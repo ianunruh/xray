@@ -23,6 +23,8 @@ service OrderBookService {
   rpc OpenAuction(OpenAuctionRequest) returns (OpenAuctionResponse);
   rpc BeginClosingAuction(BeginClosingAuctionRequest) returns (BeginClosingAuctionResponse);
   rpc Uncross(UncrossRequest) returns (UncrossResponse);
+  rpc GetOfficialClose(GetOfficialCloseRequest) returns (GetOfficialCloseResponse);
+  rpc ListOfficialCloses(ListOfficialClosesRequest) returns (ListOfficialClosesResponse);
   rpc GetOrderBook(GetOrderBookRequest) returns (GetOrderBookResponse);
   rpc GetMarketDepth(GetMarketDepthRequest) returns (GetMarketDepthResponse);
   rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
@@ -110,6 +112,31 @@ message UncrossResponse {
   Side imbalance_side = 4;
   CrossType cross_type = 5;
   int32 trade_count = 6;
+}
+
+message GetOfficialCloseRequest {
+  string symbol = 1;
+  // session_date as YYYY-MM-DD. Empty = most recent close.
+  string session_date = 2;
+}
+
+message GetOfficialCloseResponse {
+  string symbol = 1;
+  string session_date = 2;
+  int64 close_price = 3;
+  int64 close_volume = 4;
+  google.protobuf.Timestamp closed_at = 5;
+}
+
+message ListOfficialClosesRequest {
+  string symbol = 1;
+  // from/to are inclusive YYYY-MM-DD; either may be empty for open-ended.
+  string from = 2;
+  string to = 3;
+}
+
+message ListOfficialClosesResponse {
+  repeated GetOfficialCloseResponse closes = 1;
 }
 
 message GetOrderBookRequest {

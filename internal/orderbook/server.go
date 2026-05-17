@@ -24,11 +24,12 @@ type Server struct {
 	symbols SymbolReader
 	depth   DepthReader
 	candles CandleReader
+	closes  OfficialCloseReader
 	broker  *Broker
 }
 
 // NewServer creates a new Server with the given dependencies.
-func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeReader, orders OrderReader, symbols SymbolReader, depth DepthReader, candles CandleReader, broker *Broker) *Server {
+func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeReader, orders OrderReader, symbols SymbolReader, depth DepthReader, candles CandleReader, closes OfficialCloseReader, broker *Broker) *Server {
 	return &Server{
 		handler: handler,
 		log:     log,
@@ -37,6 +38,7 @@ func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeRe
 		symbols: symbols,
 		depth:   depth,
 		candles: candles,
+		closes:  closes,
 		broker:  broker,
 	}
 }
@@ -277,6 +279,33 @@ func (s *Server) CloseMarket(ctx context.Context, req *connect.Request[orderbook
 	return connect.NewResponse(&orderbookv1.CloseMarketResponse{
 		CancelledOrders: cancelledOrders,
 	}), nil
+}
+
+func (s *Server) GetOfficialClose(ctx context.Context, req *connect.Request[orderbookv1.GetOfficialCloseRequest]) (*connect.Response[orderbookv1.GetOfficialCloseResponse], error) {
+	if s.closes == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("daily_close projection not configured"))
+	}
+	resp, err := s.closes.GetOfficialClose(ctx, req.Msg.Symbol, req.Msg.SessionDate)
+	if err != nil {
+		s.log.Warn("GetOfficialClose failed", "symbol", req.Msg.Symbol, "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	if resp == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("no close recorded"))
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *Server) ListOfficialCloses(ctx context.Context, req *connect.Request[orderbookv1.ListOfficialClosesRequest]) (*connect.Response[orderbookv1.ListOfficialClosesResponse], error) {
+	if s.closes == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("daily_close projection not configured"))
+	}
+	rows, err := s.closes.ListOfficialCloses(ctx, req.Msg.Symbol, req.Msg.From, req.Msg.To)
+	if err != nil {
+		s.log.Warn("ListOfficialCloses failed", "symbol", req.Msg.Symbol, "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&orderbookv1.ListOfficialClosesResponse{Closes: rows}), nil
 }
 
 func (s *Server) GetOrderBook(ctx context.Context, req *connect.Request[orderbookv1.GetOrderBookRequest]) (*connect.Response[orderbookv1.GetOrderBookResponse], error) {

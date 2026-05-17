@@ -137,6 +137,7 @@ func main() {
 	// Create projections.
 	tradeProjection := orderbook.NewPgTradeProjection(pool)
 	orderProjection := orderbook.NewPgOrderProjection(pool)
+	dailyCloseProjection := orderbook.NewPgDailyCloseProjection(pool)
 	portfolioProjection := portfolio.NewPgPortfolioProjection(pool)
 	pnlProjection := portfolio.NewPgPnLProjection(pool)
 	sagaProjection := sagasvc.NewPgProjection(pool)
@@ -171,6 +172,8 @@ func main() {
 			WithPersistent(store, ocoSagaReactor),
 		natsstore.NewProjectionConsumer(js, registry, log, "saga-projection").
 			WithPersistent(store, sagaProjection),
+		natsstore.NewProjectionConsumer(js, registry, log, "daily-close-projection").
+			WithPersistent(store, dailyCloseProjection),
 	}
 	for _, c := range consumers {
 		if err := c.Start(ctx); err != nil {
@@ -184,7 +187,7 @@ func main() {
 	rec := reconciler.New(30*time.Second, sagaProjection, tradeProjection, portfolioHandler, orderSagaReactor, bracketReactor, ocoSagaReactor, log)
 	go rec.Run(ctx)
 
-	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, broker)
+	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, dailyCloseProjection, broker)
 	portfolioSrv := portfolio.NewServer(portfolioHandler, portfolioProjection, pnlProjection, portfolioBroker, log)
 	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, ocoSagaHandler, obHandler, sagaProjection, log)
 	diagnosticsSrv := diagnostics.NewServer(store, registry, log)

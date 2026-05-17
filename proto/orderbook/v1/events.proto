@@ -136,6 +136,21 @@ message AuctionUncrossed {
   google.protobuf.Timestamp at = 7;
 }
 
+// OfficialCloseSet is the canonical end-of-day mark, derivable from
+// the last cross_type=CLOSING trade but emitted explicitly so the
+// daily_close projection doesn't have to scan trades.
+//
+// Downstream consumers (fund NAV, mark-to-market, charting close axis,
+// closing-print UI badges) treat this as the authoritative session-end
+// price. session_date is a YYYY-MM-DD string for easy keying.
+message OfficialCloseSet {
+  string symbol = 1;
+  string session_date = 2;
+  int64 close_price = 3;
+  int64 close_volume = 4;
+  google.protobuf.Timestamp at = 5;
+}
+
 // Saga lifecycle events — stored under aggregate ID "saga:{uuid}".
 
 message SagaStarted {

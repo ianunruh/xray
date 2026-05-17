@@ -54,6 +54,12 @@ const (
 	// OrderBookServiceUncrossProcedure is the fully-qualified name of the OrderBookService's Uncross
 	// RPC.
 	OrderBookServiceUncrossProcedure = "/orderbook.v1.OrderBookService/Uncross"
+	// OrderBookServiceGetOfficialCloseProcedure is the fully-qualified name of the OrderBookService's
+	// GetOfficialClose RPC.
+	OrderBookServiceGetOfficialCloseProcedure = "/orderbook.v1.OrderBookService/GetOfficialClose"
+	// OrderBookServiceListOfficialClosesProcedure is the fully-qualified name of the OrderBookService's
+	// ListOfficialCloses RPC.
+	OrderBookServiceListOfficialClosesProcedure = "/orderbook.v1.OrderBookService/ListOfficialCloses"
 	// OrderBookServiceGetOrderBookProcedure is the fully-qualified name of the OrderBookService's
 	// GetOrderBook RPC.
 	OrderBookServiceGetOrderBookProcedure = "/orderbook.v1.OrderBookService/GetOrderBook"
@@ -95,6 +101,8 @@ type OrderBookServiceClient interface {
 	OpenAuction(context.Context, *connect.Request[v1.OpenAuctionRequest]) (*connect.Response[v1.OpenAuctionResponse], error)
 	BeginClosingAuction(context.Context, *connect.Request[v1.BeginClosingAuctionRequest]) (*connect.Response[v1.BeginClosingAuctionResponse], error)
 	Uncross(context.Context, *connect.Request[v1.UncrossRequest]) (*connect.Response[v1.UncrossResponse], error)
+	GetOfficialClose(context.Context, *connect.Request[v1.GetOfficialCloseRequest]) (*connect.Response[v1.GetOfficialCloseResponse], error)
+	ListOfficialCloses(context.Context, *connect.Request[v1.ListOfficialClosesRequest]) (*connect.Response[v1.ListOfficialClosesResponse], error)
 	GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error)
 	GetMarketDepth(context.Context, *connect.Request[v1.GetMarketDepthRequest]) (*connect.Response[v1.GetMarketDepthResponse], error)
 	GetOrder(context.Context, *connect.Request[v1.GetOrderRequest]) (*connect.Response[v1.GetOrderResponse], error)
@@ -158,6 +166,18 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			httpClient,
 			baseURL+OrderBookServiceUncrossProcedure,
 			connect.WithSchema(orderBookServiceMethods.ByName("Uncross")),
+			connect.WithClientOptions(opts...),
+		),
+		getOfficialClose: connect.NewClient[v1.GetOfficialCloseRequest, v1.GetOfficialCloseResponse](
+			httpClient,
+			baseURL+OrderBookServiceGetOfficialCloseProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("GetOfficialClose")),
+			connect.WithClientOptions(opts...),
+		),
+		listOfficialCloses: connect.NewClient[v1.ListOfficialClosesRequest, v1.ListOfficialClosesResponse](
+			httpClient,
+			baseURL+OrderBookServiceListOfficialClosesProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("ListOfficialCloses")),
 			connect.WithClientOptions(opts...),
 		),
 		getOrderBook: connect.NewClient[v1.GetOrderBookRequest, v1.GetOrderBookResponse](
@@ -232,6 +252,8 @@ type orderBookServiceClient struct {
 	openAuction         *connect.Client[v1.OpenAuctionRequest, v1.OpenAuctionResponse]
 	beginClosingAuction *connect.Client[v1.BeginClosingAuctionRequest, v1.BeginClosingAuctionResponse]
 	uncross             *connect.Client[v1.UncrossRequest, v1.UncrossResponse]
+	getOfficialClose    *connect.Client[v1.GetOfficialCloseRequest, v1.GetOfficialCloseResponse]
+	listOfficialCloses  *connect.Client[v1.ListOfficialClosesRequest, v1.ListOfficialClosesResponse]
 	getOrderBook        *connect.Client[v1.GetOrderBookRequest, v1.GetOrderBookResponse]
 	getMarketDepth      *connect.Client[v1.GetMarketDepthRequest, v1.GetMarketDepthResponse]
 	getOrder            *connect.Client[v1.GetOrderRequest, v1.GetOrderResponse]
@@ -277,6 +299,16 @@ func (c *orderBookServiceClient) BeginClosingAuction(ctx context.Context, req *c
 // Uncross calls orderbook.v1.OrderBookService.Uncross.
 func (c *orderBookServiceClient) Uncross(ctx context.Context, req *connect.Request[v1.UncrossRequest]) (*connect.Response[v1.UncrossResponse], error) {
 	return c.uncross.CallUnary(ctx, req)
+}
+
+// GetOfficialClose calls orderbook.v1.OrderBookService.GetOfficialClose.
+func (c *orderBookServiceClient) GetOfficialClose(ctx context.Context, req *connect.Request[v1.GetOfficialCloseRequest]) (*connect.Response[v1.GetOfficialCloseResponse], error) {
+	return c.getOfficialClose.CallUnary(ctx, req)
+}
+
+// ListOfficialCloses calls orderbook.v1.OrderBookService.ListOfficialCloses.
+func (c *orderBookServiceClient) ListOfficialCloses(ctx context.Context, req *connect.Request[v1.ListOfficialClosesRequest]) (*connect.Response[v1.ListOfficialClosesResponse], error) {
+	return c.listOfficialCloses.CallUnary(ctx, req)
 }
 
 // GetOrderBook calls orderbook.v1.OrderBookService.GetOrderBook.
@@ -338,6 +370,8 @@ type OrderBookServiceHandler interface {
 	OpenAuction(context.Context, *connect.Request[v1.OpenAuctionRequest]) (*connect.Response[v1.OpenAuctionResponse], error)
 	BeginClosingAuction(context.Context, *connect.Request[v1.BeginClosingAuctionRequest]) (*connect.Response[v1.BeginClosingAuctionResponse], error)
 	Uncross(context.Context, *connect.Request[v1.UncrossRequest]) (*connect.Response[v1.UncrossResponse], error)
+	GetOfficialClose(context.Context, *connect.Request[v1.GetOfficialCloseRequest]) (*connect.Response[v1.GetOfficialCloseResponse], error)
+	ListOfficialCloses(context.Context, *connect.Request[v1.ListOfficialClosesRequest]) (*connect.Response[v1.ListOfficialClosesResponse], error)
 	GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error)
 	GetMarketDepth(context.Context, *connect.Request[v1.GetMarketDepthRequest]) (*connect.Response[v1.GetMarketDepthResponse], error)
 	GetOrder(context.Context, *connect.Request[v1.GetOrderRequest]) (*connect.Response[v1.GetOrderResponse], error)
@@ -397,6 +431,18 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 		OrderBookServiceUncrossProcedure,
 		svc.Uncross,
 		connect.WithSchema(orderBookServiceMethods.ByName("Uncross")),
+		connect.WithHandlerOptions(opts...),
+	)
+	orderBookServiceGetOfficialCloseHandler := connect.NewUnaryHandler(
+		OrderBookServiceGetOfficialCloseProcedure,
+		svc.GetOfficialClose,
+		connect.WithSchema(orderBookServiceMethods.ByName("GetOfficialClose")),
+		connect.WithHandlerOptions(opts...),
+	)
+	orderBookServiceListOfficialClosesHandler := connect.NewUnaryHandler(
+		OrderBookServiceListOfficialClosesProcedure,
+		svc.ListOfficialCloses,
+		connect.WithSchema(orderBookServiceMethods.ByName("ListOfficialCloses")),
 		connect.WithHandlerOptions(opts...),
 	)
 	orderBookServiceGetOrderBookHandler := connect.NewUnaryHandler(
@@ -475,6 +521,10 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 			orderBookServiceBeginClosingAuctionHandler.ServeHTTP(w, r)
 		case OrderBookServiceUncrossProcedure:
 			orderBookServiceUncrossHandler.ServeHTTP(w, r)
+		case OrderBookServiceGetOfficialCloseProcedure:
+			orderBookServiceGetOfficialCloseHandler.ServeHTTP(w, r)
+		case OrderBookServiceListOfficialClosesProcedure:
+			orderBookServiceListOfficialClosesHandler.ServeHTTP(w, r)
 		case OrderBookServiceGetOrderBookProcedure:
 			orderBookServiceGetOrderBookHandler.ServeHTTP(w, r)
 		case OrderBookServiceGetMarketDepthProcedure:
@@ -530,6 +580,14 @@ func (UnimplementedOrderBookServiceHandler) BeginClosingAuction(context.Context,
 
 func (UnimplementedOrderBookServiceHandler) Uncross(context.Context, *connect.Request[v1.UncrossRequest]) (*connect.Response[v1.UncrossResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.Uncross is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) GetOfficialClose(context.Context, *connect.Request[v1.GetOfficialCloseRequest]) (*connect.Response[v1.GetOfficialCloseResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.GetOfficialClose is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) ListOfficialCloses(context.Context, *connect.Request[v1.ListOfficialClosesRequest]) (*connect.Response[v1.ListOfficialClosesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.ListOfficialCloses is not implemented"))
 }
 
 func (UnimplementedOrderBookServiceHandler) GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error) {

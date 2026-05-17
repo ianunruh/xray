@@ -929,6 +929,240 @@ func (x *UncrossResponse) GetTradeCount() int32 {
 	return 0
 }
 
+type GetOfficialCloseRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Symbol string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	// session_date as YYYY-MM-DD. Empty = most recent close.
+	SessionDate   string `protobuf:"bytes,2,opt,name=session_date,json=sessionDate,proto3" json:"session_date,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetOfficialCloseRequest) Reset() {
+	*x = GetOfficialCloseRequest{}
+	mi := &file_orderbook_v1_service_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetOfficialCloseRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetOfficialCloseRequest) ProtoMessage() {}
+
+func (x *GetOfficialCloseRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_service_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetOfficialCloseRequest.ProtoReflect.Descriptor instead.
+func (*GetOfficialCloseRequest) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *GetOfficialCloseRequest) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *GetOfficialCloseRequest) GetSessionDate() string {
+	if x != nil {
+		return x.SessionDate
+	}
+	return ""
+}
+
+type GetOfficialCloseResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	SessionDate   string                 `protobuf:"bytes,2,opt,name=session_date,json=sessionDate,proto3" json:"session_date,omitempty"`
+	ClosePrice    int64                  `protobuf:"varint,3,opt,name=close_price,json=closePrice,proto3" json:"close_price,omitempty"`
+	CloseVolume   int64                  `protobuf:"varint,4,opt,name=close_volume,json=closeVolume,proto3" json:"close_volume,omitempty"`
+	ClosedAt      *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=closed_at,json=closedAt,proto3" json:"closed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetOfficialCloseResponse) Reset() {
+	*x = GetOfficialCloseResponse{}
+	mi := &file_orderbook_v1_service_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetOfficialCloseResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetOfficialCloseResponse) ProtoMessage() {}
+
+func (x *GetOfficialCloseResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_service_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetOfficialCloseResponse.ProtoReflect.Descriptor instead.
+func (*GetOfficialCloseResponse) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetOfficialCloseResponse) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *GetOfficialCloseResponse) GetSessionDate() string {
+	if x != nil {
+		return x.SessionDate
+	}
+	return ""
+}
+
+func (x *GetOfficialCloseResponse) GetClosePrice() int64 {
+	if x != nil {
+		return x.ClosePrice
+	}
+	return 0
+}
+
+func (x *GetOfficialCloseResponse) GetCloseVolume() int64 {
+	if x != nil {
+		return x.CloseVolume
+	}
+	return 0
+}
+
+func (x *GetOfficialCloseResponse) GetClosedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ClosedAt
+	}
+	return nil
+}
+
+type ListOfficialClosesRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Symbol string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	// from/to are inclusive YYYY-MM-DD; either may be empty for open-ended.
+	From          string `protobuf:"bytes,2,opt,name=from,proto3" json:"from,omitempty"`
+	To            string `protobuf:"bytes,3,opt,name=to,proto3" json:"to,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOfficialClosesRequest) Reset() {
+	*x = ListOfficialClosesRequest{}
+	mi := &file_orderbook_v1_service_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOfficialClosesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOfficialClosesRequest) ProtoMessage() {}
+
+func (x *ListOfficialClosesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_service_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOfficialClosesRequest.ProtoReflect.Descriptor instead.
+func (*ListOfficialClosesRequest) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ListOfficialClosesRequest) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *ListOfficialClosesRequest) GetFrom() string {
+	if x != nil {
+		return x.From
+	}
+	return ""
+}
+
+func (x *ListOfficialClosesRequest) GetTo() string {
+	if x != nil {
+		return x.To
+	}
+	return ""
+}
+
+type ListOfficialClosesResponse struct {
+	state         protoimpl.MessageState      `protogen:"open.v1"`
+	Closes        []*GetOfficialCloseResponse `protobuf:"bytes,1,rep,name=closes,proto3" json:"closes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOfficialClosesResponse) Reset() {
+	*x = ListOfficialClosesResponse{}
+	mi := &file_orderbook_v1_service_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOfficialClosesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOfficialClosesResponse) ProtoMessage() {}
+
+func (x *ListOfficialClosesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_service_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOfficialClosesResponse.ProtoReflect.Descriptor instead.
+func (*ListOfficialClosesResponse) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ListOfficialClosesResponse) GetCloses() []*GetOfficialCloseResponse {
+	if x != nil {
+		return x.Closes
+	}
+	return nil
+}
+
 type GetOrderBookRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
@@ -938,7 +1172,7 @@ type GetOrderBookRequest struct {
 
 func (x *GetOrderBookRequest) Reset() {
 	*x = GetOrderBookRequest{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[14]
+	mi := &file_orderbook_v1_service_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -950,7 +1184,7 @@ func (x *GetOrderBookRequest) String() string {
 func (*GetOrderBookRequest) ProtoMessage() {}
 
 func (x *GetOrderBookRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[14]
+	mi := &file_orderbook_v1_service_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -963,7 +1197,7 @@ func (x *GetOrderBookRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOrderBookRequest.ProtoReflect.Descriptor instead.
 func (*GetOrderBookRequest) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{14}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetOrderBookRequest) GetSymbol() string {
@@ -985,7 +1219,7 @@ type GetOrderBookResponse struct {
 
 func (x *GetOrderBookResponse) Reset() {
 	*x = GetOrderBookResponse{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[15]
+	mi := &file_orderbook_v1_service_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -997,7 +1231,7 @@ func (x *GetOrderBookResponse) String() string {
 func (*GetOrderBookResponse) ProtoMessage() {}
 
 func (x *GetOrderBookResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[15]
+	mi := &file_orderbook_v1_service_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1010,7 +1244,7 @@ func (x *GetOrderBookResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOrderBookResponse.ProtoReflect.Descriptor instead.
 func (*GetOrderBookResponse) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{15}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetOrderBookResponse) GetSymbol() string {
@@ -1054,7 +1288,7 @@ type OrderBookLevel struct {
 
 func (x *OrderBookLevel) Reset() {
 	*x = OrderBookLevel{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[16]
+	mi := &file_orderbook_v1_service_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1066,7 +1300,7 @@ func (x *OrderBookLevel) String() string {
 func (*OrderBookLevel) ProtoMessage() {}
 
 func (x *OrderBookLevel) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[16]
+	mi := &file_orderbook_v1_service_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1079,7 +1313,7 @@ func (x *OrderBookLevel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderBookLevel.ProtoReflect.Descriptor instead.
 func (*OrderBookLevel) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{16}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *OrderBookLevel) GetOrderId() string {
@@ -1127,7 +1361,7 @@ type GetMarketDepthRequest struct {
 
 func (x *GetMarketDepthRequest) Reset() {
 	*x = GetMarketDepthRequest{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[17]
+	mi := &file_orderbook_v1_service_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1139,7 +1373,7 @@ func (x *GetMarketDepthRequest) String() string {
 func (*GetMarketDepthRequest) ProtoMessage() {}
 
 func (x *GetMarketDepthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[17]
+	mi := &file_orderbook_v1_service_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1152,7 +1386,7 @@ func (x *GetMarketDepthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMarketDepthRequest.ProtoReflect.Descriptor instead.
 func (*GetMarketDepthRequest) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{17}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetMarketDepthRequest) GetSymbol() string {
@@ -1180,7 +1414,7 @@ type GetMarketDepthResponse struct {
 
 func (x *GetMarketDepthResponse) Reset() {
 	*x = GetMarketDepthResponse{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[18]
+	mi := &file_orderbook_v1_service_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1192,7 +1426,7 @@ func (x *GetMarketDepthResponse) String() string {
 func (*GetMarketDepthResponse) ProtoMessage() {}
 
 func (x *GetMarketDepthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[18]
+	mi := &file_orderbook_v1_service_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1205,7 +1439,7 @@ func (x *GetMarketDepthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMarketDepthResponse.ProtoReflect.Descriptor instead.
 func (*GetMarketDepthResponse) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{18}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GetMarketDepthResponse) GetSymbol() string {
@@ -1240,7 +1474,7 @@ type PriceLevel struct {
 
 func (x *PriceLevel) Reset() {
 	*x = PriceLevel{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[19]
+	mi := &file_orderbook_v1_service_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1252,7 +1486,7 @@ func (x *PriceLevel) String() string {
 func (*PriceLevel) ProtoMessage() {}
 
 func (x *PriceLevel) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[19]
+	mi := &file_orderbook_v1_service_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1265,7 +1499,7 @@ func (x *PriceLevel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PriceLevel.ProtoReflect.Descriptor instead.
 func (*PriceLevel) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{19}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *PriceLevel) GetPrice() int64 {
@@ -1299,7 +1533,7 @@ type GetOrderRequest struct {
 
 func (x *GetOrderRequest) Reset() {
 	*x = GetOrderRequest{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[20]
+	mi := &file_orderbook_v1_service_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1311,7 +1545,7 @@ func (x *GetOrderRequest) String() string {
 func (*GetOrderRequest) ProtoMessage() {}
 
 func (x *GetOrderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[20]
+	mi := &file_orderbook_v1_service_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1324,7 +1558,7 @@ func (x *GetOrderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOrderRequest.ProtoReflect.Descriptor instead.
 func (*GetOrderRequest) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{20}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GetOrderRequest) GetSymbol() string {
@@ -1359,7 +1593,7 @@ type GetOrderResponse struct {
 
 func (x *GetOrderResponse) Reset() {
 	*x = GetOrderResponse{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[21]
+	mi := &file_orderbook_v1_service_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1371,7 +1605,7 @@ func (x *GetOrderResponse) String() string {
 func (*GetOrderResponse) ProtoMessage() {}
 
 func (x *GetOrderResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[21]
+	mi := &file_orderbook_v1_service_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1384,7 +1618,7 @@ func (x *GetOrderResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOrderResponse.ProtoReflect.Descriptor instead.
 func (*GetOrderResponse) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{21}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetOrderResponse) GetOrderId() string {
@@ -1466,7 +1700,7 @@ type ListTradesRequest struct {
 
 func (x *ListTradesRequest) Reset() {
 	*x = ListTradesRequest{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[22]
+	mi := &file_orderbook_v1_service_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1478,7 +1712,7 @@ func (x *ListTradesRequest) String() string {
 func (*ListTradesRequest) ProtoMessage() {}
 
 func (x *ListTradesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[22]
+	mi := &file_orderbook_v1_service_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1491,7 +1725,7 @@ func (x *ListTradesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTradesRequest.ProtoReflect.Descriptor instead.
 func (*ListTradesRequest) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{22}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ListTradesRequest) GetSymbol() string {
@@ -1510,7 +1744,7 @@ type ListTradesResponse struct {
 
 func (x *ListTradesResponse) Reset() {
 	*x = ListTradesResponse{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[23]
+	mi := &file_orderbook_v1_service_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1522,7 +1756,7 @@ func (x *ListTradesResponse) String() string {
 func (*ListTradesResponse) ProtoMessage() {}
 
 func (x *ListTradesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[23]
+	mi := &file_orderbook_v1_service_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1535,7 +1769,7 @@ func (x *ListTradesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTradesResponse.ProtoReflect.Descriptor instead.
 func (*ListTradesResponse) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{23}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListTradesResponse) GetTrades() []*Trade {
@@ -1560,7 +1794,7 @@ type Trade struct {
 
 func (x *Trade) Reset() {
 	*x = Trade{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[24]
+	mi := &file_orderbook_v1_service_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1572,7 +1806,7 @@ func (x *Trade) String() string {
 func (*Trade) ProtoMessage() {}
 
 func (x *Trade) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[24]
+	mi := &file_orderbook_v1_service_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1585,7 +1819,7 @@ func (x *Trade) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Trade.ProtoReflect.Descriptor instead.
 func (*Trade) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{24}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *Trade) GetTradeId() string {
@@ -1646,7 +1880,7 @@ type ListOrdersRequest struct {
 
 func (x *ListOrdersRequest) Reset() {
 	*x = ListOrdersRequest{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[25]
+	mi := &file_orderbook_v1_service_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1658,7 +1892,7 @@ func (x *ListOrdersRequest) String() string {
 func (*ListOrdersRequest) ProtoMessage() {}
 
 func (x *ListOrdersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[25]
+	mi := &file_orderbook_v1_service_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1671,7 +1905,7 @@ func (x *ListOrdersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOrdersRequest.ProtoReflect.Descriptor instead.
 func (*ListOrdersRequest) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{25}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ListOrdersRequest) GetSymbol() string {
@@ -1691,7 +1925,7 @@ type StreamMarketDepthRequest struct {
 
 func (x *StreamMarketDepthRequest) Reset() {
 	*x = StreamMarketDepthRequest{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[26]
+	mi := &file_orderbook_v1_service_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1703,7 +1937,7 @@ func (x *StreamMarketDepthRequest) String() string {
 func (*StreamMarketDepthRequest) ProtoMessage() {}
 
 func (x *StreamMarketDepthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[26]
+	mi := &file_orderbook_v1_service_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1716,7 +1950,7 @@ func (x *StreamMarketDepthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamMarketDepthRequest.ProtoReflect.Descriptor instead.
 func (*StreamMarketDepthRequest) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{26}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *StreamMarketDepthRequest) GetSymbol() string {
@@ -1742,7 +1976,7 @@ type StreamTradesRequest struct {
 
 func (x *StreamTradesRequest) Reset() {
 	*x = StreamTradesRequest{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[27]
+	mi := &file_orderbook_v1_service_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1754,7 +1988,7 @@ func (x *StreamTradesRequest) String() string {
 func (*StreamTradesRequest) ProtoMessage() {}
 
 func (x *StreamTradesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[27]
+	mi := &file_orderbook_v1_service_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1767,7 +2001,7 @@ func (x *StreamTradesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamTradesRequest.ProtoReflect.Descriptor instead.
 func (*StreamTradesRequest) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{27}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *StreamTradesRequest) GetSymbol() string {
@@ -1793,7 +2027,7 @@ type Candle struct {
 
 func (x *Candle) Reset() {
 	*x = Candle{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[28]
+	mi := &file_orderbook_v1_service_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1805,7 +2039,7 @@ func (x *Candle) String() string {
 func (*Candle) ProtoMessage() {}
 
 func (x *Candle) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[28]
+	mi := &file_orderbook_v1_service_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1818,7 +2052,7 @@ func (x *Candle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Candle.ProtoReflect.Descriptor instead.
 func (*Candle) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{28}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *Candle) GetSymbol() string {
@@ -1889,7 +2123,7 @@ type GetCandlesRequest struct {
 
 func (x *GetCandlesRequest) Reset() {
 	*x = GetCandlesRequest{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[29]
+	mi := &file_orderbook_v1_service_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1901,7 +2135,7 @@ func (x *GetCandlesRequest) String() string {
 func (*GetCandlesRequest) ProtoMessage() {}
 
 func (x *GetCandlesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[29]
+	mi := &file_orderbook_v1_service_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1914,7 +2148,7 @@ func (x *GetCandlesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCandlesRequest.ProtoReflect.Descriptor instead.
 func (*GetCandlesRequest) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{29}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *GetCandlesRequest) GetSymbol() string {
@@ -1954,7 +2188,7 @@ type GetCandlesResponse struct {
 
 func (x *GetCandlesResponse) Reset() {
 	*x = GetCandlesResponse{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[30]
+	mi := &file_orderbook_v1_service_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1966,7 +2200,7 @@ func (x *GetCandlesResponse) String() string {
 func (*GetCandlesResponse) ProtoMessage() {}
 
 func (x *GetCandlesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[30]
+	mi := &file_orderbook_v1_service_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1979,7 +2213,7 @@ func (x *GetCandlesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCandlesResponse.ProtoReflect.Descriptor instead.
 func (*GetCandlesResponse) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{30}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *GetCandlesResponse) GetCandles() []*Candle {
@@ -1999,7 +2233,7 @@ type StreamCandlesRequest struct {
 
 func (x *StreamCandlesRequest) Reset() {
 	*x = StreamCandlesRequest{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[31]
+	mi := &file_orderbook_v1_service_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2011,7 +2245,7 @@ func (x *StreamCandlesRequest) String() string {
 func (*StreamCandlesRequest) ProtoMessage() {}
 
 func (x *StreamCandlesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[31]
+	mi := &file_orderbook_v1_service_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2024,7 +2258,7 @@ func (x *StreamCandlesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamCandlesRequest.ProtoReflect.Descriptor instead.
 func (*StreamCandlesRequest) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{31}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *StreamCandlesRequest) GetSymbol() string {
@@ -2050,7 +2284,7 @@ type ListOrdersResponse struct {
 
 func (x *ListOrdersResponse) Reset() {
 	*x = ListOrdersResponse{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[32]
+	mi := &file_orderbook_v1_service_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2062,7 +2296,7 @@ func (x *ListOrdersResponse) String() string {
 func (*ListOrdersResponse) ProtoMessage() {}
 
 func (x *ListOrdersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[32]
+	mi := &file_orderbook_v1_service_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2075,7 +2309,7 @@ func (x *ListOrdersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOrdersResponse.ProtoReflect.Descriptor instead.
 func (*ListOrdersResponse) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{32}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ListOrdersResponse) GetOrders() []*OrderSummary {
@@ -2093,7 +2327,7 @@ type ListSymbolsRequest struct {
 
 func (x *ListSymbolsRequest) Reset() {
 	*x = ListSymbolsRequest{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[33]
+	mi := &file_orderbook_v1_service_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2105,7 +2339,7 @@ func (x *ListSymbolsRequest) String() string {
 func (*ListSymbolsRequest) ProtoMessage() {}
 
 func (x *ListSymbolsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[33]
+	mi := &file_orderbook_v1_service_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2118,7 +2352,7 @@ func (x *ListSymbolsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSymbolsRequest.ProtoReflect.Descriptor instead.
 func (*ListSymbolsRequest) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{33}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{37}
 }
 
 type ListSymbolsResponse struct {
@@ -2130,7 +2364,7 @@ type ListSymbolsResponse struct {
 
 func (x *ListSymbolsResponse) Reset() {
 	*x = ListSymbolsResponse{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[34]
+	mi := &file_orderbook_v1_service_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2142,7 +2376,7 @@ func (x *ListSymbolsResponse) String() string {
 func (*ListSymbolsResponse) ProtoMessage() {}
 
 func (x *ListSymbolsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[34]
+	mi := &file_orderbook_v1_service_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2155,7 +2389,7 @@ func (x *ListSymbolsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSymbolsResponse.ProtoReflect.Descriptor instead.
 func (*ListSymbolsResponse) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{34}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ListSymbolsResponse) GetSymbols() []string {
@@ -2184,7 +2418,7 @@ type OrderSummary struct {
 
 func (x *OrderSummary) Reset() {
 	*x = OrderSummary{}
-	mi := &file_orderbook_v1_service_proto_msgTypes[35]
+	mi := &file_orderbook_v1_service_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2196,7 +2430,7 @@ func (x *OrderSummary) String() string {
 func (*OrderSummary) ProtoMessage() {}
 
 func (x *OrderSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_service_proto_msgTypes[35]
+	mi := &file_orderbook_v1_service_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2209,7 +2443,7 @@ func (x *OrderSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderSummary.ProtoReflect.Descriptor instead.
 func (*OrderSummary) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{35}
+	return file_orderbook_v1_service_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *OrderSummary) GetOrderId() string {
@@ -2353,7 +2587,23 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\n" +
 	"cross_type\x18\x05 \x01(\x0e2\x17.orderbook.v1.CrossTypeR\tcrossType\x12\x1f\n" +
 	"\vtrade_count\x18\x06 \x01(\x05R\n" +
-	"tradeCount\"-\n" +
+	"tradeCount\"T\n" +
+	"\x17GetOfficialCloseRequest\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12!\n" +
+	"\fsession_date\x18\x02 \x01(\tR\vsessionDate\"\xd2\x01\n" +
+	"\x18GetOfficialCloseResponse\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12!\n" +
+	"\fsession_date\x18\x02 \x01(\tR\vsessionDate\x12\x1f\n" +
+	"\vclose_price\x18\x03 \x01(\x03R\n" +
+	"closePrice\x12!\n" +
+	"\fclose_volume\x18\x04 \x01(\x03R\vcloseVolume\x127\n" +
+	"\tclosed_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bclosedAt\"W\n" +
+	"\x19ListOfficialClosesRequest\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x12\n" +
+	"\x04from\x18\x02 \x01(\tR\x04from\x12\x0e\n" +
+	"\x02to\x18\x03 \x01(\tR\x02to\"\\\n" +
+	"\x1aListOfficialClosesResponse\x12>\n" +
+	"\x06closes\x18\x01 \x03(\v2&.orderbook.v1.GetOfficialCloseResponseR\x06closes\"-\n" +
 	"\x13GetOrderBookRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"\xc3\x01\n" +
 	"\x14GetOrderBookResponse\x12\x16\n" +
@@ -2469,7 +2719,7 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\x12CANDLE_INTERVAL_5M\x10\x02\x12\x17\n" +
 	"\x13CANDLE_INTERVAL_15M\x10\x03\x12\x16\n" +
 	"\x12CANDLE_INTERVAL_1H\x10\x04\x12\x16\n" +
-	"\x12CANDLE_INTERVAL_1D\x10\x052\xac\v\n" +
+	"\x12CANDLE_INTERVAL_1D\x10\x052\xf8\f\n" +
 	"\x10OrderBookService\x12O\n" +
 	"\n" +
 	"PlaceOrder\x12\x1f.orderbook.v1.PlaceOrderRequest\x1a .orderbook.v1.PlaceOrderResponse\x12R\n" +
@@ -2478,7 +2728,9 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\vCloseMarket\x12 .orderbook.v1.CloseMarketRequest\x1a!.orderbook.v1.CloseMarketResponse\x12R\n" +
 	"\vOpenAuction\x12 .orderbook.v1.OpenAuctionRequest\x1a!.orderbook.v1.OpenAuctionResponse\x12j\n" +
 	"\x13BeginClosingAuction\x12(.orderbook.v1.BeginClosingAuctionRequest\x1a).orderbook.v1.BeginClosingAuctionResponse\x12F\n" +
-	"\aUncross\x12\x1c.orderbook.v1.UncrossRequest\x1a\x1d.orderbook.v1.UncrossResponse\x12U\n" +
+	"\aUncross\x12\x1c.orderbook.v1.UncrossRequest\x1a\x1d.orderbook.v1.UncrossResponse\x12a\n" +
+	"\x10GetOfficialClose\x12%.orderbook.v1.GetOfficialCloseRequest\x1a&.orderbook.v1.GetOfficialCloseResponse\x12g\n" +
+	"\x12ListOfficialCloses\x12'.orderbook.v1.ListOfficialClosesRequest\x1a(.orderbook.v1.ListOfficialClosesResponse\x12U\n" +
 	"\fGetOrderBook\x12!.orderbook.v1.GetOrderBookRequest\x1a\".orderbook.v1.GetOrderBookResponse\x12[\n" +
 	"\x0eGetMarketDepth\x12#.orderbook.v1.GetMarketDepthRequest\x1a$.orderbook.v1.GetMarketDepthResponse\x12I\n" +
 	"\bGetOrder\x12\x1d.orderbook.v1.GetOrderRequest\x1a\x1e.orderbook.v1.GetOrderResponse\x12O\n" +
@@ -2506,7 +2758,7 @@ func file_orderbook_v1_service_proto_rawDescGZIP() []byte {
 }
 
 var file_orderbook_v1_service_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_orderbook_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
+var file_orderbook_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
 var file_orderbook_v1_service_proto_goTypes = []any{
 	(OrderStatus)(0),                    // 0: orderbook.v1.OrderStatus
 	(CandleInterval)(0),                 // 1: orderbook.v1.CandleInterval
@@ -2524,111 +2776,121 @@ var file_orderbook_v1_service_proto_goTypes = []any{
 	(*BeginClosingAuctionResponse)(nil), // 13: orderbook.v1.BeginClosingAuctionResponse
 	(*UncrossRequest)(nil),              // 14: orderbook.v1.UncrossRequest
 	(*UncrossResponse)(nil),             // 15: orderbook.v1.UncrossResponse
-	(*GetOrderBookRequest)(nil),         // 16: orderbook.v1.GetOrderBookRequest
-	(*GetOrderBookResponse)(nil),        // 17: orderbook.v1.GetOrderBookResponse
-	(*OrderBookLevel)(nil),              // 18: orderbook.v1.OrderBookLevel
-	(*GetMarketDepthRequest)(nil),       // 19: orderbook.v1.GetMarketDepthRequest
-	(*GetMarketDepthResponse)(nil),      // 20: orderbook.v1.GetMarketDepthResponse
-	(*PriceLevel)(nil),                  // 21: orderbook.v1.PriceLevel
-	(*GetOrderRequest)(nil),             // 22: orderbook.v1.GetOrderRequest
-	(*GetOrderResponse)(nil),            // 23: orderbook.v1.GetOrderResponse
-	(*ListTradesRequest)(nil),           // 24: orderbook.v1.ListTradesRequest
-	(*ListTradesResponse)(nil),          // 25: orderbook.v1.ListTradesResponse
-	(*Trade)(nil),                       // 26: orderbook.v1.Trade
-	(*ListOrdersRequest)(nil),           // 27: orderbook.v1.ListOrdersRequest
-	(*StreamMarketDepthRequest)(nil),    // 28: orderbook.v1.StreamMarketDepthRequest
-	(*StreamTradesRequest)(nil),         // 29: orderbook.v1.StreamTradesRequest
-	(*Candle)(nil),                      // 30: orderbook.v1.Candle
-	(*GetCandlesRequest)(nil),           // 31: orderbook.v1.GetCandlesRequest
-	(*GetCandlesResponse)(nil),          // 32: orderbook.v1.GetCandlesResponse
-	(*StreamCandlesRequest)(nil),        // 33: orderbook.v1.StreamCandlesRequest
-	(*ListOrdersResponse)(nil),          // 34: orderbook.v1.ListOrdersResponse
-	(*ListSymbolsRequest)(nil),          // 35: orderbook.v1.ListSymbolsRequest
-	(*ListSymbolsResponse)(nil),         // 36: orderbook.v1.ListSymbolsResponse
-	(*OrderSummary)(nil),                // 37: orderbook.v1.OrderSummary
-	(Side)(0),                           // 38: orderbook.v1.Side
-	(OrderType)(0),                      // 39: orderbook.v1.OrderType
-	(TimeInForce)(0),                    // 40: orderbook.v1.TimeInForce
-	(*TradeExecuted)(nil),               // 41: orderbook.v1.TradeExecuted
-	(CrossType)(0),                      // 42: orderbook.v1.CrossType
-	(MarketPhase)(0),                    // 43: orderbook.v1.MarketPhase
-	(*timestamppb.Timestamp)(nil),       // 44: google.protobuf.Timestamp
+	(*GetOfficialCloseRequest)(nil),     // 16: orderbook.v1.GetOfficialCloseRequest
+	(*GetOfficialCloseResponse)(nil),    // 17: orderbook.v1.GetOfficialCloseResponse
+	(*ListOfficialClosesRequest)(nil),   // 18: orderbook.v1.ListOfficialClosesRequest
+	(*ListOfficialClosesResponse)(nil),  // 19: orderbook.v1.ListOfficialClosesResponse
+	(*GetOrderBookRequest)(nil),         // 20: orderbook.v1.GetOrderBookRequest
+	(*GetOrderBookResponse)(nil),        // 21: orderbook.v1.GetOrderBookResponse
+	(*OrderBookLevel)(nil),              // 22: orderbook.v1.OrderBookLevel
+	(*GetMarketDepthRequest)(nil),       // 23: orderbook.v1.GetMarketDepthRequest
+	(*GetMarketDepthResponse)(nil),      // 24: orderbook.v1.GetMarketDepthResponse
+	(*PriceLevel)(nil),                  // 25: orderbook.v1.PriceLevel
+	(*GetOrderRequest)(nil),             // 26: orderbook.v1.GetOrderRequest
+	(*GetOrderResponse)(nil),            // 27: orderbook.v1.GetOrderResponse
+	(*ListTradesRequest)(nil),           // 28: orderbook.v1.ListTradesRequest
+	(*ListTradesResponse)(nil),          // 29: orderbook.v1.ListTradesResponse
+	(*Trade)(nil),                       // 30: orderbook.v1.Trade
+	(*ListOrdersRequest)(nil),           // 31: orderbook.v1.ListOrdersRequest
+	(*StreamMarketDepthRequest)(nil),    // 32: orderbook.v1.StreamMarketDepthRequest
+	(*StreamTradesRequest)(nil),         // 33: orderbook.v1.StreamTradesRequest
+	(*Candle)(nil),                      // 34: orderbook.v1.Candle
+	(*GetCandlesRequest)(nil),           // 35: orderbook.v1.GetCandlesRequest
+	(*GetCandlesResponse)(nil),          // 36: orderbook.v1.GetCandlesResponse
+	(*StreamCandlesRequest)(nil),        // 37: orderbook.v1.StreamCandlesRequest
+	(*ListOrdersResponse)(nil),          // 38: orderbook.v1.ListOrdersResponse
+	(*ListSymbolsRequest)(nil),          // 39: orderbook.v1.ListSymbolsRequest
+	(*ListSymbolsResponse)(nil),         // 40: orderbook.v1.ListSymbolsResponse
+	(*OrderSummary)(nil),                // 41: orderbook.v1.OrderSummary
+	(Side)(0),                           // 42: orderbook.v1.Side
+	(OrderType)(0),                      // 43: orderbook.v1.OrderType
+	(TimeInForce)(0),                    // 44: orderbook.v1.TimeInForce
+	(*TradeExecuted)(nil),               // 45: orderbook.v1.TradeExecuted
+	(CrossType)(0),                      // 46: orderbook.v1.CrossType
+	(*timestamppb.Timestamp)(nil),       // 47: google.protobuf.Timestamp
+	(MarketPhase)(0),                    // 48: orderbook.v1.MarketPhase
 }
 var file_orderbook_v1_service_proto_depIdxs = []int32{
-	38, // 0: orderbook.v1.PlaceOrderRequest.side:type_name -> orderbook.v1.Side
-	39, // 1: orderbook.v1.PlaceOrderRequest.order_type:type_name -> orderbook.v1.OrderType
-	40, // 2: orderbook.v1.PlaceOrderRequest.time_in_force:type_name -> orderbook.v1.TimeInForce
-	41, // 3: orderbook.v1.PlaceOrderResponse.trades:type_name -> orderbook.v1.TradeExecuted
-	38, // 4: orderbook.v1.ReplaceOrderRequest.side:type_name -> orderbook.v1.Side
-	39, // 5: orderbook.v1.ReplaceOrderRequest.order_type:type_name -> orderbook.v1.OrderType
-	40, // 6: orderbook.v1.ReplaceOrderRequest.time_in_force:type_name -> orderbook.v1.TimeInForce
-	41, // 7: orderbook.v1.ReplaceOrderResponse.trades:type_name -> orderbook.v1.TradeExecuted
-	38, // 8: orderbook.v1.UncrossResponse.imbalance_side:type_name -> orderbook.v1.Side
-	42, // 9: orderbook.v1.UncrossResponse.cross_type:type_name -> orderbook.v1.CrossType
-	18, // 10: orderbook.v1.GetOrderBookResponse.bids:type_name -> orderbook.v1.OrderBookLevel
-	18, // 11: orderbook.v1.GetOrderBookResponse.asks:type_name -> orderbook.v1.OrderBookLevel
-	43, // 12: orderbook.v1.GetOrderBookResponse.phase:type_name -> orderbook.v1.MarketPhase
-	44, // 13: orderbook.v1.OrderBookLevel.placed_at:type_name -> google.protobuf.Timestamp
-	21, // 14: orderbook.v1.GetMarketDepthResponse.bids:type_name -> orderbook.v1.PriceLevel
-	21, // 15: orderbook.v1.GetMarketDepthResponse.asks:type_name -> orderbook.v1.PriceLevel
-	38, // 16: orderbook.v1.GetOrderResponse.side:type_name -> orderbook.v1.Side
-	44, // 17: orderbook.v1.GetOrderResponse.placed_at:type_name -> google.protobuf.Timestamp
-	39, // 18: orderbook.v1.GetOrderResponse.order_type:type_name -> orderbook.v1.OrderType
-	40, // 19: orderbook.v1.GetOrderResponse.time_in_force:type_name -> orderbook.v1.TimeInForce
-	26, // 20: orderbook.v1.ListTradesResponse.trades:type_name -> orderbook.v1.Trade
-	44, // 21: orderbook.v1.Trade.executed_at:type_name -> google.protobuf.Timestamp
-	1,  // 22: orderbook.v1.Candle.interval:type_name -> orderbook.v1.CandleInterval
-	44, // 23: orderbook.v1.Candle.open_time:type_name -> google.protobuf.Timestamp
-	1,  // 24: orderbook.v1.GetCandlesRequest.interval:type_name -> orderbook.v1.CandleInterval
-	44, // 25: orderbook.v1.GetCandlesRequest.from:type_name -> google.protobuf.Timestamp
-	44, // 26: orderbook.v1.GetCandlesRequest.to:type_name -> google.protobuf.Timestamp
-	30, // 27: orderbook.v1.GetCandlesResponse.candles:type_name -> orderbook.v1.Candle
-	1,  // 28: orderbook.v1.StreamCandlesRequest.interval:type_name -> orderbook.v1.CandleInterval
-	37, // 29: orderbook.v1.ListOrdersResponse.orders:type_name -> orderbook.v1.OrderSummary
-	38, // 30: orderbook.v1.OrderSummary.side:type_name -> orderbook.v1.Side
-	0,  // 31: orderbook.v1.OrderSummary.status:type_name -> orderbook.v1.OrderStatus
-	44, // 32: orderbook.v1.OrderSummary.placed_at:type_name -> google.protobuf.Timestamp
-	39, // 33: orderbook.v1.OrderSummary.order_type:type_name -> orderbook.v1.OrderType
-	40, // 34: orderbook.v1.OrderSummary.time_in_force:type_name -> orderbook.v1.TimeInForce
-	2,  // 35: orderbook.v1.OrderBookService.PlaceOrder:input_type -> orderbook.v1.PlaceOrderRequest
-	4,  // 36: orderbook.v1.OrderBookService.CancelOrder:input_type -> orderbook.v1.CancelOrderRequest
-	6,  // 37: orderbook.v1.OrderBookService.ReplaceOrder:input_type -> orderbook.v1.ReplaceOrderRequest
-	8,  // 38: orderbook.v1.OrderBookService.CloseMarket:input_type -> orderbook.v1.CloseMarketRequest
-	10, // 39: orderbook.v1.OrderBookService.OpenAuction:input_type -> orderbook.v1.OpenAuctionRequest
-	12, // 40: orderbook.v1.OrderBookService.BeginClosingAuction:input_type -> orderbook.v1.BeginClosingAuctionRequest
-	14, // 41: orderbook.v1.OrderBookService.Uncross:input_type -> orderbook.v1.UncrossRequest
-	16, // 42: orderbook.v1.OrderBookService.GetOrderBook:input_type -> orderbook.v1.GetOrderBookRequest
-	19, // 43: orderbook.v1.OrderBookService.GetMarketDepth:input_type -> orderbook.v1.GetMarketDepthRequest
-	22, // 44: orderbook.v1.OrderBookService.GetOrder:input_type -> orderbook.v1.GetOrderRequest
-	24, // 45: orderbook.v1.OrderBookService.ListTrades:input_type -> orderbook.v1.ListTradesRequest
-	27, // 46: orderbook.v1.OrderBookService.ListOrders:input_type -> orderbook.v1.ListOrdersRequest
-	35, // 47: orderbook.v1.OrderBookService.ListSymbols:input_type -> orderbook.v1.ListSymbolsRequest
-	28, // 48: orderbook.v1.OrderBookService.StreamMarketDepth:input_type -> orderbook.v1.StreamMarketDepthRequest
-	29, // 49: orderbook.v1.OrderBookService.StreamTrades:input_type -> orderbook.v1.StreamTradesRequest
-	31, // 50: orderbook.v1.OrderBookService.GetCandles:input_type -> orderbook.v1.GetCandlesRequest
-	33, // 51: orderbook.v1.OrderBookService.StreamCandles:input_type -> orderbook.v1.StreamCandlesRequest
-	3,  // 52: orderbook.v1.OrderBookService.PlaceOrder:output_type -> orderbook.v1.PlaceOrderResponse
-	5,  // 53: orderbook.v1.OrderBookService.CancelOrder:output_type -> orderbook.v1.CancelOrderResponse
-	7,  // 54: orderbook.v1.OrderBookService.ReplaceOrder:output_type -> orderbook.v1.ReplaceOrderResponse
-	9,  // 55: orderbook.v1.OrderBookService.CloseMarket:output_type -> orderbook.v1.CloseMarketResponse
-	11, // 56: orderbook.v1.OrderBookService.OpenAuction:output_type -> orderbook.v1.OpenAuctionResponse
-	13, // 57: orderbook.v1.OrderBookService.BeginClosingAuction:output_type -> orderbook.v1.BeginClosingAuctionResponse
-	15, // 58: orderbook.v1.OrderBookService.Uncross:output_type -> orderbook.v1.UncrossResponse
-	17, // 59: orderbook.v1.OrderBookService.GetOrderBook:output_type -> orderbook.v1.GetOrderBookResponse
-	20, // 60: orderbook.v1.OrderBookService.GetMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
-	23, // 61: orderbook.v1.OrderBookService.GetOrder:output_type -> orderbook.v1.GetOrderResponse
-	25, // 62: orderbook.v1.OrderBookService.ListTrades:output_type -> orderbook.v1.ListTradesResponse
-	34, // 63: orderbook.v1.OrderBookService.ListOrders:output_type -> orderbook.v1.ListOrdersResponse
-	36, // 64: orderbook.v1.OrderBookService.ListSymbols:output_type -> orderbook.v1.ListSymbolsResponse
-	20, // 65: orderbook.v1.OrderBookService.StreamMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
-	26, // 66: orderbook.v1.OrderBookService.StreamTrades:output_type -> orderbook.v1.Trade
-	32, // 67: orderbook.v1.OrderBookService.GetCandles:output_type -> orderbook.v1.GetCandlesResponse
-	30, // 68: orderbook.v1.OrderBookService.StreamCandles:output_type -> orderbook.v1.Candle
-	52, // [52:69] is the sub-list for method output_type
-	35, // [35:52] is the sub-list for method input_type
-	35, // [35:35] is the sub-list for extension type_name
-	35, // [35:35] is the sub-list for extension extendee
-	0,  // [0:35] is the sub-list for field type_name
+	42, // 0: orderbook.v1.PlaceOrderRequest.side:type_name -> orderbook.v1.Side
+	43, // 1: orderbook.v1.PlaceOrderRequest.order_type:type_name -> orderbook.v1.OrderType
+	44, // 2: orderbook.v1.PlaceOrderRequest.time_in_force:type_name -> orderbook.v1.TimeInForce
+	45, // 3: orderbook.v1.PlaceOrderResponse.trades:type_name -> orderbook.v1.TradeExecuted
+	42, // 4: orderbook.v1.ReplaceOrderRequest.side:type_name -> orderbook.v1.Side
+	43, // 5: orderbook.v1.ReplaceOrderRequest.order_type:type_name -> orderbook.v1.OrderType
+	44, // 6: orderbook.v1.ReplaceOrderRequest.time_in_force:type_name -> orderbook.v1.TimeInForce
+	45, // 7: orderbook.v1.ReplaceOrderResponse.trades:type_name -> orderbook.v1.TradeExecuted
+	42, // 8: orderbook.v1.UncrossResponse.imbalance_side:type_name -> orderbook.v1.Side
+	46, // 9: orderbook.v1.UncrossResponse.cross_type:type_name -> orderbook.v1.CrossType
+	47, // 10: orderbook.v1.GetOfficialCloseResponse.closed_at:type_name -> google.protobuf.Timestamp
+	17, // 11: orderbook.v1.ListOfficialClosesResponse.closes:type_name -> orderbook.v1.GetOfficialCloseResponse
+	22, // 12: orderbook.v1.GetOrderBookResponse.bids:type_name -> orderbook.v1.OrderBookLevel
+	22, // 13: orderbook.v1.GetOrderBookResponse.asks:type_name -> orderbook.v1.OrderBookLevel
+	48, // 14: orderbook.v1.GetOrderBookResponse.phase:type_name -> orderbook.v1.MarketPhase
+	47, // 15: orderbook.v1.OrderBookLevel.placed_at:type_name -> google.protobuf.Timestamp
+	25, // 16: orderbook.v1.GetMarketDepthResponse.bids:type_name -> orderbook.v1.PriceLevel
+	25, // 17: orderbook.v1.GetMarketDepthResponse.asks:type_name -> orderbook.v1.PriceLevel
+	42, // 18: orderbook.v1.GetOrderResponse.side:type_name -> orderbook.v1.Side
+	47, // 19: orderbook.v1.GetOrderResponse.placed_at:type_name -> google.protobuf.Timestamp
+	43, // 20: orderbook.v1.GetOrderResponse.order_type:type_name -> orderbook.v1.OrderType
+	44, // 21: orderbook.v1.GetOrderResponse.time_in_force:type_name -> orderbook.v1.TimeInForce
+	30, // 22: orderbook.v1.ListTradesResponse.trades:type_name -> orderbook.v1.Trade
+	47, // 23: orderbook.v1.Trade.executed_at:type_name -> google.protobuf.Timestamp
+	1,  // 24: orderbook.v1.Candle.interval:type_name -> orderbook.v1.CandleInterval
+	47, // 25: orderbook.v1.Candle.open_time:type_name -> google.protobuf.Timestamp
+	1,  // 26: orderbook.v1.GetCandlesRequest.interval:type_name -> orderbook.v1.CandleInterval
+	47, // 27: orderbook.v1.GetCandlesRequest.from:type_name -> google.protobuf.Timestamp
+	47, // 28: orderbook.v1.GetCandlesRequest.to:type_name -> google.protobuf.Timestamp
+	34, // 29: orderbook.v1.GetCandlesResponse.candles:type_name -> orderbook.v1.Candle
+	1,  // 30: orderbook.v1.StreamCandlesRequest.interval:type_name -> orderbook.v1.CandleInterval
+	41, // 31: orderbook.v1.ListOrdersResponse.orders:type_name -> orderbook.v1.OrderSummary
+	42, // 32: orderbook.v1.OrderSummary.side:type_name -> orderbook.v1.Side
+	0,  // 33: orderbook.v1.OrderSummary.status:type_name -> orderbook.v1.OrderStatus
+	47, // 34: orderbook.v1.OrderSummary.placed_at:type_name -> google.protobuf.Timestamp
+	43, // 35: orderbook.v1.OrderSummary.order_type:type_name -> orderbook.v1.OrderType
+	44, // 36: orderbook.v1.OrderSummary.time_in_force:type_name -> orderbook.v1.TimeInForce
+	2,  // 37: orderbook.v1.OrderBookService.PlaceOrder:input_type -> orderbook.v1.PlaceOrderRequest
+	4,  // 38: orderbook.v1.OrderBookService.CancelOrder:input_type -> orderbook.v1.CancelOrderRequest
+	6,  // 39: orderbook.v1.OrderBookService.ReplaceOrder:input_type -> orderbook.v1.ReplaceOrderRequest
+	8,  // 40: orderbook.v1.OrderBookService.CloseMarket:input_type -> orderbook.v1.CloseMarketRequest
+	10, // 41: orderbook.v1.OrderBookService.OpenAuction:input_type -> orderbook.v1.OpenAuctionRequest
+	12, // 42: orderbook.v1.OrderBookService.BeginClosingAuction:input_type -> orderbook.v1.BeginClosingAuctionRequest
+	14, // 43: orderbook.v1.OrderBookService.Uncross:input_type -> orderbook.v1.UncrossRequest
+	16, // 44: orderbook.v1.OrderBookService.GetOfficialClose:input_type -> orderbook.v1.GetOfficialCloseRequest
+	18, // 45: orderbook.v1.OrderBookService.ListOfficialCloses:input_type -> orderbook.v1.ListOfficialClosesRequest
+	20, // 46: orderbook.v1.OrderBookService.GetOrderBook:input_type -> orderbook.v1.GetOrderBookRequest
+	23, // 47: orderbook.v1.OrderBookService.GetMarketDepth:input_type -> orderbook.v1.GetMarketDepthRequest
+	26, // 48: orderbook.v1.OrderBookService.GetOrder:input_type -> orderbook.v1.GetOrderRequest
+	28, // 49: orderbook.v1.OrderBookService.ListTrades:input_type -> orderbook.v1.ListTradesRequest
+	31, // 50: orderbook.v1.OrderBookService.ListOrders:input_type -> orderbook.v1.ListOrdersRequest
+	39, // 51: orderbook.v1.OrderBookService.ListSymbols:input_type -> orderbook.v1.ListSymbolsRequest
+	32, // 52: orderbook.v1.OrderBookService.StreamMarketDepth:input_type -> orderbook.v1.StreamMarketDepthRequest
+	33, // 53: orderbook.v1.OrderBookService.StreamTrades:input_type -> orderbook.v1.StreamTradesRequest
+	35, // 54: orderbook.v1.OrderBookService.GetCandles:input_type -> orderbook.v1.GetCandlesRequest
+	37, // 55: orderbook.v1.OrderBookService.StreamCandles:input_type -> orderbook.v1.StreamCandlesRequest
+	3,  // 56: orderbook.v1.OrderBookService.PlaceOrder:output_type -> orderbook.v1.PlaceOrderResponse
+	5,  // 57: orderbook.v1.OrderBookService.CancelOrder:output_type -> orderbook.v1.CancelOrderResponse
+	7,  // 58: orderbook.v1.OrderBookService.ReplaceOrder:output_type -> orderbook.v1.ReplaceOrderResponse
+	9,  // 59: orderbook.v1.OrderBookService.CloseMarket:output_type -> orderbook.v1.CloseMarketResponse
+	11, // 60: orderbook.v1.OrderBookService.OpenAuction:output_type -> orderbook.v1.OpenAuctionResponse
+	13, // 61: orderbook.v1.OrderBookService.BeginClosingAuction:output_type -> orderbook.v1.BeginClosingAuctionResponse
+	15, // 62: orderbook.v1.OrderBookService.Uncross:output_type -> orderbook.v1.UncrossResponse
+	17, // 63: orderbook.v1.OrderBookService.GetOfficialClose:output_type -> orderbook.v1.GetOfficialCloseResponse
+	19, // 64: orderbook.v1.OrderBookService.ListOfficialCloses:output_type -> orderbook.v1.ListOfficialClosesResponse
+	21, // 65: orderbook.v1.OrderBookService.GetOrderBook:output_type -> orderbook.v1.GetOrderBookResponse
+	24, // 66: orderbook.v1.OrderBookService.GetMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
+	27, // 67: orderbook.v1.OrderBookService.GetOrder:output_type -> orderbook.v1.GetOrderResponse
+	29, // 68: orderbook.v1.OrderBookService.ListTrades:output_type -> orderbook.v1.ListTradesResponse
+	38, // 69: orderbook.v1.OrderBookService.ListOrders:output_type -> orderbook.v1.ListOrdersResponse
+	40, // 70: orderbook.v1.OrderBookService.ListSymbols:output_type -> orderbook.v1.ListSymbolsResponse
+	24, // 71: orderbook.v1.OrderBookService.StreamMarketDepth:output_type -> orderbook.v1.GetMarketDepthResponse
+	30, // 72: orderbook.v1.OrderBookService.StreamTrades:output_type -> orderbook.v1.Trade
+	36, // 73: orderbook.v1.OrderBookService.GetCandles:output_type -> orderbook.v1.GetCandlesResponse
+	34, // 74: orderbook.v1.OrderBookService.StreamCandles:output_type -> orderbook.v1.Candle
+	56, // [56:75] is the sub-list for method output_type
+	37, // [37:56] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_orderbook_v1_service_proto_init() }
@@ -2643,7 +2905,7 @@ func file_orderbook_v1_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_orderbook_v1_service_proto_rawDesc), len(file_orderbook_v1_service_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   36,
+			NumMessages:   40,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

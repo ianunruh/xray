@@ -107,6 +107,9 @@ func (ob *OrderBook) Apply(evt es.Event) error {
 		// Header event for an uncross batch — fully described by the
 		// TradeExecuted events that follow it, plus the subsequent
 		// MarketPhaseChanged. No aggregate state to mutate here.
+	case *orderbookv1.OfficialCloseSet:
+		// Pure projection event — the daily_close projection consumes
+		// it. The aggregate has no state to maintain for closes.
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}

@@ -737,6 +737,61 @@ func TestUncross_ClosingAuction_SuppressesStopTriggers(t *testing.T) {
 	}
 }
 
+func TestUncross_ClosingAuction_EmitsOfficialCloseSet(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	placeLOC(t, book, "acct-1", orderbook.Buy, 1500000, 100)
+	placeLOC(t, book, "acct-2", orderbook.Sell, 1500000, 100)
+
+	beginClosingAuction(t, book)
+	events := runUncross(t, book)
+
+	var close *orderbookv1.OfficialCloseSet
+	for _, evt := range events {
+		if c, ok := evt.Data.(*orderbookv1.OfficialCloseSet); ok {
+			close = c
+		}
+	}
+	require.NotNil(t, close, "closing uncross must emit OfficialCloseSet")
+	assert.Equal(t, "AAPL", close.Symbol)
+	assert.Equal(t, int64(1500000), close.ClosePrice)
+	assert.Equal(t, int64(100), close.CloseVolume)
+	assert.NotEmpty(t, close.SessionDate)
+}
+
+func TestUncross_ClosingAuction_EmptyBook_StillEmitsCloseFromLastTrade(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	// Seed a continuous trade so LastTradePrice is set.
+	placeBid(t, book, 1500000, 10)
+	placeAskAccount(t, book, "acct-x", 1500000, 10)
+	require.Equal(t, int64(1500000), book.LastTradePrice)
+
+	beginClosingAuction(t, book)
+	events := runUncross(t, book)
+
+	var close *orderbookv1.OfficialCloseSet
+	for _, evt := range events {
+		if c, ok := evt.Data.(*orderbookv1.OfficialCloseSet); ok {
+			close = c
+		}
+	}
+	require.NotNil(t, close, "OfficialCloseSet emitted even with no closing trades")
+	assert.Equal(t, int64(1500000), close.ClosePrice, "falls back to LastTradePrice")
+	assert.Equal(t, int64(0), close.CloseVolume)
+}
+
+func TestUncross_OpeningAuction_DoesNotEmitOfficialCloseSet(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	openAuction(t, book)
+	placeBid(t, book, 1500000, 50)
+	placeAsk(t, book, 1500000, 50)
+
+	events := runUncross(t, book)
+	for _, evt := range events {
+		_, ok := evt.Data.(*orderbookv1.OfficialCloseSet)
+		assert.False(t, ok, "opening uncross must not emit OfficialCloseSet")
+	}
+}
+
 func TestUncross_ClosingAuction_UnfilledAtClose_Cancelled(t *testing.T) {
 	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
 	placeLOC(t, book, "acct-1", orderbook.Buy, 1480000, 50) // won't fill — no offsetting sell
