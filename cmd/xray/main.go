@@ -151,7 +151,7 @@ func main() {
 	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, ocoSagaHandler, obHandler, log)
 	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, log)
 	ocoSagaReactor := ocosaga.NewReactor(ocoSagaHandler, portfolioHandler, obHandler, log)
-	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, shortsProjection, markProjection, log)
+	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shortsProjection, sagaProjection, markProjection, log)
 
 	// One consumer per persistent projection so each one's cursor advances
 	// independently. Ephemeral projections (in-memory) share a single

@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
+	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
 	"github.com/ianunruh/xray/internal/margincall"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
@@ -32,6 +33,16 @@ type fakeMarker struct {
 	prices map[string]int64
 }
 
+// stubSagaLookup is a no-op SagaLookup for tests that don't exercise
+// the user-saga cancellation path. Tests that do can populate sagas.
+type stubSagaLookup struct {
+	sagas []margincall.SagaSummary
+}
+
+func (s *stubSagaLookup) ActiveSingleOrderSagas(_ context.Context, _ string) ([]margincall.SagaSummary, error) {
+	return s.sagas, nil
+}
+
 func (f *fakeMarker) GetMarkPrice(symbol string) (int64, time.Time, bool) {
 	p, ok := f.prices[symbol]
 	if !ok {
@@ -49,7 +60,9 @@ type env struct {
 	pub              *collectingPublisher
 	portfolioHandler *es.Handler[*portfolio.Portfolio]
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga]
+	obHandler        *es.Handler[*orderbook.OrderBook]
 	shorts           *portfolio.InMemoryShortsBySymbol
+	sagas            *stubSagaLookup
 	marker           *fakeMarker
 	reactor          *margincall.Reactor
 }
@@ -72,16 +85,22 @@ func newEnv(t *testing.T) *env {
 	orderSagaHandler := es.NewHandler(store, registry, func(id string) *ordersaga.OrderSaga {
 		return ordersaga.NewOrderSaga(id)
 	}, log).WithPublisher(pub)
+	obHandler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
+		return orderbook.NewOrderBook(id)
+	}, log).WithPublisher(pub)
 
 	shorts := portfolio.NewInMemoryShortsBySymbol()
 	marker := &fakeMarker{prices: make(map[string]int64)}
-	reactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, shorts, marker, log)
+	sagas := &stubSagaLookup{}
+	reactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shorts, sagas, marker, log)
 
 	return &env{
 		ctx: ctx, pub: pub,
 		portfolioHandler: portfolioHandler,
 		orderSagaHandler: orderSagaHandler,
+		obHandler:        obHandler,
 		shorts:           shorts,
+		sagas:            sagas,
 		marker:           marker,
 		reactor:          reactor,
 	}
@@ -274,6 +293,74 @@ func TestReactor_CashDeposit_ClearsCall(t *testing.T) {
 	e.flush()
 
 	assert.Nil(t, loadPortfolio(t, e, "acct-1").ActiveMarginCall)
+}
+
+func TestReactor_CancelsUserSagaOnIssue(t *testing.T) {
+	e := newEnv(t)
+	seedShort(t, e, "acct-1", "AAPL", 100, 1_500_000, 75_000_000)
+	e.flush()
+
+	// Stand up a fake user-initiated order saga with an OrderID set
+	// (i.e. the order is resting on the book). The cancel path will
+	// look at saga.OrderID, so the saga aggregate's view is what
+	// matters; we don't need a real order on the book for this unit
+	// test of the cancellation dispatch.
+	userSagaID := "user-saga-1"
+	startCmd := ordersaga.StartOrderSaga{
+		SagaID:    userSagaID,
+		AccountID: "acct-1",
+		Symbol:    "NVDA",
+		Side:      orderbookv1.Side_SIDE_BUY,
+		Price:     1_000_000,
+		Quantity:  1,
+		OrderType: orderbookv1.OrderType_ORDER_TYPE_LIMIT,
+		Initiator: sagav1.Initiator_INITIATOR_USER,
+	}
+	require.NoError(t, e.orderSagaHandler.Handle(e.ctx, startCmd, func(s *ordersaga.OrderSaga) ([]es.Event, error) {
+		return ordersaga.ExecuteStartOrderSaga(s, startCmd)
+	}))
+	// Populate the lookup so the reactor finds it.
+	e.sagas.sagas = []margincall.SagaSummary{{SagaID: userSagaID, AccountID: "acct-1"}}
+	e.pub.events = nil
+
+	// Trigger a margin call by spiking the mark.
+	fireTrade(t, e, "AAPL", "trade-up", 8_000_000)
+
+	// User saga should now be failed with margin_call reason.
+	userSaga, err := e.orderSagaHandler.Load(e.ctx, ordersaga.AggregateID(userSagaID))
+	require.NoError(t, err)
+	assert.Equal(t, ordersaga.Failed, userSaga.Status)
+}
+
+func TestReactor_SkipsMarginCallSagasOnCancel(t *testing.T) {
+	e := newEnv(t)
+	seedShort(t, e, "acct-1", "AAPL", 100, 1_500_000, 75_000_000)
+	e.flush()
+
+	// Seed a prior margin-call-initiated saga. The cancel pass must
+	// NOT touch it.
+	mcSagaID := "mc-saga"
+	startCmd := ordersaga.StartOrderSaga{
+		SagaID:    mcSagaID,
+		AccountID: "acct-1",
+		Symbol:    "AAPL",
+		Side:      orderbookv1.Side_SIDE_BUY,
+		Quantity:  1,
+		OrderType: orderbookv1.OrderType_ORDER_TYPE_MARKET,
+		Initiator: sagav1.Initiator_INITIATOR_MARGIN_CALL,
+	}
+	require.NoError(t, e.orderSagaHandler.Handle(e.ctx, startCmd, func(s *ordersaga.OrderSaga) ([]es.Event, error) {
+		return ordersaga.ExecuteStartOrderSaga(s, startCmd)
+	}))
+	e.sagas.sagas = []margincall.SagaSummary{{SagaID: mcSagaID, AccountID: "acct-1"}}
+	e.pub.events = nil
+
+	fireTrade(t, e, "AAPL", "trade-up", 8_000_000)
+
+	mcSaga, err := e.orderSagaHandler.Load(e.ctx, ordersaga.AggregateID(mcSagaID))
+	require.NoError(t, err)
+	assert.NotEqual(t, ordersaga.Failed, mcSaga.Status,
+		"margin-call-initiated saga must be left alone")
 }
 
 func TestReactor_CashWithdrawal_TriggersCall(t *testing.T) {

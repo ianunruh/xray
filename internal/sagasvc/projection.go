@@ -11,6 +11,7 @@ import (
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
 	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
+	"github.com/ianunruh/xray/internal/margincall"
 	"github.com/ianunruh/xray/pkg/es"
 )
 
@@ -50,7 +51,7 @@ func (p *PgProjection) HandleEvents(ctx context.Context, events []es.Event) erro
 		case *portfoliov1.OrderSagaFailed:
 			batch.Queue(
 				`UPDATE projection_sagas SET status = $1, fail_reason = $2, ended_at = $3 WHERE saga_id = $4`,
-				int32(sagav1.SagaStatus_SAGA_STATUS_FAILED),
+				int32(sagaStatusForFailure(data.Reason)),
 				data.Reason, data.FailedAt.AsTime(), data.SagaId,
 			)
 
@@ -153,6 +154,35 @@ func (p *PgProjection) Get(ctx context.Context, sagaID string) (*SagaRow, error)
 	row.Kind = sagav1.SagaKind(kind)
 	row.Status = sagav1.SagaStatus(status)
 	return &row, nil
+}
+
+// sagaStatusForFailure maps an OrderSagaFailed reason to the public
+// saga status. The margincall reactor uses "margin_call" as the reason
+// when it cancels a user saga; the UI surfaces those rows as
+// LIQUIDATED so users can tell forced cancellations apart from
+// genuine failures.
+func sagaStatusForFailure(reason string) sagav1.SagaStatus {
+	if reason == margincall.MarginCallReason {
+		return sagav1.SagaStatus_SAGA_STATUS_LIQUIDATED
+	}
+	return sagav1.SagaStatus_SAGA_STATUS_FAILED
+}
+
+// ActiveSingleOrderSagas is a convenience over List() used by the
+// margincall reactor — returns (saga_id, account_id) pairs for ACTIVE
+// single-order sagas of one account. Implements margincall.SagaLookup.
+func (p *PgProjection) ActiveSingleOrderSagas(ctx context.Context, accountID string) ([]margincall.SagaSummary, error) {
+	rows, err := p.List(ctx, accountID, "",
+		sagav1.SagaKind_SAGA_KIND_SINGLE_ORDER,
+		sagav1.SagaStatus_SAGA_STATUS_ACTIVE)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]margincall.SagaSummary, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, margincall.SagaSummary{SagaID: r.SagaID, AccountID: r.AccountID})
+	}
+	return out, nil
 }
 
 // List returns sagas matching the given filters. Zero-valued filters are

@@ -30,15 +30,38 @@ import (
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
 	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
+	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
 	"github.com/ianunruh/xray/internal/portfolio"
 	"github.com/ianunruh/xray/pkg/es"
 )
 
+// MarginCallReason is the canonical reason string written to
+// OrderCancelled.Reason and OrderSagaFailed.Reason when a user saga
+// is killed by a margin call. Saga projection maps this to
+// SAGA_STATUS_LIQUIDATED.
+const MarginCallReason = "margin_call"
+
+// SagaSummary is the minimal info the reactor needs from the saga
+// projection to decide which user sagas to cancel on call issue.
+type SagaSummary struct {
+	SagaID    string
+	AccountID string
+}
+
+// SagaLookup is the read interface the reactor uses to find sagas
+// belonging to an account. sagasvc.PgProjection satisfies it via an
+// adapter (so we don't import sagasvc from this package).
+type SagaLookup interface {
+	ActiveSingleOrderSagas(ctx context.Context, accountID string) ([]SagaSummary, error)
+}
+
 type Reactor struct {
 	portfolioHandler *es.Handler[*portfolio.Portfolio]
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga]
+	orderbookHandler *es.Handler[*orderbook.OrderBook]
 	shorts           portfolio.ShortsTracker
+	sagas            SagaLookup
 	marker           portfolio.Marker
 	log              *slog.Logger
 }
@@ -46,14 +69,18 @@ type Reactor struct {
 func NewReactor(
 	portfolioHandler *es.Handler[*portfolio.Portfolio],
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga],
+	orderbookHandler *es.Handler[*orderbook.OrderBook],
 	shorts portfolio.ShortsTracker,
+	sagas SagaLookup,
 	marker portfolio.Marker,
 	log *slog.Logger,
 ) *Reactor {
 	return &Reactor{
 		portfolioHandler: portfolioHandler,
 		orderSagaHandler: orderSagaHandler,
+		orderbookHandler: orderbookHandler,
 		shorts:           shorts,
+		sagas:            sagas,
 		marker:           marker,
 		log:              log,
 	}
@@ -132,6 +159,13 @@ func (r *Reactor) recheckAccount(ctx context.Context, accountID, triggerID, trig
 		callID := fmt.Sprintf("call:%s:%s", accountID, triggerID)
 		if err := r.issueCall(ctx, accountID, callID, triggerID, triggerSymbol, triggerMark, status); err != nil {
 			return err
+		}
+		// Cancel user-initiated sagas before liquidating so no fresh
+		// buys or shorts compound the breach while we're working on it.
+		// Errors here are logged-and-continued — failing to cancel one
+		// saga shouldn't stop the liquidation that follows.
+		if err := r.cancelUserSagas(ctx, accountID); err != nil {
+			r.log.Error("margincall: failed to cancel user sagas", "account_id", accountID, "error", err)
 		}
 		return r.spawnLiquidation(ctx, accountID, triggerID, callID, status)
 
@@ -234,4 +268,83 @@ func (r *Reactor) spawnLiquidation(ctx context.Context, accountID, triggerID, ca
 // Not currently wired in cmd/xray; left as an extension point.
 func (r *Reactor) Tick(ctx context.Context, accountID string, now time.Time) error {
 	return r.recheckAccount(ctx, accountID, fmt.Sprintf("tick:%d", now.UnixNano()), "", 0)
+}
+
+// cancelUserSagas kills every active user-initiated single-order saga
+// for the account when a margin call is issued. Sagas with an
+// orderbook order get a CancelOrder (reason=margin_call), which
+// propagates through OrderCancelled into the saga's failure path.
+// Sagas still in a pre-place state (Started/CashHeld/CollateralHeld/
+// SharesHeld) get a direct RecordFailed; the saga reactor releases
+// their holds the same way.
+//
+// Bracket and OCO sagas are not handled in v1 — they're parent
+// orchestrators with child sagas; cancelling them right is a larger
+// design question. A future pass should add SAGA_KIND_BRACKET / OCO.
+func (r *Reactor) cancelUserSagas(ctx context.Context, accountID string) error {
+	if r.sagas == nil {
+		return nil
+	}
+	summaries, err := r.sagas.ActiveSingleOrderSagas(ctx, accountID)
+	if err != nil {
+		return fmt.Errorf("list active sagas: %w", err)
+	}
+	var errs []error
+	for _, sum := range summaries {
+		if err := r.cancelOneSaga(ctx, sum.SagaID); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (r *Reactor) cancelOneSaga(ctx context.Context, sagaID string) error {
+	saga, err := r.orderSagaHandler.Load(ctx, ordersaga.AggregateID(sagaID))
+	if err != nil {
+		return fmt.Errorf("load saga %s: %w", sagaID, err)
+	}
+	// Skip our own liquidation sagas — they're solving the problem,
+	// not contributing to it.
+	if saga.Initiator == sagav1.Initiator_INITIATOR_MARGIN_CALL {
+		return nil
+	}
+	// Already terminal — projection lag, no work to do.
+	if saga.Status == ordersaga.Completed || saga.Status == ordersaga.Failed {
+		return nil
+	}
+
+	if saga.OrderID != "" {
+		cancelCmd := orderbook.CancelOrder{
+			Symbol:  saga.Symbol,
+			OrderID: saga.OrderID,
+			Reason:  MarginCallReason,
+		}
+		if err := r.orderbookHandler.Handle(ctx, cancelCmd, func(b *orderbook.OrderBook) ([]es.Event, error) {
+			return orderbook.ExecuteCancelOrder(b, cancelCmd)
+		}); err != nil {
+			// Already-gone races are benign — the saga's onCancel will
+			// pick it up from the existing OrderCancelled event.
+			if errors.Is(err, orderbook.ErrOrderNotFound) || errors.Is(err, orderbook.ErrNoRemainingQty) {
+				return nil
+			}
+			return fmt.Errorf("cancel order %s: %w", saga.OrderID, err)
+		}
+		r.log.Info("margincall: cancelled user order", "saga_id", sagaID, "order_id", saga.OrderID)
+		return nil
+	}
+
+	// Pre-place state — fail the saga directly. The saga reactor's
+	// OrderSagaFailed handler will release any cash / share / collateral
+	// hold the saga had.
+	failCmd := ordersaga.RecordFailed{SagaID: sagaID, Reason: MarginCallReason}
+	if err := r.orderSagaHandler.Handle(ctx, failCmd, func(s *ordersaga.OrderSaga) ([]es.Event, error) {
+		return ordersaga.ExecuteRecordFailed(s, failCmd)
+	}); err != nil {
+		if errors.Is(err, ordersaga.ErrInvalidState) {
+			return nil
+		}
+		return fmt.Errorf("record saga failed %s: %w", sagaID, err)
+	}
+	r.log.Info("margincall: failed pre-place saga", "saga_id", sagaID)
+	return nil
 }

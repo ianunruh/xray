@@ -59,6 +59,9 @@ func (c PlaceOrder) AggregateID() string {
 type CancelOrder struct {
 	Symbol  string
 	OrderID string
+	// Reason is recorded on OrderCancelled and propagates through any
+	// owning saga's failure path. Empty defaults to "user requested".
+	Reason string
 }
 
 func (c CancelOrder) AggregateID() string {
@@ -465,6 +468,10 @@ func ExecuteCancelOrder(book *OrderBook, cmd CancelOrder) ([]es.Event, error) {
 		return nil, ErrNoRemainingQty
 	}
 
+	reason := cmd.Reason
+	if reason == "" {
+		reason = "user requested"
+	}
 	evt := es.Event{
 		AggregateID: book.AggregateID(),
 		Type:        EventOrderCancelled,
@@ -472,7 +479,7 @@ func ExecuteCancelOrder(book *OrderBook, cmd CancelOrder) ([]es.Event, error) {
 		Data: &orderbookv1.OrderCancelled{
 			OrderId: cmd.OrderID,
 			Symbol:  cmd.Symbol,
-			Reason:  "user requested",
+			Reason:  reason,
 		},
 	}
 
