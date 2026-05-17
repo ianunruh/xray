@@ -159,18 +159,53 @@ func (e *Engine) requote(ctx context.Context) {
 }
 
 func (e *Engine) replaceOrders(ctx context.Context, oldSagaIDs []string, newLevels []QuoteLevel) {
-	matched := min(len(oldSagaIDs), len(newLevels))
+	// First, pair up old orders whose (price, qty) already matches a new
+	// level — leave those resting untouched. Only the remainder need an
+	// RPC.
+	keptOld := make(map[string]bool, len(oldSagaIDs))
+	keptNew := make(map[int]bool, len(newLevels))
+	for i, level := range newLevels {
+		for _, sagaID := range oldSagaIDs {
+			if keptOld[sagaID] {
+				continue
+			}
+			tracked, ok := e.tracker.Orders[sagaID]
+			if !ok {
+				continue
+			}
+			if tracked.Price == level.Price && tracked.Qty == level.Quantity {
+				keptOld[sagaID] = true
+				keptNew[i] = true
+				break
+			}
+		}
+	}
+
+	remainingOld := make([]string, 0, len(oldSagaIDs))
+	for _, sagaID := range oldSagaIDs {
+		if !keptOld[sagaID] {
+			remainingOld = append(remainingOld, sagaID)
+		}
+	}
+	remainingNew := make([]QuoteLevel, 0, len(newLevels))
+	for i, level := range newLevels {
+		if !keptNew[i] {
+			remainingNew = append(remainingNew, level)
+		}
+	}
+
+	matched := min(len(remainingOld), len(remainingNew))
 
 	for i := 0; i < matched; i++ {
-		e.tracker.ReplaceOrder(ctx, e.cfg.AccountID, oldSagaIDs[i], newLevels[i].Side, newLevels[i].Price, newLevels[i].Quantity)
+		e.tracker.ReplaceOrder(ctx, e.cfg.AccountID, remainingOld[i], remainingNew[i].Side, remainingNew[i].Price, remainingNew[i].Quantity)
 	}
 
-	for i := matched; i < len(oldSagaIDs); i++ {
-		e.tracker.CancelTracked(ctx, oldSagaIDs[i])
+	for i := matched; i < len(remainingOld); i++ {
+		e.tracker.CancelTracked(ctx, remainingOld[i])
 	}
 
-	for i := matched; i < len(newLevels); i++ {
-		e.tracker.PlaceOrder(ctx, e.cfg.AccountID, newLevels[i].Side, newLevels[i].Price, newLevels[i].Quantity)
+	for i := matched; i < len(remainingNew); i++ {
+		e.tracker.PlaceOrder(ctx, e.cfg.AccountID, remainingNew[i].Side, remainingNew[i].Price, remainingNew[i].Quantity)
 	}
 }
 
