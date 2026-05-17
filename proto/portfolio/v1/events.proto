@@ -207,6 +207,37 @@ message MarginCallCovered {
   google.protobuf.Timestamp covered_at = 5;
 }
 
+// MarginInterestAccrued records one cycle of interest charged on the
+// outstanding margin loan. amount may be zero — the event still fires
+// on every cycle to advance the accrual clock (LastAccruedAt), so the
+// next cycle can compute elapsed correctly. Periodic, emitted by the
+// fees accruer.
+message MarginInterestAccrued {
+  string account_id = 1;
+  google.protobuf.Timestamp period_start = 2;
+  google.protobuf.Timestamp period_end = 3;
+  // Loan principal at the time of accrual (snapshot of MarginLoan()).
+  int64 principal = 4;
+  // Annual rate in bps used for this charge (audit).
+  int64 rate_bps = 5;
+  // Cash debited. Always >= 0; zero when there's no outstanding loan.
+  int64 amount = 6;
+}
+
+// ShortBorrowFeeAccrued records one cycle of borrow fee charged on
+// one open short position. One event per (account, symbol) per cycle,
+// emitted only when amount > 0.
+message ShortBorrowFeeAccrued {
+  string account_id = 1;
+  google.protobuf.Timestamp period_start = 2;
+  google.protobuf.Timestamp period_end = 3;
+  string symbol = 4;
+  int64 mark_price = 5;
+  int64 qty = 6;
+  int64 rate_bps = 7;
+  int64 amount = 8;
+}
+
 // Order saga events — stored under aggregate ID "order-saga:{uuid}".
 
 message OrderSagaStarted {

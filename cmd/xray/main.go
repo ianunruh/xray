@@ -21,6 +21,7 @@ import (
 	"github.com/ianunruh/xray/gen/saga/v1/sagav1connect"
 	"github.com/ianunruh/xray/internal/bracket"
 	"github.com/ianunruh/xray/internal/diagnostics"
+	"github.com/ianunruh/xray/internal/feesaccruer"
 	"github.com/ianunruh/xray/internal/margincall"
 	"github.com/ianunruh/xray/internal/ocosaga"
 	"github.com/ianunruh/xray/internal/orderbook"
@@ -150,6 +151,7 @@ func main() {
 	activeUserSagasProjection := portfolio.NewPgActiveUserSagasProjection(pool)
 	activeCallsProjection := portfolio.NewInMemoryActiveMarginCalls()
 	marginCallsProjection := portfolio.NewPgMarginCallsProjection(pool)
+	accruableAccounts := portfolio.NewInMemoryAccruableAccounts()
 	broker := orderbook.NewBroker()
 	portfolioBroker := portfolio.NewPortfolioBroker()
 	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, ocoSagaHandler, obHandler, log)
@@ -164,7 +166,7 @@ func main() {
 	// state rebuilds from the start of the stream.
 	consumers := []*natsstore.ProjectionConsumer{
 		natsstore.NewProjectionConsumer(js, registry, log, "ephemeral").
-			WithEphemeral(depthProjection, candleProjection, markProjection, activeCallsProjection, broker),
+			WithEphemeral(depthProjection, candleProjection, markProjection, activeCallsProjection, accruableAccounts, broker),
 		// shortsProjection MUST precede marginReactor here: the
 		// reactor queries the shorts table the projection writes,
 		// and the consumer dispatches projections in slice order
@@ -219,6 +221,10 @@ func main() {
 
 	rec := reconciler.New(30*time.Second, sagaProjection, tradeProjection, portfolioHandler, orderSagaReactor, bracketReactor, ocoSagaReactor, marginReactor, activeCallsProjection, log)
 	go rec.Run(ctx)
+
+	accruer := feesaccruer.NewAccruer(portfolioHandler, accruableAccounts, markProjection, time.Now,
+		feesaccruer.Config{Interval: time.Hour}, log)
+	go accruer.Run(ctx)
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, dailyCloseProjection, broker)
 	portfolioSrv := portfolio.NewServer(portfolioHandler, obHandler, portfolioProjection, pnlProjection, markProjection, marginCallsProjection, portfolioBroker, log)

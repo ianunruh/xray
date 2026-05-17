@@ -4,6 +4,8 @@
 // reactor uses the same constants to evaluate maintenance requirements.
 package margin
 
+import "time"
+
 // Short-side policy.
 //
 // InitialMarginBps is the additional cash collateral required on top of
@@ -66,6 +68,31 @@ func BuyingPower(equity, maintenance int64) int64 {
 		return 0
 	}
 	return excess * LeverageBps / bpsScale
+}
+
+// Annualized financing rates charged by the broker on borrowed
+// resources. Daily/hourly accruals are time-prorated from these.
+// MarginLoanRateBps applies to the cash loan principal
+// (CashBalance < 0). ShortBorrowRateBps applies to the mark-value
+// notional of each open short.
+const (
+	MarginLoanRateBps  int64 = 800 // 8% APR
+	ShortBorrowRateBps int64 = 300 // 3% APR
+)
+
+// AccruedAmount returns the time-prorated charge on principal at the
+// annual rate, computed as principal * (rateBps/bpsScale) * (elapsed/year).
+// Year fixed at 365 * 24h. Uses float64 internally so large principals
+// don't overflow int64 mid-computation; sub-cent rounding is fine for
+// a simulator. Returns 0 for non-positive inputs.
+func AccruedAmount(principal int64, rateBps int64, elapsed time.Duration) int64 {
+	if principal <= 0 || rateBps <= 0 || elapsed <= 0 {
+		return 0
+	}
+	const yearSecs = float64(365 * 24 * 3600)
+	amount := float64(principal) * float64(rateBps) * elapsed.Seconds() /
+		(float64(bpsScale) * yearSecs)
+	return int64(amount)
 }
 
 // LiquidationBufferBps is the headroom above maintenance the auto-

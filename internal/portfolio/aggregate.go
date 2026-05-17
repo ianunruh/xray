@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
 	"github.com/ianunruh/xray/pkg/es"
 )
@@ -85,6 +87,13 @@ type Portfolio struct {
 	// reactor guards against duplicate issuance by checking this field
 	// before emitting MarginCallIssued.
 	ActiveMarginCall *MarginCall
+
+	// LastAccruedAt is the period_end of the most recent
+	// MarginInterestAccrued or ShortBorrowFeeAccrued event applied.
+	// The fees accruer reads this to compute the elapsed window for
+	// the next accrual cycle. Initialized lazily in Apply() to the
+	// timestamp of the first event applied to the aggregate.
+	LastAccruedAt time.Time
 }
 
 func NewPortfolio(id string) *Portfolio {
@@ -137,6 +146,18 @@ func (p *Portfolio) markSettled(sagaID, tradeID string) {
 }
 
 func (p *Portfolio) Apply(evt es.Event) error {
+	// Seed the accrual clock on first event applied so the accruer
+	// has a sensible "elapsed since" starting point. Cheap on every
+	// apply since after the first one this is a no-op.
+	if p.LastAccruedAt.IsZero() {
+		p.LastAccruedAt = evt.Timestamp
+	}
+	// Detect the idle->liable transition. If we go from "no shorts
+	// and no loan" to "has a liability" via this event, reset the
+	// accrual clock to the event time. Otherwise the next accrual
+	// tick would retroactively bill the dormant period.
+	wasIdle := p.MarginLoan() == 0 && len(p.ShortPositions) == 0
+
 	switch data := evt.Data.(type) {
 	case *portfoliov1.CashDeposited:
 		p.applyCashDeposited(data)
@@ -174,8 +195,17 @@ func (p *Portfolio) Apply(evt es.Event) error {
 		p.applyMarginCallIssued(data)
 	case *portfoliov1.MarginCallCovered:
 		p.applyMarginCallCovered(data)
+	case *portfoliov1.MarginInterestAccrued:
+		p.applyMarginInterestAccrued(data)
+	case *portfoliov1.ShortBorrowFeeAccrued:
+		p.applyShortBorrowFeeAccrued(data)
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
+	}
+	if wasIdle && (p.MarginLoan() > 0 || len(p.ShortPositions) > 0) {
+		// idle -> liable transition: reset the accrual clock so the
+		// next tick doesn't retroactively bill the dormant period.
+		p.LastAccruedAt = evt.Timestamp
 	}
 	p.IncrementVersion()
 	return nil
@@ -422,4 +452,23 @@ func (p *Portfolio) applyMarginCallIssued(data *portfoliov1.MarginCallIssued) {
 
 func (p *Portfolio) applyMarginCallCovered(_ *portfoliov1.MarginCallCovered) {
 	p.ActiveMarginCall = nil
+}
+
+func (p *Portfolio) applyMarginInterestAccrued(data *portfoliov1.MarginInterestAccrued) {
+	p.CashBalance -= data.Amount
+	p.advanceAccrualClock(data.PeriodEnd)
+}
+
+func (p *Portfolio) applyShortBorrowFeeAccrued(data *portfoliov1.ShortBorrowFeeAccrued) {
+	p.CashBalance -= data.Amount
+	p.advanceAccrualClock(data.PeriodEnd)
+}
+
+func (p *Portfolio) advanceAccrualClock(end *timestamppb.Timestamp) {
+	if end == nil {
+		return
+	}
+	if t := end.AsTime(); t.After(p.LastAccruedAt) {
+		p.LastAccruedAt = t
+	}
 }

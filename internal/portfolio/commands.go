@@ -752,3 +752,87 @@ func ExecuteCoverMarginCall(p *Portfolio, cmd CoverMarginCall) ([]es.Event, erro
 	}
 	return []es.Event{evt}, nil
 }
+
+// --- Fees accrual ---
+
+// BorrowFeeEntry is one open short's borrow fee for a single accrual
+// cycle. Computed by the accruer using current mark and elapsed time
+// since the account's LastAccruedAt.
+type BorrowFeeEntry struct {
+	Symbol    string
+	MarkPrice int64
+	Qty       int64
+	RateBps   int64
+	Amount    int64
+}
+
+// AccrueFees bundles one cycle of margin interest plus per-symbol
+// short borrow fees. The accruer computes amounts (it has marks); the
+// aggregate just records them and advances LastAccruedAt.
+//
+// MarginInterestAccrued always fires (even with Amount=0), so the
+// accrual clock advances each cycle regardless of whether there's a
+// loan to charge. ShortBorrowFeeAccrued fires once per entry with
+// Amount > 0.
+type AccrueFees struct {
+	AccountID      string
+	PeriodStart    time.Time
+	PeriodEnd      time.Time
+	LoanPrincipal  int64
+	LoanRateBps    int64
+	InterestAmount int64
+	BorrowFees     []BorrowFeeEntry
+}
+
+func (c AccrueFees) AggregateID() string { return AggregateID(c.AccountID) }
+
+func ExecuteAccrueFees(p *Portfolio, cmd AccrueFees) ([]es.Event, error) {
+	periodStart := timestamppb.New(cmd.PeriodStart)
+	periodEnd := timestamppb.New(cmd.PeriodEnd)
+
+	events := make([]es.Event, 0, 1+len(cmd.BorrowFees))
+
+	interestEvt := es.Event{
+		AggregateID: p.AggregateID(),
+		Type:        EventMarginInterestAccrued,
+		Timestamp:   cmd.PeriodEnd,
+		Data: &portfoliov1.MarginInterestAccrued{
+			AccountId:   cmd.AccountID,
+			PeriodStart: periodStart,
+			PeriodEnd:   periodEnd,
+			Principal:   cmd.LoanPrincipal,
+			RateBps:     cmd.LoanRateBps,
+			Amount:      cmd.InterestAmount,
+		},
+	}
+	if err := p.Apply(interestEvt); err != nil {
+		return nil, err
+	}
+	events = append(events, interestEvt)
+
+	for _, bf := range cmd.BorrowFees {
+		if bf.Amount <= 0 {
+			continue
+		}
+		feeEvt := es.Event{
+			AggregateID: p.AggregateID(),
+			Type:        EventShortBorrowFeeAccrued,
+			Timestamp:   cmd.PeriodEnd,
+			Data: &portfoliov1.ShortBorrowFeeAccrued{
+				AccountId:   cmd.AccountID,
+				PeriodStart: periodStart,
+				PeriodEnd:   periodEnd,
+				Symbol:      bf.Symbol,
+				MarkPrice:   bf.MarkPrice,
+				Qty:         bf.Qty,
+				RateBps:     bf.RateBps,
+				Amount:      bf.Amount,
+			},
+		}
+		if err := p.Apply(feeEvt); err != nil {
+			return nil, err
+		}
+		events = append(events, feeEvt)
+	}
+	return events, nil
+}

@@ -2,9 +2,42 @@ package margin
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestAccruedAmount_DailyMatchesAnnualRate(t *testing.T) {
+	// $10,000 principal (= 100_000_000 4-dec) at 8% APR for one year
+	// should be ~$800 = 8_000_000.
+	const principal = int64(100_000_000)
+	got := AccruedAmount(principal, 800, 365*24*time.Hour)
+	assert.InDelta(t, 8_000_000, got, 100, "1 year of 8% on $10k ≈ $800")
+}
+
+func TestAccruedAmount_HourlyIsAnnualOver8760(t *testing.T) {
+	// Same principal at 8% APR for 1 hour: 800 / 8760 ≈ 0.0913 = 913 (4-dec).
+	const principal = int64(100_000_000)
+	got := AccruedAmount(principal, 800, time.Hour)
+	assert.InDelta(t, 913, got, 5)
+}
+
+func TestAccruedAmount_ZeroForNegativeInputs(t *testing.T) {
+	assert.Equal(t, int64(0), AccruedAmount(0, 800, time.Hour))
+	assert.Equal(t, int64(0), AccruedAmount(-100, 800, time.Hour))
+	assert.Equal(t, int64(0), AccruedAmount(100, 0, time.Hour))
+	assert.Equal(t, int64(0), AccruedAmount(100, 800, 0))
+	assert.Equal(t, int64(0), AccruedAmount(100, 800, -time.Hour))
+}
+
+func TestAccruedAmount_HandlesLargePrincipals(t *testing.T) {
+	// $1B principal — would overflow naive int64 multiplication.
+	// Just check it doesn't panic and returns something sensible.
+	const principal = int64(10_000_000_000_000) // $1B in 4-dec
+	got := AccruedAmount(principal, 800, time.Hour)
+	// 1B * 8% / 8760 ≈ $9132
+	assert.InDelta(t, 91_324_200, got, 1_000_000)
+}
 
 func TestQtyToCureBreach_NoBreach(t *testing.T) {
 	// Breach <= 0 means no liquidation needed.
