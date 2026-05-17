@@ -406,13 +406,26 @@ export function OrderForm({
                 </Text>
               </Group>
             )}
-            {preview.projectedMaintenanceRequirement > 0n && (
+            {margin &&
+              preview.projectedMaintenanceRequirement !==
+                margin.maintenanceRequirement && (
               <Group justify="space-between" gap="xs">
                 <Text size="xs" c="dimmed">
                   Maint. req. after fill
                 </Text>
                 <Text size="xs" fw={600} c={wouldCauseCall ? "red" : undefined}>
                   {formatMoney(preview.projectedMaintenanceRequirement)}
+                  <Text component="span" size="xs" c="dimmed" ml={6}>
+                    ({preview.projectedMaintenanceRequirement >
+                    margin.maintenanceRequirement
+                      ? "+"
+                      : ""}
+                    {formatMoney(
+                      preview.projectedMaintenanceRequirement -
+                        margin.maintenanceRequirement,
+                    )}
+                    )
+                  </Text>
                 </Text>
               </Group>
             )}
