@@ -164,7 +164,7 @@ func main() {
 	// state rebuilds from the start of the stream.
 	consumers := []*natsstore.ProjectionConsumer{
 		natsstore.NewProjectionConsumer(js, registry, log, "ephemeral").
-			WithEphemeral(depthProjection, candleProjection, markProjection, activeCallsProjection, broker, portfolioBroker),
+			WithEphemeral(depthProjection, candleProjection, markProjection, activeCallsProjection, broker),
 		// shortsProjection MUST precede marginReactor here: the
 		// reactor queries the shorts table the projection writes,
 		// and the consumer dispatches projections in slice order
@@ -177,8 +177,13 @@ func main() {
 			WithPersistent(store, tradeProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "order-projection").
 			WithPersistent(store, orderProjection),
+		// portfolioBroker MUST follow portfolioProjection in this slice:
+		// the broker wakes streaming subscribers, and the server's
+		// re-fetch must see the projection's just-committed UPDATE.
+		// Co-located in one consumer guarantees that ordering within
+		// every batch.
 		natsstore.NewProjectionConsumer(js, registry, log, "portfolio-projection").
-			WithPersistent(store, portfolioProjection),
+			WithPersistent(store, portfolioProjection, portfolioBroker),
 		natsstore.NewProjectionConsumer(js, registry, log, "pnl-projection").
 			WithPersistent(store, pnlProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "saga-reactor").
