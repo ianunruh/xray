@@ -1,6 +1,8 @@
 import { useState } from "react";
 import {
   ActionIcon,
+  Alert,
+  Badge,
   Button,
   Card,
   Group,
@@ -15,9 +17,10 @@ import {
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { formatMoney, formatPrice, formatQuantity, moneyToPrice } from "../format";
-import { Side } from "../gen/orderbook/v1/events_pb";
+import { PositionSide, Side } from "../gen/orderbook/v1/events_pb";
 import { OrderStatus } from "../gen/portfolio/v1/service_pb";
 import { usePortfolio } from "../hooks/usePortfolio";
+import { useMarginSnapshot } from "../hooks/useMarginSnapshot";
 import { portfolioClient, sagaClient } from "../client";
 
 function sideName(side: Side): string {
@@ -285,6 +288,7 @@ export function PortfolioPanel({
   onJumpToAggregate?: (aggregateId: string) => void;
 }) {
   const portfolio = usePortfolio(accountId);
+  const margin = useMarginSnapshot(accountId);
   const [depositOpened, depositHandlers] = useDisclosure(false);
   const [withdrawOpened, withdrawHandlers] = useDisclosure(false);
   const [creditOpened, creditHandlers] = useDisclosure(false);
@@ -360,6 +364,14 @@ export function PortfolioPanel({
           </Group>
         </Group>
 
+        {margin?.marginCall && (
+          <Alert color="red" title="Margin call active">
+            Equity {formatMoney(margin.equity)} below maintenance
+            requirement {formatMoney(margin.maintenanceRequirement)}.
+            Auto-liquidation in progress.
+          </Alert>
+        )}
+
         <Group gap="xl">
           <div>
             <Text size="xs" c="dimmed">
@@ -381,7 +393,101 @@ export function PortfolioPanel({
               {formatMoney(totalRealizedPnl)}
             </Text>
           </div>
+          {margin && (
+            <>
+              <div>
+                <Text size="xs" c="dimmed">
+                  Equity
+                </Text>
+                <Text fw={700}>{formatMoney(margin.equity)}</Text>
+              </div>
+              <div>
+                <Text size="xs" c="dimmed">
+                  Maint. Req.
+                </Text>
+                <Text fw={700}>
+                  {formatMoney(margin.maintenanceRequirement)}
+                </Text>
+              </div>
+              <div>
+                <Text size="xs" c="dimmed">
+                  Margin Excess
+                </Text>
+                <Text
+                  fw={700}
+                  c={margin.marginExcess >= 0n ? "green" : "red"}
+                >
+                  {formatMoney(margin.marginExcess)}
+                </Text>
+              </div>
+            </>
+          )}
         </Group>
+
+        {margin && margin.missingMarks.length > 0 && (
+          <Text size="xs" c="orange">
+            Missing marks: {margin.missingMarks.join(", ")} — equity
+            understated for these symbols.
+          </Text>
+        )}
+
+        {margin && margin.positions.some(
+          (p) => p.side === PositionSide.SHORT,
+        ) && (
+          <>
+            <Title order={6}>Short Positions</Title>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Symbol</Table.Th>
+                  <Table.Th ta="right">Qty Owed</Table.Th>
+                  <Table.Th ta="right">Avg Open</Table.Th>
+                  <Table.Th ta="right">Mark</Table.Th>
+                  <Table.Th ta="right">Liability</Table.Th>
+                  <Table.Th ta="right">Unrealized P&L</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {margin.positions
+                  .filter((p) => p.side === PositionSide.SHORT)
+                  .map((p) => (
+                    <Table.Tr key={p.symbol}>
+                      <Table.Td>
+                        <Group gap={4}>
+                          {p.symbol}
+                          <Badge size="xs" color="red" variant="light">
+                            SHORT
+                          </Badge>
+                        </Group>
+                      </Table.Td>
+                      <Table.Td ta="right">
+                        {formatQuantity(p.quantity)}
+                      </Table.Td>
+                      <Table.Td ta="right">{formatMoney(p.avgPrice)}</Table.Td>
+                      <Table.Td ta="right">
+                        {p.markMissing ? (
+                          <Text size="xs" c="dimmed">
+                            —
+                          </Text>
+                        ) : (
+                          formatMoney(p.markPrice)
+                        )}
+                      </Table.Td>
+                      <Table.Td ta="right">
+                        {p.markMissing ? "—" : formatMoney(p.marketValue)}
+                      </Table.Td>
+                      <Table.Td
+                        ta="right"
+                        c={p.unrealizedPnl >= 0n ? "green" : "red"}
+                      >
+                        {p.markMissing ? "—" : formatMoney(p.unrealizedPnl)}
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+              </Table.Tbody>
+            </Table>
+          </>
+        )}
 
         {portfolio.holdings.length > 0 && (
           <>

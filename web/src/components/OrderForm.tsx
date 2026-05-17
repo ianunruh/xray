@@ -10,7 +10,7 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { Side, OrderType, TimeInForce } from "../gen/orderbook/v1/events_pb";
+import { Side, OrderType, PositionSide, TimeInForce } from "../gen/orderbook/v1/events_pb";
 import { sagaClient } from "../client";
 import { moneyToPrice } from "../format";
 
@@ -55,6 +55,7 @@ export function OrderForm({
 }) {
   const [mode, setMode] = useState<Mode>("SINGLE");
   const [side, setSide] = useState<string>("BUY");
+  const [positionSide, setPositionSide] = useState<string>("LONG");
   const [orderType, setOrderType] = useState<string>("MARKET");
   const [price, setPrice] = useState<number | string>("");
   const [quantity, setQuantity] = useState<number | string>(100);
@@ -67,6 +68,9 @@ export function OrderForm({
   const isBracket = mode === "BRACKET";
   const isOCO = mode === "OCO";
   const isMarket = orderType === "MARKET";
+  const ps = positionSide === "SHORT"
+    ? PositionSide.SHORT
+    : PositionSide.LONG;
 
   function handleOrderTypeChange(v: string | null) {
     const next = v ?? "MARKET";
@@ -105,6 +109,7 @@ export function OrderForm({
               price: isMarket ? 0n : moneyToPrice(prc),
               quantity: BigInt(qty),
               timeInForce: TIME_IN_FORCE[tif] ?? TimeInForce.IOC,
+              positionSide: ps,
             },
           },
         });
@@ -166,6 +171,7 @@ export function OrderForm({
               quantity: BigInt(qty),
               takeProfitPrice: moneyToPrice(tp),
               stopLossPrice: moneyToPrice(sl),
+              positionSide: ps,
             },
           },
         });
@@ -221,6 +227,7 @@ export function OrderForm({
             entryQuantity: BigInt(qty),
             takeProfitPrice: moneyToPrice(tp),
             stopLossPrice: moneyToPrice(sl),
+            positionSide: ps,
           },
         },
       });
@@ -264,6 +271,17 @@ export function OrderForm({
             { label: "Sell", value: "SELL" },
           ]}
           color={side === "BUY" ? "green" : "red"}
+        />
+        <SegmentedControl
+          fullWidth
+          size="xs"
+          value={positionSide}
+          onChange={setPositionSide}
+          data={[
+            { label: "Long", value: "LONG" },
+            { label: "Short", value: "SHORT" },
+          ]}
+          color={positionSide === "SHORT" ? "orange" : "blue"}
         />
         {isSingle && (
           <Group grow>

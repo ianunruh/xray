@@ -158,6 +158,12 @@ func main() {
 	// consumer whose JetStream cursor is reset on every boot, so their
 	// state rebuilds from the start of the stream.
 	consumers := []*natsstore.ProjectionConsumer{
+		// shortsProjection MUST precede marginReactor in this list:
+		// the reactor reads shortsProjection state and the consumer
+		// dispatches ephemeral projections in slice order within a
+		// batch. Same-consumer placement also avoids the cross-consumer
+		// race where the reactor could see a TradeExecuted before
+		// shortsProjection caught up to the prior ShortOpened.
 		natsstore.NewProjectionConsumer(js, registry, log, "ephemeral").
 			WithEphemeral(depthProjection, candleProjection, markProjection, shortsProjection, marginReactor, broker, portfolioBroker),
 		natsstore.NewProjectionConsumer(js, registry, log, "trade-projection").
