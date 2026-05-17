@@ -18,7 +18,7 @@ import { PortfolioPanel } from "./components/PortfolioPanel";
 import { BracketsPanel } from "./components/BracketsPanel";
 import { OcosPanel } from "./components/OcosPanel";
 import { MarketPanel } from "./components/MarketPanel";
-import { OrderForm } from "./components/OrderForm";
+import { OrderForm, type OrderPrefill } from "./components/OrderForm";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { ChainPanel } from "./components/ChainPanel";
 import { orderBookClient, portfolioClient } from "./client";
@@ -60,6 +60,16 @@ export function App() {
   const [newAccId, setNewAccId] = useState("");
   const [newAccDeposit, setNewAccDeposit] = useState<number | string>("");
   const [newAccLoading, setNewAccLoading] = useState(false);
+  const [orderPrefill, setOrderPrefill] = useState<OrderPrefill | null>(null);
+
+  // Receive a prefill from a portfolio table menu. Switches the
+  // active symbol (so MarketPanel + OrderForm focus on it) and pushes
+  // the prefill down to OrderForm via prop.
+  function applyOrderPrefill(p: OrderPrefill) {
+    setSymbol(p.symbol);
+    setParam("symbol", p.symbol);
+    setOrderPrefill(p);
+  }
 
   function refreshAccounts() {
     portfolioClient.listPortfolios({}).then((r) => setAccounts(r.accountIds));
@@ -191,16 +201,16 @@ export function App() {
         ) : account && symbol ? (
           <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
             <Stack gap="md">
-              <PortfolioPanel accountId={account} symbols={symbols} onJumpToAggregate={jumpToAggregate} />
+              <PortfolioPanel accountId={account} symbols={symbols} onJumpToAggregate={jumpToAggregate} onPrefillOrder={applyOrderPrefill} />
               <BracketsPanel accountId={account} onJumpToAggregate={jumpToAggregate} />
               <OcosPanel accountId={account} onJumpToAggregate={jumpToAggregate} />
-              <OrderForm accountId={account} symbol={symbol} />
+              <OrderForm accountId={account} symbol={symbol} prefill={orderPrefill} />
             </Stack>
             <MarketPanel symbol={symbol} />
           </SimpleGrid>
         ) : (
           <Stack gap="md">
-            {account && <PortfolioPanel accountId={account} symbols={symbols} onJumpToAggregate={jumpToAggregate} />}
+            {account && <PortfolioPanel accountId={account} symbols={symbols} onJumpToAggregate={jumpToAggregate} onPrefillOrder={applyOrderPrefill} />}
             {account && <BracketsPanel accountId={account} onJumpToAggregate={jumpToAggregate} />}
             {account && <OcosPanel accountId={account} onJumpToAggregate={jumpToAggregate} />}
             {symbol && <MarketPanel symbol={symbol} />}

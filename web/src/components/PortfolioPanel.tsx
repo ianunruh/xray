@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   Group,
+  Menu,
   Modal,
   NumberInput,
   Stack,
@@ -15,9 +16,10 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import type { OrderPrefill } from "./OrderForm";
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import { formatMoney, formatPrice, formatQuantity, moneyToPrice } from "../format";
+import { formatMoney, formatPrice, formatQuantity, moneyToPrice, priceToNumber } from "../format";
 import { PositionSide, Side } from "../gen/orderbook/v1/events_pb";
 import { OrderStatus } from "../gen/portfolio/v1/service_pb";
 import { usePortfolio } from "../hooks/usePortfolio";
@@ -314,10 +316,12 @@ export function PortfolioPanel({
   accountId,
   symbols,
   onJumpToAggregate,
+  onPrefillOrder,
 }: {
   accountId: string;
   symbols?: string[];
   onJumpToAggregate?: (aggregateId: string) => void;
+  onPrefillOrder?: (p: OrderPrefill) => void;
 }) {
   const portfolio = usePortfolio(accountId);
   const margin = useMarginSnapshot(accountId);
@@ -500,6 +504,7 @@ export function PortfolioPanel({
                   <Table.Th ta="right">Mark</Table.Th>
                   <Table.Th ta="right">Liability</Table.Th>
                   <Table.Th ta="right">Unrealized P&L</Table.Th>
+                  <Table.Th />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -537,6 +542,50 @@ export function PortfolioPanel({
                       >
                         {p.markMissing ? "—" : formatMoney(p.unrealizedPnl)}
                       </Table.Td>
+                      <Table.Td>
+                        <Group justify="flex-end">
+                          {onPrefillOrder && p.quantity > 0n && (
+                            <Menu shadow="md" position="bottom-end" withinPortal>
+                              <Menu.Target>
+                                <ActionIcon size="xs" variant="subtle" color="gray" title="Position actions">
+                                  ⋯
+                                </ActionIcon>
+                              </Menu.Target>
+                              <Menu.Dropdown>
+                                <Menu.Item
+                                  onClick={() =>
+                                    onPrefillOrder({
+                                      symbol: p.symbol,
+                                      action: "COVER",
+                                      quantity: Number(p.quantity),
+                                      orderType: "MARKET",
+                                      nonce: Date.now(),
+                                    })
+                                  }
+                                >
+                                  Close Position
+                                </Menu.Item>
+                                <Menu.Item
+                                  // Short profits when price drops. 50% gain on
+                                  // avg-open notional ⇒ cover at avg * 0.5.
+                                  onClick={() =>
+                                    onPrefillOrder({
+                                      symbol: p.symbol,
+                                      action: "COVER",
+                                      quantity: Number(p.quantity),
+                                      orderType: "LIMIT",
+                                      price: priceToNumber(p.avgPrice) * 0.5,
+                                      nonce: Date.now(),
+                                    })
+                                  }
+                                >
+                                  Close at 50% profit
+                                </Menu.Item>
+                              </Menu.Dropdown>
+                            </Menu>
+                          )}
+                        </Group>
+                      </Table.Td>
                     </Table.Tr>
                   ))}
               </Table.Tbody>
@@ -556,6 +605,7 @@ export function PortfolioPanel({
                   <Table.Th ta="right">Total Cost</Table.Th>
                   <Table.Th ta="right">Held</Table.Th>
                   <Table.Th ta="right">Realized P&L</Table.Th>
+                  <Table.Th />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -573,6 +623,50 @@ export function PortfolioPanel({
                       c={h.realizedPnl >= 0n ? "green" : "red"}
                     >
                       {formatMoney(h.realizedPnl)}
+                    </Table.Td>
+                    <Table.Td>
+                      <Group justify="flex-end">
+                        {onPrefillOrder && h.quantity > 0n && (
+                          <Menu shadow="md" position="bottom-end" withinPortal>
+                            <Menu.Target>
+                              <ActionIcon size="xs" variant="subtle" color="gray" title="Position actions">
+                                ⋯
+                              </ActionIcon>
+                            </Menu.Target>
+                            <Menu.Dropdown>
+                              <Menu.Item
+                                onClick={() =>
+                                  onPrefillOrder({
+                                    symbol: h.symbol,
+                                    action: "SELL",
+                                    quantity: Number(h.quantity),
+                                    orderType: "MARKET",
+                                    nonce: Date.now(),
+                                  })
+                                }
+                              >
+                                Close Position
+                              </Menu.Item>
+                              <Menu.Item
+                                // Long profits when price climbs. 50% gain on
+                                // avg cost ⇒ sell at avgCost * 1.5.
+                                onClick={() =>
+                                  onPrefillOrder({
+                                    symbol: h.symbol,
+                                    action: "SELL",
+                                    quantity: Number(h.quantity),
+                                    orderType: "LIMIT",
+                                    price: priceToNumber(h.averageCost) * 1.5,
+                                    nonce: Date.now(),
+                                  })
+                                }
+                              >
+                                Close at 50% profit
+                              </Menu.Item>
+                            </Menu.Dropdown>
+                          </Menu>
+                        )}
+                      </Group>
                     </Table.Td>
                   </Table.Tr>
                 ))}
@@ -614,28 +708,30 @@ export function PortfolioPanel({
                       </Table.Td>
                       <Table.Td>{orderStatusName(o.status)}</Table.Td>
                       <Table.Td>
-                        <Group gap={4} wrap="nowrap" justify="flex-end">
-                          {onJumpToAggregate && (
-                            <ActionIcon
-                              size="xs"
-                              variant="subtle"
-                              color="grape"
-                              onClick={() => onJumpToAggregate(`order-saga:${o.sagaId}`)}
-                              title="View saga in Diagnostics"
-                            >
-                              ⇢
-                            </ActionIcon>
-                          )}
-                          <ActionIcon
-                            size="xs"
-                            variant="subtle"
-                            color="red"
-                            loading={cancellingId === o.sagaId}
-                            onClick={() => handleCancel(o.sagaId, o.symbol)}
-                            title="Cancel order"
-                          >
-                            X
-                          </ActionIcon>
+                        <Group justify="flex-end">
+                          <Menu shadow="md" position="bottom-end" withinPortal>
+                            <Menu.Target>
+                              <ActionIcon size="xs" variant="subtle" color="gray" title="Order actions">
+                                ⋯
+                              </ActionIcon>
+                            </Menu.Target>
+                            <Menu.Dropdown>
+                              <Menu.Item
+                                color="red"
+                                disabled={cancellingId === o.sagaId}
+                                onClick={() => handleCancel(o.sagaId, o.symbol)}
+                              >
+                                Cancel
+                              </Menu.Item>
+                              {onJumpToAggregate && (
+                                <Menu.Item
+                                  onClick={() => onJumpToAggregate(`order-saga:${o.sagaId}`)}
+                                >
+                                  View Event Log
+                                </Menu.Item>
+                              )}
+                            </Menu.Dropdown>
+                          </Menu>
                         </Group>
                       </Table.Td>
                     </Table.Tr>
@@ -684,17 +780,24 @@ export function PortfolioPanel({
                       </Text>
                     </Table.Td>
                     <Table.Td>
-                      {onJumpToAggregate && (
-                        <ActionIcon
-                          size="xs"
-                          variant="subtle"
-                          color="grape"
-                          onClick={() => onJumpToAggregate(`order-saga:${o.sagaId}`)}
-                          title="View saga in Diagnostics"
-                        >
-                          ⇢
-                        </ActionIcon>
-                      )}
+                      <Group justify="flex-end">
+                        {onJumpToAggregate && (
+                          <Menu shadow="md" position="bottom-end" withinPortal>
+                            <Menu.Target>
+                              <ActionIcon size="xs" variant="subtle" color="gray" title="Order actions">
+                                ⋯
+                              </ActionIcon>
+                            </Menu.Target>
+                            <Menu.Dropdown>
+                              <Menu.Item
+                                onClick={() => onJumpToAggregate(`order-saga:${o.sagaId}`)}
+                              >
+                                View Event Log
+                              </Menu.Item>
+                            </Menu.Dropdown>
+                          </Menu>
+                        )}
+                      </Group>
                     </Table.Td>
                   </Table.Tr>
                 ))}
@@ -716,7 +819,7 @@ export function PortfolioPanel({
                   <Table.Th ta="right">Equity at issue</Table.Th>
                   <Table.Th ta="right">Maint. req.</Table.Th>
                   <Table.Th>Status</Table.Th>
-                  <Table.Th>Liquidations</Table.Th>
+                  <Table.Th />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -765,26 +868,33 @@ export function PortfolioPanel({
                         )}
                       </Table.Td>
                       <Table.Td>
-                        <Group gap={4} wrap="nowrap">
+                        <Group justify="flex-end">
                           {c.liquidationSagaIds.length === 0 ? (
                             <Text size="xs" c="dimmed">
                               —
                             </Text>
+                          ) : onJumpToAggregate ? (
+                            <Menu shadow="md" position="bottom-end" withinPortal>
+                              <Menu.Target>
+                                <ActionIcon size="xs" variant="subtle" color="gray" title="Call actions">
+                                  ⋯
+                                </ActionIcon>
+                              </Menu.Target>
+                              <Menu.Dropdown>
+                                {c.liquidationSagaIds.map((sid) => (
+                                  <Menu.Item
+                                    key={sid}
+                                    onClick={() => onJumpToAggregate(`order-saga:${sid}`)}
+                                  >
+                                    Go to liquidation: {sid}
+                                  </Menu.Item>
+                                ))}
+                              </Menu.Dropdown>
+                            </Menu>
                           ) : (
-                            c.liquidationSagaIds.map((sid) => (
-                              <ActionIcon
-                                key={sid}
-                                size="xs"
-                                variant="subtle"
-                                color="grape"
-                                onClick={() =>
-                                  onJumpToAggregate?.(`order-saga:${sid}`)
-                                }
-                                title="View liquidation saga in Diagnostics"
-                              >
-                                ⇢
-                              </ActionIcon>
-                            ))
+                            <Text size="xs" c="dimmed">
+                              {c.liquidationSagaIds.length}
+                            </Text>
                           )}
                         </Group>
                       </Table.Td>
