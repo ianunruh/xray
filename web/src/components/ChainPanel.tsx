@@ -6,6 +6,7 @@ import {
   Button,
   Code,
   Group,
+  LoadingOverlay,
   ScrollArea,
   Stack,
   Text,
@@ -160,32 +161,36 @@ export function ChainPanel({
         </Button>
       </Group>
 
-      {correlation && !loading && events.length === 0 && (
-        <Text size="sm" c="dimmed">
-          No events for correlation_id {correlation}
-        </Text>
-      )}
-
-      {events.length > 0 && (
+      {correlation && (
         <>
           <Text size="xs" c="dimmed">
-            {events.length} events · {tree.roots.length}{" "}
-            {tree.roots.length === 1 ? "root" : "roots"}
+            {events.length > 0
+              ? `${events.length} events · ${tree.roots.length} ${tree.roots.length === 1 ? "root" : "roots"}`
+              : loading
+                ? "Loading…"
+                : `No events for correlation_id ${correlation}`}
           </Text>
-          <ScrollArea h="calc(100vh - 220px)">
-            <Stack gap={2}>
-              {tree.roots.map((root) => (
-                <ChainNode
-                  key={root.id}
-                  event={root}
-                  depth={0}
-                  childMap={tree.childMap}
-                  expanded={expanded}
-                  onToggle={toggle}
-                />
-              ))}
-            </Stack>
-          </ScrollArea>
+          <Box pos="relative" h="calc(100vh - 220px)">
+            <LoadingOverlay
+              visible={loading}
+              zIndex={2}
+              overlayProps={{ blur: 1 }}
+            />
+            <ScrollArea h="calc(100vh - 220px)">
+              <Stack gap={2}>
+                {tree.roots.map((root) => (
+                  <ChainNode
+                    key={root.id}
+                    event={root}
+                    depth={0}
+                    childMap={tree.childMap}
+                    expanded={expanded}
+                    onToggle={toggle}
+                  />
+                ))}
+              </Stack>
+            </ScrollArea>
+          </Box>
         </>
       )}
     </Stack>

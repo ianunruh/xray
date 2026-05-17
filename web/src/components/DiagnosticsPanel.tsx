@@ -6,6 +6,7 @@ import {
   Button,
   Code,
   Group,
+  LoadingOverlay,
   ScrollArea,
   Select,
   Stack,
@@ -218,7 +219,13 @@ export function DiagnosticsPanel({
           <Text size="sm" c="dimmed">
             Aggregates ({aggregates.length})
           </Text>
-          <ScrollArea h={500}>
+          <Box pos="relative" h={500}>
+            <LoadingOverlay
+              visible={aggregatesLoading}
+              zIndex={2}
+              overlayProps={{ blur: 1 }}
+            />
+            <ScrollArea h={500}>
             <Table highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
@@ -269,7 +276,8 @@ export function DiagnosticsPanel({
                 ))}
               </Table.Tbody>
             </Table>
-          </ScrollArea>
+            </ScrollArea>
+          </Box>
         </Stack>
 
         <Stack gap="xs" style={{ flexGrow: 1, minWidth: 0 }}>
@@ -297,7 +305,13 @@ export function DiagnosticsPanel({
             </Text>
           </Group>
 
-          <ScrollArea h={500}>
+          <Box pos="relative" h={500}>
+            <LoadingOverlay
+              visible={eventsLoading}
+              zIndex={2}
+              overlayProps={{ blur: 1 }}
+            />
+            <ScrollArea h={500}>
             <Table highlightOnHover striped>
               <Table.Thead
                 style={{
@@ -344,7 +358,8 @@ export function DiagnosticsPanel({
                 ))}
               </Table.Tbody>
             </Table>
-          </ScrollArea>
+            </ScrollArea>
+          </Box>
         </Stack>
       </Group>
     </Stack>
