@@ -275,6 +275,7 @@ export function App() {
                 }}
                 searchable
                 clearable
+                checkIconPosition="right"
               />
               <Button size="xs" variant="subtle" onClick={newAccHandlers.open}>
                 + New
@@ -291,6 +292,7 @@ export function App() {
                 }}
                 searchable
                 clearable
+                checkIconPosition="right"
               />
             </>
           )}

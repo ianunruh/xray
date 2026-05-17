@@ -291,6 +291,7 @@ export function DiagnosticsPanel({
               clearable
               searchable
               size="xs"
+              checkIconPosition="right"
             />
             <TextInput
               label="Search"
