@@ -1,11 +1,21 @@
 import { useState } from "react";
-import { ActionIcon, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { ActionIcon, Card, Group, Stack, Table, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Side } from "../../src/gen/orderbook/v1/events_pb";
 import { BracketPhase } from "../../src/gen/saga/v1/saga_pb";
 import { sagaClient } from "~/lib/client";
-import { useBrackets } from "../hooks/useBrackets";
 import { formatPrice, formatQuantity } from "~/lib/format";
+
+export type BracketRow = {
+  sagaId: string;
+  symbol: string;
+  entrySide: Side;
+  entryPrice: bigint;
+  entryQuantity: bigint;
+  takeProfitPrice: bigint;
+  stopLossPrice: bigint;
+  phase: BracketPhase;
+};
 
 function phaseName(p: BracketPhase): string {
   switch (p) {
@@ -23,16 +33,15 @@ function sideName(s: Side): string {
 }
 
 export function BracketsPanel({
-  accountId,
+  rows,
   onJumpToAggregate,
 }: {
-  accountId: string;
+  rows: BracketRow[];
   onJumpToAggregate?: (aggregateId: string) => void;
 }) {
-  const brackets = useBrackets(accountId);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  if (brackets.length === 0) {
+  if (rows.length === 0) {
     return null;
   }
 
@@ -74,58 +83,44 @@ export function BracketsPanel({
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {brackets.map((b) => {
-              const d = b.details.case === "bracket" ? b.details.value : null;
-              if (!d) {
-                return (
-                  <Table.Tr key={b.sagaId}>
-                    <Table.Td colSpan={8}>
-                      <Text c="dimmed" size="xs">
-                        Saga {b.sagaId}: missing bracket details
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                );
-              }
-              return (
-                <Table.Tr key={b.sagaId}>
-                  <Table.Td>{b.symbol}</Table.Td>
-                  <Table.Td c={d.entrySide === Side.BUY ? "green" : "red"}>
-                    {sideName(d.entrySide)}
-                  </Table.Td>
-                  <Table.Td ta="right">{formatPrice(d.entryPrice)}</Table.Td>
-                  <Table.Td ta="right">{formatQuantity(d.entryQuantity)}</Table.Td>
-                  <Table.Td ta="right">{formatPrice(d.takeProfitPrice)}</Table.Td>
-                  <Table.Td ta="right">{formatPrice(d.stopLossPrice)}</Table.Td>
-                  <Table.Td>{phaseName(d.phase)}</Table.Td>
-                  <Table.Td>
-                    <Group gap={4} wrap="nowrap" justify="flex-end">
-                      {onJumpToAggregate && (
-                        <ActionIcon
-                          size="xs"
-                          variant="subtle"
-                          color="grape"
-                          onClick={() => onJumpToAggregate(`bracket-saga:${b.sagaId}`)}
-                          title="View saga in Diagnostics"
-                        >
-                          ⇢
-                        </ActionIcon>
-                      )}
+            {rows.map((b) => (
+              <Table.Tr key={b.sagaId}>
+                <Table.Td>{b.symbol}</Table.Td>
+                <Table.Td c={b.entrySide === Side.BUY ? "green" : "red"}>
+                  {sideName(b.entrySide)}
+                </Table.Td>
+                <Table.Td ta="right">{formatPrice(b.entryPrice)}</Table.Td>
+                <Table.Td ta="right">{formatQuantity(b.entryQuantity)}</Table.Td>
+                <Table.Td ta="right">{formatPrice(b.takeProfitPrice)}</Table.Td>
+                <Table.Td ta="right">{formatPrice(b.stopLossPrice)}</Table.Td>
+                <Table.Td>{phaseName(b.phase)}</Table.Td>
+                <Table.Td>
+                  <Group gap={4} wrap="nowrap" justify="flex-end">
+                    {onJumpToAggregate && (
                       <ActionIcon
                         size="xs"
                         variant="subtle"
-                        color="red"
-                        loading={cancellingId === b.sagaId}
-                        onClick={() => handleCancel(b.sagaId, b.symbol)}
-                        title="Cancel bracket"
+                        color="grape"
+                        onClick={() => onJumpToAggregate(`bracket-saga:${b.sagaId}`)}
+                        title="View saga in Events"
                       >
-                        X
+                        ⇢
                       </ActionIcon>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              );
-            })}
+                    )}
+                    <ActionIcon
+                      size="xs"
+                      variant="subtle"
+                      color="red"
+                      loading={cancellingId === b.sagaId}
+                      onClick={() => handleCancel(b.sagaId, b.symbol)}
+                      title="Cancel bracket"
+                    >
+                      X
+                    </ActionIcon>
+                  </Group>
+                </Table.Td>
+              </Table.Tr>
+            ))}
           </Table.Tbody>
         </Table>
       </Stack>

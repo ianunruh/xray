@@ -1,11 +1,21 @@
 import { useState } from "react";
-import { ActionIcon, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { ActionIcon, Card, Group, Stack, Table, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Side } from "../../src/gen/orderbook/v1/events_pb";
 import { OCOPhase } from "../../src/gen/saga/v1/saga_pb";
 import { sagaClient } from "~/lib/client";
-import { useOcos } from "../hooks/useOcos";
 import { formatPrice, formatQuantity } from "~/lib/format";
+
+export type OcoRow = {
+  sagaId: string;
+  symbol: string;
+  exitSide: Side;
+  quantity: bigint;
+  takeProfitPrice: bigint;
+  stopLossPrice: bigint;
+  settledQuantity: bigint;
+  phase: OCOPhase;
+};
 
 function phaseName(p: OCOPhase): string {
   switch (p) {
@@ -25,16 +35,15 @@ function sideName(s: Side): string {
 }
 
 export function OcosPanel({
-  accountId,
+  rows,
   onJumpToAggregate,
 }: {
-  accountId: string;
+  rows: OcoRow[];
   onJumpToAggregate?: (aggregateId: string) => void;
 }) {
-  const ocos = useOcos(accountId);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  if (ocos.length === 0) {
+  if (rows.length === 0) {
     return null;
   }
 
@@ -76,58 +85,44 @@ export function OcosPanel({
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {ocos.map((o) => {
-              const d = o.details.case === "oco" ? o.details.value : null;
-              if (!d) {
-                return (
-                  <Table.Tr key={o.sagaId}>
-                    <Table.Td colSpan={8}>
-                      <Text c="dimmed" size="xs">
-                        Saga {o.sagaId}: missing OCO details
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                );
-              }
-              return (
-                <Table.Tr key={o.sagaId}>
-                  <Table.Td>{o.symbol}</Table.Td>
-                  <Table.Td c={d.exitSide === Side.BUY ? "green" : "red"}>
-                    {sideName(d.exitSide)}
-                  </Table.Td>
-                  <Table.Td ta="right">{formatQuantity(d.quantity)}</Table.Td>
-                  <Table.Td ta="right">{formatPrice(d.takeProfitPrice)}</Table.Td>
-                  <Table.Td ta="right">{formatPrice(d.stopLossPrice)}</Table.Td>
-                  <Table.Td ta="right">{formatQuantity(d.settledQuantity)}</Table.Td>
-                  <Table.Td>{phaseName(d.phase)}</Table.Td>
-                  <Table.Td>
-                    <Group gap={4} wrap="nowrap" justify="flex-end">
-                      {onJumpToAggregate && (
-                        <ActionIcon
-                          size="xs"
-                          variant="subtle"
-                          color="grape"
-                          onClick={() => onJumpToAggregate(`oco-saga:${o.sagaId}`)}
-                          title="View saga in Diagnostics"
-                        >
-                          ⇢
-                        </ActionIcon>
-                      )}
+            {rows.map((o) => (
+              <Table.Tr key={o.sagaId}>
+                <Table.Td>{o.symbol}</Table.Td>
+                <Table.Td c={o.exitSide === Side.BUY ? "green" : "red"}>
+                  {sideName(o.exitSide)}
+                </Table.Td>
+                <Table.Td ta="right">{formatQuantity(o.quantity)}</Table.Td>
+                <Table.Td ta="right">{formatPrice(o.takeProfitPrice)}</Table.Td>
+                <Table.Td ta="right">{formatPrice(o.stopLossPrice)}</Table.Td>
+                <Table.Td ta="right">{formatQuantity(o.settledQuantity)}</Table.Td>
+                <Table.Td>{phaseName(o.phase)}</Table.Td>
+                <Table.Td>
+                  <Group gap={4} wrap="nowrap" justify="flex-end">
+                    {onJumpToAggregate && (
                       <ActionIcon
                         size="xs"
                         variant="subtle"
-                        color="red"
-                        loading={cancellingId === o.sagaId}
-                        onClick={() => handleCancel(o.sagaId, o.symbol)}
-                        title="Cancel OCO"
+                        color="grape"
+                        onClick={() => onJumpToAggregate(`oco-saga:${o.sagaId}`)}
+                        title="View saga in Events"
                       >
-                        X
+                        ⇢
                       </ActionIcon>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              );
-            })}
+                    )}
+                    <ActionIcon
+                      size="xs"
+                      variant="subtle"
+                      color="red"
+                      loading={cancellingId === o.sagaId}
+                      onClick={() => handleCancel(o.sagaId, o.symbol)}
+                      title="Cancel OCO"
+                    >
+                      X
+                    </ActionIcon>
+                  </Group>
+                </Table.Td>
+              </Table.Tr>
+            ))}
           </Table.Tbody>
         </Table>
       </Stack>

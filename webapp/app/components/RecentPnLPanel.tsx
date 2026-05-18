@@ -1,10 +1,16 @@
 import { Badge, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
-import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { PositionSide, Side } from "../../src/gen/orderbook/v1/events_pb";
-import { usePnL } from "../hooks/usePnL";
 import { formatMoney, formatQuantity } from "~/lib/format";
 
-const HISTORY_LIMIT = 25;
+export type RealizedPnlRow = {
+  symbol: string;
+  side: Side;
+  positionSide: PositionSide;
+  quantity: bigint;
+  price: bigint;
+  realizedPnl: bigint;
+  settledAtMs: number;
+};
 
 function sideName(s: Side): string {
   return s === Side.BUY ? "BUY" : s === Side.SELL ? "SELL" : "—";
@@ -25,32 +31,16 @@ function positionBadge(ps: PositionSide) {
   );
 }
 
-function formatTime(ts: Timestamp | undefined): string {
-  if (!ts) return "—";
-  const ms = Number(ts.seconds) * 1000 + Math.floor(ts.nanos / 1_000_000);
+function formatTime(ms: number): string {
+  if (!ms) return "—";
   return new Date(ms).toLocaleTimeString();
 }
 
-// RecentPnLPanel renders the per-fill realized-P&L history from
-// PortfolioService.GetPnL. Only entries with non-zero realized P&L are
-// shown — these are the closing fills (SELL+LONG or BUY+SHORT) that
-// actually crystallize a gain or loss. Opening fills appear in the
-// portfolio orders table instead.
-export function RecentPnLPanel({ accountId }: { accountId: string }) {
-  const pnl = usePnL(accountId);
-
-  if (!pnl) {
-    return null;
-  }
-
-  // Newest first; cap to HISTORY_LIMIT rows. The server already orders
-  // by settled_at ascending, so reverse for newest-first display.
-  const closing = pnl.history
-    .filter((h) => h.realizedPnl !== 0n)
-    .slice(-HISTORY_LIMIT)
-    .reverse();
-
-  if (closing.length === 0) {
+// RecentPnLPanel renders the per-fill realized-P&L history. Loader
+// pre-filters to closing fills (SELL+LONG or BUY+SHORT — fills that
+// actually crystallize a gain or loss) and caps the list.
+export function RecentPnLPanel({ rows }: { rows: RealizedPnlRow[] }) {
+  if (rows.length === 0) {
     return null;
   }
 
@@ -60,7 +50,7 @@ export function RecentPnLPanel({ accountId }: { accountId: string }) {
         <Group justify="space-between" align="baseline">
           <Title order={5}>Recent Realized P&L</Title>
           <Text size="xs" c="dimmed">
-            Last {closing.length} closing fill{closing.length === 1 ? "" : "s"}
+            Last {rows.length} closing fill{rows.length === 1 ? "" : "s"}
           </Text>
         </Group>
         <Table striped highlightOnHover>
@@ -75,11 +65,11 @@ export function RecentPnLPanel({ accountId }: { accountId: string }) {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {closing.map((h, i) => (
+            {rows.map((h, i) => (
               <Table.Tr key={`${h.symbol}-${h.side}-${i}`}>
                 <Table.Td>
                   <Text size="xs" ff="monospace">
-                    {formatTime(h.settledAt)}
+                    {formatTime(h.settledAtMs)}
                   </Text>
                 </Table.Td>
                 <Table.Td>

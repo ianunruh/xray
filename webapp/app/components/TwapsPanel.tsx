@@ -6,40 +6,47 @@ import {
   Progress,
   Stack,
   Table,
-  Text,
-  Title,
   Tooltip,
+  Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Side } from "../../src/gen/orderbook/v1/events_pb";
-import type { TWAPDetails } from "../../src/gen/saga/v1/saga_pb";
 import { sagaClient } from "~/lib/client";
-import { useTwaps } from "../hooks/useTwaps";
 import { formatPrice, formatQuantity } from "~/lib/format";
+
+export type TwapRow = {
+  sagaId: string;
+  symbol: string;
+  side: Side;
+  totalQuantity: bigint;
+  limitPrice: bigint;
+  totalFilledQuantity: bigint;
+  totalCashSettled: bigint;
+  sliceCount: number;
+  slicesLaunched: number;
+  completedSlices: number;
+  sliceIntervalMs: bigint;
+};
 
 function sideName(s: Side): string {
   return s === Side.BUY ? "BUY" : s === Side.SELL ? "SELL" : "—";
 }
 
-// avgFillPrice derives the weighted-avg fill price across all completed
-// slices as cash_settled / filled_qty. Returns null when nothing has
-// filled yet, so the UI can render a dash.
-function avgFillPrice(d: TWAPDetails): bigint | null {
-  if (d.totalFilledQuantity === 0n) return null;
-  return d.totalCashSettled / d.totalFilledQuantity;
+function avgFillPrice(filled: bigint, cash: bigint): bigint | null {
+  if (filled === 0n) return null;
+  return cash / filled;
 }
 
 export function TwapsPanel({
-  accountId,
+  rows,
   onJumpToAggregate,
 }: {
-  accountId: string;
+  rows: TwapRow[];
   onJumpToAggregate?: (aggregateId: string) => void;
 }) {
-  const twaps = useTwaps(accountId);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  if (twaps.length === 0) {
+  if (rows.length === 0) {
     return null;
   }
 
@@ -81,40 +88,28 @@ export function TwapsPanel({
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {twaps.map((t) => {
-              const d = t.details.case === "twap" ? t.details.value : null;
-              if (!d) {
-                return (
-                  <Table.Tr key={t.sagaId}>
-                    <Table.Td colSpan={8}>
-                      <Text c="dimmed" size="xs">
-                        Saga {t.sagaId}: missing TWAP details
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                );
-              }
-              const sliceCount = d.sliceCount;
-              const launched = d.slicesLaunched;
-              const completed = d.slices.filter((s) => s.completed).length;
+            {rows.map((t) => {
               // Two-segment progress: filled completed (green) + in-flight
               // launched-but-not-completed (yellow). Remaining is grey.
-              const completedPct = sliceCount > 0 ? (completed / sliceCount) * 100 : 0;
+              const completedPct =
+                t.sliceCount > 0 ? (t.completedSlices / t.sliceCount) * 100 : 0;
               const inFlightPct =
-                sliceCount > 0 ? ((launched - completed) / sliceCount) * 100 : 0;
-              const avg = avgFillPrice(d);
-              const intervalSec = Number(d.sliceIntervalMs) / 1000;
+                t.sliceCount > 0
+                  ? ((t.slicesLaunched - t.completedSlices) / t.sliceCount) * 100
+                  : 0;
+              const avg = avgFillPrice(t.totalFilledQuantity, t.totalCashSettled);
+              const intervalSec = Number(t.sliceIntervalMs) / 1000;
               return (
                 <Table.Tr key={t.sagaId}>
                   <Table.Td>{t.symbol}</Table.Td>
-                  <Table.Td c={d.side === Side.BUY ? "green" : "red"}>
-                    {sideName(d.side)}
+                  <Table.Td c={t.side === Side.BUY ? "green" : "red"}>
+                    {sideName(t.side)}
                   </Table.Td>
-                  <Table.Td ta="right">{formatQuantity(d.totalQuantity)}</Table.Td>
-                  <Table.Td ta="right">{formatPrice(d.limitPrice)}</Table.Td>
+                  <Table.Td ta="right">{formatQuantity(t.totalQuantity)}</Table.Td>
+                  <Table.Td ta="right">{formatPrice(t.limitPrice)}</Table.Td>
                   <Table.Td>
                     <Tooltip
-                      label={`${completed}/${sliceCount} slices filled · every ${intervalSec}s`}
+                      label={`${t.completedSlices}/${t.sliceCount} slices filled · every ${intervalSec}s`}
                     >
                       <Progress.Root size="md" w={120}>
                         <Progress.Section value={completedPct} color="green" />
@@ -122,7 +117,9 @@ export function TwapsPanel({
                       </Progress.Root>
                     </Tooltip>
                   </Table.Td>
-                  <Table.Td ta="right">{formatQuantity(d.totalFilledQuantity)}</Table.Td>
+                  <Table.Td ta="right">
+                    {formatQuantity(t.totalFilledQuantity)}
+                  </Table.Td>
                   <Table.Td ta="right">
                     {avg === null ? "—" : formatPrice(avg)}
                   </Table.Td>
@@ -134,7 +131,7 @@ export function TwapsPanel({
                           variant="subtle"
                           color="grape"
                           onClick={() => onJumpToAggregate(`twap-saga:${t.sagaId}`)}
-                          title="View saga in Diagnostics"
+                          title="View saga in Events"
                         >
                           ⇢
                         </ActionIcon>
