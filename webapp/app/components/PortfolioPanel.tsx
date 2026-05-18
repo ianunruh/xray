@@ -517,23 +517,51 @@ export function PortfolioSummary({
           </Button>
         </Group>
         <Collapse in={detailsOpen}>
-          <Group gap="xl">
-            <Stat label="Cash Held" value={formatMoney(portfolio.cashHeld)} />
-            {margin && (
-              <>
-                <Stat label="Equity" value={formatMoney(margin.equity)} />
+          <Stack gap="xs">
+            <Group gap="xl">
+              <Stat label="Cash Held" value={formatMoney(portfolio.cashHeld)} />
+              {margin && (
+                <>
+                  <Stat label="Equity" value={formatMoney(margin.equity)} />
+                  <Stat
+                    label="Maint. Req."
+                    value={formatMoney(margin.maintenanceRequirement)}
+                  />
+                  <Stat
+                    label="Margin Excess"
+                    value={formatMoney(margin.marginExcess)}
+                    color={margin.marginExcess >= 0n ? "green" : "red"}
+                  />
+                </>
+              )}
+            </Group>
+            {margin && margin.maintenanceRequirement > 0n && (
+              <Group gap="xl">
                 <Stat
-                  label="Maint. Req."
-                  value={formatMoney(margin.maintenanceRequirement)}
+                  label="Long Maint."
+                  value={formatMoney(margin.longMaintenanceRequirement)}
                 />
                 <Stat
-                  label="Margin Excess"
-                  value={formatMoney(margin.marginExcess)}
-                  color={margin.marginExcess >= 0n ? "green" : "red"}
+                  label="Short Maint."
+                  value={formatMoney(margin.shortMaintenanceRequirement)}
                 />
-              </>
+                {(margin.shortMaintenanceRequirement > 0n ||
+                  margin.collateralPool > 0n ||
+                  margin.proceedsPool > 0n) && (
+                  <>
+                    <Stat
+                      label="Collateral Pool"
+                      value={formatMoney(margin.collateralPool)}
+                    />
+                    <Stat
+                      label="Proceeds Pool"
+                      value={formatMoney(margin.proceedsPool)}
+                    />
+                  </>
+                )}
+              </Group>
             )}
-          </Group>
+          </Stack>
         </Collapse>
 
         {margin && margin.missingMarks.length > 0 && (
