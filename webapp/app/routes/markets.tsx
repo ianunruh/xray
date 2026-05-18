@@ -15,6 +15,7 @@ import {
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useFetcher, useRevalidator } from "react-router";
+import { Code, ConnectError } from "@connectrpc/connect";
 import type { Route } from "./+types/markets";
 import { orderBookClient } from "~/lib/client.server";
 import { formatPrice, formatQuantity } from "~/lib/format";
@@ -40,24 +41,46 @@ type UncrossSummary = {
 type MarketRow = {
   symbol: string;
   phase: MarketPhase;
+  lastTradePrice: bigint;
+  // Most recent official close price; 0 means no close on record yet.
+  lastClosePrice: bigint;
+  lastCloseDate: string;
 };
 
 export async function loader() {
   const { symbols } = await orderBookClient.listSymbols({});
   const rows: MarketRow[] = await Promise.all(
     symbols.map(async (s) => {
-      try {
-        const r = await orderBookClient.getOrderBook({ symbol: s });
-        return {
-          symbol: s,
-          phase:
-            r.phase === MarketPhase.UNSPECIFIED
-              ? MarketPhase.CONTINUOUS
-              : r.phase,
-        };
-      } catch {
-        return { symbol: s, phase: MarketPhase.CONTINUOUS };
+      const [bookR, closeR] = await Promise.allSettled([
+        orderBookClient.getOrderBook({ symbol: s }),
+        orderBookClient.getOfficialClose({ symbol: s, sessionDate: "" }),
+      ]);
+
+      const phase =
+        bookR.status === "fulfilled" &&
+        bookR.value.phase !== MarketPhase.UNSPECIFIED
+          ? bookR.value.phase
+          : MarketPhase.CONTINUOUS;
+      const lastTradePrice =
+        bookR.status === "fulfilled" ? bookR.value.lastTradePrice : 0n;
+
+      let lastClosePrice = 0n;
+      let lastCloseDate = "";
+      if (closeR.status === "fulfilled") {
+        lastClosePrice = closeR.value.closePrice;
+        lastCloseDate = closeR.value.sessionDate;
+      } else if (
+        !(
+          closeR.reason instanceof ConnectError &&
+          (closeR.reason.code === Code.NotFound ||
+            closeR.reason.code === Code.Unimplemented)
+        )
+      ) {
+        // Unexpected error — surface in the server log but degrade to "no close".
+        console.error(`getOfficialClose(${s}) failed`, closeR.reason);
       }
+
+      return { symbol: s, phase, lastTradePrice, lastClosePrice, lastCloseDate };
     }),
   );
   return { rows };
@@ -276,6 +299,8 @@ export default function Markets({ loaderData }: Route.ComponentProps) {
             <Table.Tr>
               <Table.Th>Symbol</Table.Th>
               <Table.Th>Phase</Table.Th>
+              <Table.Th ta="right">Last</Table.Th>
+              <Table.Th ta="right">Change vs Close</Table.Th>
               <Table.Th>Last Uncross</Table.Th>
               <Table.Th ta="right">Actions</Table.Th>
             </Table.Tr>
@@ -283,7 +308,7 @@ export default function Markets({ loaderData }: Route.ComponentProps) {
           <Table.Tbody>
             {rows.length === 0 && !loading && (
               <Table.Tr>
-                <Table.Td colSpan={4}>
+                <Table.Td colSpan={6}>
                   <Text size="sm" c="dimmed">
                     No symbols yet — place an order to bootstrap one.
                   </Text>
@@ -295,6 +320,9 @@ export default function Markets({ loaderData }: Route.ComponentProps) {
                 key={r.symbol}
                 symbol={r.symbol}
                 phase={r.phase}
+                lastTradePrice={r.lastTradePrice}
+                lastClosePrice={r.lastClosePrice}
+                lastCloseDate={r.lastCloseDate}
                 lastUncross={lastUncross[r.symbol]}
                 onAction={(k) => startAction(r.symbol, r.phase, k)}
               />
@@ -342,11 +370,17 @@ export default function Markets({ loaderData }: Route.ComponentProps) {
 function Row({
   symbol,
   phase,
+  lastTradePrice,
+  lastClosePrice,
+  lastCloseDate,
   lastUncross,
   onAction,
 }: {
   symbol: string;
   phase: MarketPhase;
+  lastTradePrice: bigint;
+  lastClosePrice: bigint;
+  lastCloseDate: string;
   lastUncross: UncrossSummary | undefined;
   onAction: (kind: ActionKind) => void;
 }) {
@@ -361,6 +395,24 @@ function Row({
         <Badge size="sm" variant="filled" color={phaseColor(phase)}>
           {phaseLabel(phase)}
         </Badge>
+      </Table.Td>
+      <Table.Td ta="right">
+        {lastTradePrice > 0n ? (
+          <Text size="sm" ff="monospace">
+            {formatPrice(lastTradePrice)}
+          </Text>
+        ) : (
+          <Text size="xs" c="dimmed">
+            —
+          </Text>
+        )}
+      </Table.Td>
+      <Table.Td ta="right">
+        <ChangeCell
+          lastTradePrice={lastTradePrice}
+          lastClosePrice={lastClosePrice}
+          lastCloseDate={lastCloseDate}
+        />
       </Table.Td>
       <Table.Td>
         {lastUncross ? (
@@ -446,6 +498,52 @@ function Row({
         </Group>
       </Table.Td>
     </Table.Tr>
+  );
+}
+
+function ChangeCell({
+  lastTradePrice,
+  lastClosePrice,
+  lastCloseDate,
+}: {
+  lastTradePrice: bigint;
+  lastClosePrice: bigint;
+  lastCloseDate: string;
+}) {
+  if (lastClosePrice <= 0n) {
+    return (
+      <Text size="xs" c="dimmed">
+        no close yet
+      </Text>
+    );
+  }
+  if (lastTradePrice <= 0n) {
+    return (
+      <Text size="xs" c="dimmed" title={`close ${lastCloseDate}`}>
+        no trade since close
+      </Text>
+    );
+  }
+  const delta = lastTradePrice - lastClosePrice;
+  // Percent in basis points to keep bigint arithmetic exact, then format.
+  const pctBp = (delta * 1000000n) / lastClosePrice;
+  const pct = Number(pctBp) / 10000;
+  const sign = delta > 0n ? "+" : delta < 0n ? "−" : "";
+  const absDelta = delta < 0n ? -delta : delta;
+  const color = delta > 0n ? "teal" : delta < 0n ? "red" : "dimmed";
+  return (
+    <Stack gap={0} align="flex-end">
+      <Text
+        size="sm"
+        ff="monospace"
+        c={color}
+        title={`vs official close ${lastCloseDate}: ${formatPrice(lastClosePrice)}`}
+      >
+        {sign}
+        {formatPrice(absDelta)} ({sign}
+        {Math.abs(pct).toFixed(2)}%)
+      </Text>
+    </Stack>
   );
 }
 

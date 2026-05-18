@@ -159,6 +159,8 @@ message GetOrderBookResponse {
   repeated OrderBookLevel bids = 2;
   repeated OrderBookLevel asks = 3;
   MarketPhase phase = 4;
+  // Most recent continuous-trade print; 0 if no trade has executed yet.
+  int64 last_trade_price = 5;
 }
 
 message OrderBookLevel {

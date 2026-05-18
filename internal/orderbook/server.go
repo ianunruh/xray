@@ -320,8 +320,9 @@ func (s *Server) GetOrderBook(ctx context.Context, req *connect.Request[orderboo
 	}
 
 	resp := &orderbookv1.GetOrderBookResponse{
-		Symbol: req.Msg.Symbol,
-		Phase:  MarketPhaseToProto(book.Phase),
+		Symbol:         req.Msg.Symbol,
+		Phase:          MarketPhaseToProto(book.Phase),
+		LastTradePrice: book.LastTradePrice,
 	}
 
 	for bid := range book.Bids.All() {

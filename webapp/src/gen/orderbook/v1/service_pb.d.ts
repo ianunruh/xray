@@ -522,6 +522,13 @@ export declare type GetOrderBookResponse = Message<"orderbook.v1.GetOrderBookRes
    * @generated from field: orderbook.v1.MarketPhase phase = 4;
    */
   phase: MarketPhase;
+
+  /**
+   * Most recent continuous-trade print; 0 if no trade has executed yet.
+   *
+   * @generated from field: int64 last_trade_price = 5;
+   */
+  lastTradePrice: bigint;
 };
 
 /**

@@ -1245,13 +1245,15 @@ func (x *GetOrderBookRequest) GetSymbol() string {
 }
 
 type GetOrderBookResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
-	Bids          []*OrderBookLevel      `protobuf:"bytes,2,rep,name=bids,proto3" json:"bids,omitempty"`
-	Asks          []*OrderBookLevel      `protobuf:"bytes,3,rep,name=asks,proto3" json:"asks,omitempty"`
-	Phase         MarketPhase            `protobuf:"varint,4,opt,name=phase,proto3,enum=orderbook.v1.MarketPhase" json:"phase,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Symbol string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Bids   []*OrderBookLevel      `protobuf:"bytes,2,rep,name=bids,proto3" json:"bids,omitempty"`
+	Asks   []*OrderBookLevel      `protobuf:"bytes,3,rep,name=asks,proto3" json:"asks,omitempty"`
+	Phase  MarketPhase            `protobuf:"varint,4,opt,name=phase,proto3,enum=orderbook.v1.MarketPhase" json:"phase,omitempty"`
+	// Most recent continuous-trade print; 0 if no trade has executed yet.
+	LastTradePrice int64 `protobuf:"varint,5,opt,name=last_trade_price,json=lastTradePrice,proto3" json:"last_trade_price,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *GetOrderBookResponse) Reset() {
@@ -1310,6 +1312,13 @@ func (x *GetOrderBookResponse) GetPhase() MarketPhase {
 		return x.Phase
 	}
 	return MarketPhase_MARKET_PHASE_UNSPECIFIED
+}
+
+func (x *GetOrderBookResponse) GetLastTradePrice() int64 {
+	if x != nil {
+		return x.LastTradePrice
+	}
+	return 0
 }
 
 type OrderBookLevel struct {
@@ -3073,12 +3082,13 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\x1aListOfficialClosesResponse\x12>\n" +
 	"\x06closes\x18\x01 \x03(\v2&.orderbook.v1.GetOfficialCloseResponseR\x06closes\"-\n" +
 	"\x13GetOrderBookRequest\x12\x16\n" +
-	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"\xc3\x01\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"\xed\x01\n" +
 	"\x14GetOrderBookResponse\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x120\n" +
 	"\x04bids\x18\x02 \x03(\v2\x1c.orderbook.v1.OrderBookLevelR\x04bids\x120\n" +
 	"\x04asks\x18\x03 \x03(\v2\x1c.orderbook.v1.OrderBookLevelR\x04asks\x12/\n" +
-	"\x05phase\x18\x04 \x01(\x0e2\x19.orderbook.v1.MarketPhaseR\x05phase\"\xc5\x01\n" +
+	"\x05phase\x18\x04 \x01(\x0e2\x19.orderbook.v1.MarketPhaseR\x05phase\x12(\n" +
+	"\x10last_trade_price\x18\x05 \x01(\x03R\x0elastTradePrice\"\xc5\x01\n" +
 	"\x0eOrderBookLevel\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x14\n" +
 	"\x05price\x18\x02 \x01(\x03R\x05price\x12\x1a\n" +
