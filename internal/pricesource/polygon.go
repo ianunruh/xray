@@ -26,24 +26,36 @@ type PolygonPriceSource struct {
 	apiKey       string
 	baseURL      string
 	pollInterval time.Duration
-	symbols      []string
 	httpClient   *http.Client
 	log          *slog.Logger
 
-	mu     sync.RWMutex
-	prices map[string]PriceSnapshot
+	mu      sync.RWMutex
+	prices  map[string]PriceSnapshot
+	symbols map[string]struct{}
 }
 
 func NewPolygonPriceSource(cfg PolygonConfig, apiKey string, symbols []string, log *slog.Logger) *PolygonPriceSource {
+	s := make(map[string]struct{}, len(symbols))
+	for _, sym := range symbols {
+		s[sym] = struct{}{}
+	}
 	return &PolygonPriceSource{
 		apiKey:       apiKey,
 		baseURL:      cfg.BaseURL,
 		pollInterval: cfg.PollInterval,
-		symbols:      symbols,
 		httpClient:   &http.Client{Timeout: 10 * time.Second},
 		log:          log,
 		prices:       make(map[string]PriceSnapshot),
+		symbols:      s,
 	}
+}
+
+// WatchSymbol adds a symbol to the polling set. Safe to call after Start;
+// the next poll tick will include it. No-op if already watched.
+func (p *PolygonPriceSource) WatchSymbol(symbol string) {
+	p.mu.Lock()
+	p.symbols[symbol] = struct{}{}
+	p.mu.Unlock()
 }
 
 func (p *PolygonPriceSource) GetPrice(symbol string) (PriceSnapshot, bool) {
@@ -70,7 +82,14 @@ func (p *PolygonPriceSource) Start(ctx context.Context) error {
 }
 
 func (p *PolygonPriceSource) fetchAll(ctx context.Context) {
-	for _, symbol := range p.symbols {
+	p.mu.RLock()
+	symbols := make([]string, 0, len(p.symbols))
+	for sym := range p.symbols {
+		symbols = append(symbols, sym)
+	}
+	p.mu.RUnlock()
+
+	for _, symbol := range symbols {
 		if ctx.Err() != nil {
 			return
 		}

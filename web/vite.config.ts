@@ -9,6 +9,7 @@ export default defineConfig({
       "/portfolio.v1.PortfolioService": "http://localhost:8080",
       "/saga.v1.SagaService": "http://localhost:8080",
       "/diagnostics.v1.DiagnosticsService": "http://localhost:8080",
+      "/trader.v1.TraderService": "http://localhost:8080",
     },
   },
   build: {

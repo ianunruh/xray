@@ -1,0 +1,124 @@
+syntax = "proto3";
+
+package trader.v1;
+
+option go_package = "github.com/ianunruh/xray/gen/trader/v1;traderv1";
+
+import "google/protobuf/timestamp.proto";
+
+service TraderService {
+  rpc ListTraders(ListTradersRequest) returns (ListTradersResponse);
+  rpc GetTrader(GetTraderRequest) returns (Trader);
+  rpc CreateTrader(CreateTraderRequest) returns (Trader);
+  rpc UpdateTrader(UpdateTraderRequest) returns (Trader);
+  rpc DeleteTrader(DeleteTraderRequest) returns (DeleteTraderResponse);
+  rpc StartTrader(StartTraderRequest) returns (Trader);
+  rpc StopTrader(StopTraderRequest) returns (Trader);
+}
+
+enum TraderType {
+  TRADER_TYPE_UNSPECIFIED = 0;
+  TRADER_TYPE_MM = 1;
+  TRADER_TYPE_NOISE = 2;
+}
+
+enum TraderStatus {
+  TRADER_STATUS_UNSPECIFIED = 0;
+  TRADER_STATUS_STOPPED = 1;
+  TRADER_STATUS_RUNNING = 2;
+  TRADER_STATUS_FAILED = 3;
+}
+
+message Trader {
+  string id = 1;
+  string name = 2;
+  TraderType type = 3;
+  TraderStatus status = 4;
+  // Set when status is FAILED — last error from the engine goroutine.
+  string last_error = 5;
+  // Persisted "should auto-start on server boot" flag. Toggled by
+  // StartTrader / StopTrader so the desired state survives restarts.
+  bool enabled = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  TraderConfig config = 9;
+}
+
+// TraderConfig holds the per-type configuration. Exactly one of the
+// inner messages is set; the outer type field on Trader picks which.
+message TraderConfig {
+  oneof config {
+    MMConfig mm = 1;
+    NoiseConfig noise = 2;
+  }
+}
+
+message MMConfig {
+  string symbol = 1;
+  string account_id = 2;
+  int64 initial_deposit = 3;
+  int64 initial_shares = 4;
+  int64 spread = 5;
+  int64 quantity = 6;
+  int32 levels = 7;
+  int64 level_spacing = 8;
+  int64 max_position = 9;
+  // Requote interval as a duration in milliseconds.
+  int64 requote_interval_ms = 10;
+  int64 price_move_threshold = 11;
+  int64 max_skew = 12;
+}
+
+message NoiseConfig {
+  string symbol = 1;
+  string account_id = 2;
+  int64 initial_deposit = 3;
+  int64 initial_shares = 4;
+  bool random_initial_shares = 5;
+  // Order placement interval as a duration in milliseconds.
+  int64 order_interval_ms = 6;
+  int64 min_quantity = 7;
+  int64 max_quantity = 8;
+  int64 price_jitter = 9;
+  double market_order_pct = 10;
+  int64 max_position = 11;
+  double buy_bias = 12;
+}
+
+message ListTradersRequest {}
+
+message ListTradersResponse {
+  repeated Trader traders = 1;
+}
+
+message GetTraderRequest {
+  string id = 1;
+}
+
+message CreateTraderRequest {
+  string name = 1;
+  TraderType type = 2;
+  TraderConfig config = 3;
+  // Start the trader immediately after creation.
+  bool start = 4;
+}
+
+message UpdateTraderRequest {
+  string id = 1;
+  string name = 2;
+  TraderConfig config = 3;
+}
+
+message DeleteTraderRequest {
+  string id = 1;
+}
+
+message DeleteTraderResponse {}
+
+message StartTraderRequest {
+  string id = 1;
+}
+
+message StopTraderRequest {
+  string id = 1;
+}

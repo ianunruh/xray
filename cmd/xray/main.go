@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -19,6 +21,7 @@ import (
 	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
 	"github.com/ianunruh/xray/gen/saga/v1/sagav1connect"
+	"github.com/ianunruh/xray/gen/trader/v1/traderv1connect"
 	"github.com/ianunruh/xray/internal/bracket"
 	"github.com/ianunruh/xray/internal/diagnostics"
 	"github.com/ianunruh/xray/internal/feesaccruer"
@@ -27,8 +30,10 @@ import (
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
 	"github.com/ianunruh/xray/internal/portfolio"
+	"github.com/ianunruh/xray/internal/pricesource"
 	"github.com/ianunruh/xray/internal/reconciler"
 	"github.com/ianunruh/xray/internal/sagasvc"
+	"github.com/ianunruh/xray/internal/tradermgr"
 	"github.com/ianunruh/xray/internal/twapsaga"
 	"github.com/ianunruh/xray/pkg/es"
 	"github.com/ianunruh/xray/pkg/es/natsstore"
@@ -247,10 +252,28 @@ func main() {
 		feesaccruer.Config{Interval: time.Hour}, log)
 	go accruer.Run(ctx)
 
+	// In-process trader manager. Persists trader configs in PG and
+	// supervises enabled traders as goroutines. Reuses the same
+	// connect clients the standalone CLIs use (over loopback HTTP)
+	// so engine semantics match exactly.
+	traderStore := tradermgr.NewStore(pool)
+	priceSrc, err := setupPriceSource(log)
+	if err != nil {
+		log.Error("failed to set up trader price source", "error", err)
+		os.Exit(1)
+	}
+	go func() {
+		if err := priceSrc.Start(ctx); err != nil && ctx.Err() == nil {
+			log.Error("trader price source stopped unexpectedly", "error", err)
+		}
+	}()
+	traderMgr := tradermgr.NewManager(traderStore, priceSrc, traderServerURL(listenAddr), log)
+
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, dailyCloseProjection, broker)
 	portfolioSrv := portfolio.NewServer(portfolioHandler, obHandler, portfolioProjection, pnlProjection, markProjection, marginCallsProjection, portfolioBroker, log)
 	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, ocoSagaHandler, twapHandler, obHandler, portfolioHandler, twapReactor, markProjection, sagaProjection, log)
 	diagnosticsSrv := diagnostics.NewServer(store, registry, projectionManager, log)
+	traderSrv := tradermgr.NewServer(traderMgr)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
@@ -261,6 +284,8 @@ func main() {
 	mux.Handle(sagaPath, sagaH)
 	diagnosticsPath, diagnosticsH := diagnosticsv1connect.NewDiagnosticsServiceHandler(diagnosticsSrv)
 	mux.Handle(diagnosticsPath, diagnosticsH)
+	traderPath, traderH := traderv1connect.NewTraderServiceHandler(traderSrv)
+	mux.Handle(traderPath, traderH)
 	mux.Handle("/", web.Handler())
 
 	httpServer := &http.Server{
@@ -281,6 +306,18 @@ func main() {
 		}
 	}()
 
+	// Auto-start enabled traders. Runs after the listener is up because
+	// each trader's connect client dials this same server over loopback.
+	go func() {
+		// Tiny delay so the listener is actually accepting before the
+		// first trader makes an RPC. Avoids spurious "connection
+		// refused" warnings in the engine bootstrap path.
+		time.Sleep(100 * time.Millisecond)
+		if err := traderMgr.AutoStart(ctx); err != nil {
+			log.Error("trader auto-start failed", "error", err)
+		}
+	}()
+
 	<-ctx.Done()
 	log.Info("shutting down")
 
@@ -290,6 +327,92 @@ func main() {
 	}
 
 	log.Info("shutdown complete")
+}
+
+// setupPriceSource builds the shared price source the in-process trader
+// manager hands to every engine. Env vars mirror the per-CLI YAML config:
+// PRICE_SOURCE selects the implementation (polygon or static); POLYGON_*
+// override the polling configuration; STATIC_PRICES is a comma-separated
+// SYMBOL=PRICE list (integer cents-shifted-4 prices, matching the wire format).
+func setupPriceSource(log *slog.Logger) (pricesource.PriceSource, error) {
+	src := strings.ToLower(strings.TrimSpace(os.Getenv("PRICE_SOURCE")))
+	if src == "" {
+		if os.Getenv("POLYGON_API_KEY") != "" {
+			src = "polygon"
+		} else {
+			src = "static"
+		}
+	}
+
+	switch src {
+	case "static":
+		return pricesource.NewStaticPriceSource(parseStaticPrices(os.Getenv("STATIC_PRICES"))), nil
+	case "polygon":
+		apiKey := os.Getenv("POLYGON_API_KEY")
+		if apiKey == "" {
+			return nil, fmt.Errorf("PRICE_SOURCE=polygon requires POLYGON_API_KEY")
+		}
+		cfg := pricesource.PolygonConfig{
+			BaseURL:      envOr("POLYGON_BASE_URL", "https://api.polygon.io"),
+			PollInterval: parseDurationOr("POLYGON_POLL_INTERVAL", 30*time.Second),
+		}
+		return pricesource.NewPolygonPriceSource(cfg, apiKey, nil, log), nil
+	default:
+		return nil, fmt.Errorf("unknown PRICE_SOURCE: %q", src)
+	}
+}
+
+// traderServerURL converts the listen address into a URL the in-process
+// trader clients can dial over loopback. Bind-host wildcards collapse to
+// localhost; explicit hosts pass through.
+func traderServerURL(listenAddr string) string {
+	host, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		return "http://localhost" + listenAddr
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "localhost"
+	}
+	return fmt.Sprintf("http://%s:%s", host, port)
+}
+
+func parseStaticPrices(s string) map[string]int64 {
+	out := map[string]int64{}
+	for _, pair := range strings.Split(s, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+		if err != nil {
+			continue
+		}
+		out[strings.TrimSpace(k)] = n
+	}
+	return out
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func parseDurationOr(key string, fallback time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return fallback
+	}
+	return d
 }
 
 func parseLogLevel(s string) slog.Level {
