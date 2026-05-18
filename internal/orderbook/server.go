@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -479,6 +480,66 @@ func (s *Server) StreamTrades(ctx context.Context, req *connect.Request[orderboo
 				}); err != nil {
 					return err
 				}
+			}
+		}
+	}
+}
+
+// StreamIndicativeAuctionState pushes a "what would uncross do right
+// now" snapshot whenever the orderbook for `symbol` changes (broker
+// channel wake) and on a 1Hz heartbeat. Always sends the current
+// phase so the client knows when to stop rendering — the subscription
+// stays open across phase transitions; the client decides whether the
+// payload is interesting.
+func (s *Server) StreamIndicativeAuctionState(
+	ctx context.Context,
+	req *connect.Request[orderbookv1.StreamIndicativeAuctionStateRequest],
+	stream *connect.ServerStream[orderbookv1.IndicativeAuctionState],
+) error {
+	symbol := req.Msg.Symbol
+
+	id, ch := s.broker.Subscribe(symbol)
+	defer s.broker.Unsubscribe(id)
+
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+
+	send := func() error {
+		book, err := s.handler.Load(ctx, AggregateID(symbol))
+		if err != nil {
+			return err
+		}
+		out := &orderbookv1.IndicativeAuctionState{
+			Symbol:     symbol,
+			Phase:      MarketPhaseToProto(book.Phase),
+			ComputedAt: timestamppb.Now(),
+		}
+		if ind := ComputeIndicative(book); ind != nil {
+			out.IndicativePrice = ind.ClearingPrice
+			out.MatchedQty = ind.MatchedQty
+			out.ImbalanceQty = ind.ImbalanceQty
+			out.ImbalanceSide = SideToProto(ind.ImbalanceSide)
+		}
+		return stream.Send(out)
+	}
+
+	if err := send(); err != nil {
+		return err
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case _, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			if err := send(); err != nil {
+				return err
+			}
+		case <-t.C:
+			if err := send(); err != nil {
+				return err
 			}
 		}
 	}
