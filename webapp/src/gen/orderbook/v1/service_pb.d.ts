@@ -900,6 +900,87 @@ export declare type StreamTradesRequest = Message<"orderbook.v1.StreamTradesRequ
 export declare const StreamTradesRequestSchema: GenMessage<StreamTradesRequest>;
 
 /**
+ * @generated from message orderbook.v1.StreamIndicativeAuctionStateRequest
+ */
+export declare type StreamIndicativeAuctionStateRequest = Message<"orderbook.v1.StreamIndicativeAuctionStateRequest"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+};
+
+/**
+ * Describes the message orderbook.v1.StreamIndicativeAuctionStateRequest.
+ * Use `create(StreamIndicativeAuctionStateRequestSchema)` to create a new message.
+ */
+export declare const StreamIndicativeAuctionStateRequestSchema: GenMessage<StreamIndicativeAuctionStateRequest>;
+
+/**
+ * IndicativeAuctionState is the live "what would uncross do right now"
+ * view streamed during an auction phase. The server pushes a fresh
+ * snapshot on every order arrival for the symbol and on a 1Hz
+ * heartbeat. Always includes phase so the client can stop rendering
+ * when the auction ends (the server keeps the subscription open across
+ * phase transitions).
+ *
+ * @generated from message orderbook.v1.IndicativeAuctionState
+ */
+export declare type IndicativeAuctionState = Message<"orderbook.v1.IndicativeAuctionState"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: orderbook.v1.MarketPhase phase = 2;
+   */
+  phase: MarketPhase;
+
+  /**
+   * The price the uncross would clear at right now. Zero when no
+   * cross is possible (one-sided book, no reference for pure-market
+   * crosses, no overlap).
+   *
+   * @generated from field: int64 indicative_price = 3;
+   */
+  indicativePrice: bigint;
+
+  /**
+   * Quantity that would trade at indicative_price.
+   *
+   * @generated from field: int64 matched_qty = 4;
+   */
+  matchedQty: bigint;
+
+  /**
+   * Standing imbalance at indicative_price; side carries the
+   * direction. Zero matched_qty + non-zero imbalance is the
+   * one-sided-book case.
+   *
+   * @generated from field: int64 imbalance_qty = 5;
+   */
+  imbalanceQty: bigint;
+
+  /**
+   * @generated from field: orderbook.v1.Side imbalance_side = 6;
+   */
+  imbalanceSide: Side;
+
+  /**
+   * When the snapshot was computed (server clock).
+   *
+   * @generated from field: google.protobuf.Timestamp computed_at = 7;
+   */
+  computedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.IndicativeAuctionState.
+ * Use `create(IndicativeAuctionStateSchema)` to create a new message.
+ */
+export declare const IndicativeAuctionStateSchema: GenMessage<IndicativeAuctionState>;
+
+/**
  * @generated from message orderbook.v1.Candle
  */
 export declare type Candle = Message<"orderbook.v1.Candle"> & {
@@ -1533,6 +1614,14 @@ export declare const OrderBookService: GenService<{
     methodKind: "server_streaming";
     input: typeof StreamTradesRequestSchema;
     output: typeof TradeSchema;
+  },
+  /**
+   * @generated from rpc orderbook.v1.OrderBookService.StreamIndicativeAuctionState
+   */
+  streamIndicativeAuctionState: {
+    methodKind: "server_streaming";
+    input: typeof StreamIndicativeAuctionStateRequestSchema;
+    output: typeof IndicativeAuctionStateSchema;
   },
   /**
    * @generated from rpc orderbook.v1.OrderBookService.GetCandles

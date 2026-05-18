@@ -84,6 +84,9 @@ const (
 	// OrderBookServiceStreamTradesProcedure is the fully-qualified name of the OrderBookService's
 	// StreamTrades RPC.
 	OrderBookServiceStreamTradesProcedure = "/orderbook.v1.OrderBookService/StreamTrades"
+	// OrderBookServiceStreamIndicativeAuctionStateProcedure is the fully-qualified name of the
+	// OrderBookService's StreamIndicativeAuctionState RPC.
+	OrderBookServiceStreamIndicativeAuctionStateProcedure = "/orderbook.v1.OrderBookService/StreamIndicativeAuctionState"
 	// OrderBookServiceGetCandlesProcedure is the fully-qualified name of the OrderBookService's
 	// GetCandles RPC.
 	OrderBookServiceGetCandlesProcedure = "/orderbook.v1.OrderBookService/GetCandles"
@@ -117,6 +120,7 @@ type OrderBookServiceClient interface {
 	ListSymbols(context.Context, *connect.Request[v1.ListSymbolsRequest]) (*connect.Response[v1.ListSymbolsResponse], error)
 	StreamMarketDepth(context.Context, *connect.Request[v1.StreamMarketDepthRequest]) (*connect.ServerStreamForClient[v1.GetMarketDepthResponse], error)
 	StreamTrades(context.Context, *connect.Request[v1.StreamTradesRequest]) (*connect.ServerStreamForClient[v1.Trade], error)
+	StreamIndicativeAuctionState(context.Context, *connect.Request[v1.StreamIndicativeAuctionStateRequest]) (*connect.ServerStreamForClient[v1.IndicativeAuctionState], error)
 	GetCandles(context.Context, *connect.Request[v1.GetCandlesRequest]) (*connect.Response[v1.GetCandlesResponse], error)
 	StreamCandles(context.Context, *connect.Request[v1.StreamCandlesRequest]) (*connect.ServerStreamForClient[v1.Candle], error)
 	GetReplayBounds(context.Context, *connect.Request[v1.GetReplayBoundsRequest]) (*connect.Response[v1.GetReplayBoundsResponse], error)
@@ -236,6 +240,12 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(orderBookServiceMethods.ByName("StreamTrades")),
 			connect.WithClientOptions(opts...),
 		),
+		streamIndicativeAuctionState: connect.NewClient[v1.StreamIndicativeAuctionStateRequest, v1.IndicativeAuctionState](
+			httpClient,
+			baseURL+OrderBookServiceStreamIndicativeAuctionStateProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("StreamIndicativeAuctionState")),
+			connect.WithClientOptions(opts...),
+		),
 		getCandles: connect.NewClient[v1.GetCandlesRequest, v1.GetCandlesResponse](
 			httpClient,
 			baseURL+OrderBookServiceGetCandlesProcedure,
@@ -265,27 +275,28 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 
 // orderBookServiceClient implements OrderBookServiceClient.
 type orderBookServiceClient struct {
-	placeOrder          *connect.Client[v1.PlaceOrderRequest, v1.PlaceOrderResponse]
-	cancelOrder         *connect.Client[v1.CancelOrderRequest, v1.CancelOrderResponse]
-	replaceOrder        *connect.Client[v1.ReplaceOrderRequest, v1.ReplaceOrderResponse]
-	closeMarket         *connect.Client[v1.CloseMarketRequest, v1.CloseMarketResponse]
-	openAuction         *connect.Client[v1.OpenAuctionRequest, v1.OpenAuctionResponse]
-	beginClosingAuction *connect.Client[v1.BeginClosingAuctionRequest, v1.BeginClosingAuctionResponse]
-	uncross             *connect.Client[v1.UncrossRequest, v1.UncrossResponse]
-	getOfficialClose    *connect.Client[v1.GetOfficialCloseRequest, v1.GetOfficialCloseResponse]
-	listOfficialCloses  *connect.Client[v1.ListOfficialClosesRequest, v1.ListOfficialClosesResponse]
-	getOrderBook        *connect.Client[v1.GetOrderBookRequest, v1.GetOrderBookResponse]
-	getMarketDepth      *connect.Client[v1.GetMarketDepthRequest, v1.GetMarketDepthResponse]
-	getOrder            *connect.Client[v1.GetOrderRequest, v1.GetOrderResponse]
-	listTrades          *connect.Client[v1.ListTradesRequest, v1.ListTradesResponse]
-	listOrders          *connect.Client[v1.ListOrdersRequest, v1.ListOrdersResponse]
-	listSymbols         *connect.Client[v1.ListSymbolsRequest, v1.ListSymbolsResponse]
-	streamMarketDepth   *connect.Client[v1.StreamMarketDepthRequest, v1.GetMarketDepthResponse]
-	streamTrades        *connect.Client[v1.StreamTradesRequest, v1.Trade]
-	getCandles          *connect.Client[v1.GetCandlesRequest, v1.GetCandlesResponse]
-	streamCandles       *connect.Client[v1.StreamCandlesRequest, v1.Candle]
-	getReplayBounds     *connect.Client[v1.GetReplayBoundsRequest, v1.GetReplayBoundsResponse]
-	replayOrderBook     *connect.Client[v1.ReplayOrderBookRequest, v1.ReplayOrderBookResponse]
+	placeOrder                   *connect.Client[v1.PlaceOrderRequest, v1.PlaceOrderResponse]
+	cancelOrder                  *connect.Client[v1.CancelOrderRequest, v1.CancelOrderResponse]
+	replaceOrder                 *connect.Client[v1.ReplaceOrderRequest, v1.ReplaceOrderResponse]
+	closeMarket                  *connect.Client[v1.CloseMarketRequest, v1.CloseMarketResponse]
+	openAuction                  *connect.Client[v1.OpenAuctionRequest, v1.OpenAuctionResponse]
+	beginClosingAuction          *connect.Client[v1.BeginClosingAuctionRequest, v1.BeginClosingAuctionResponse]
+	uncross                      *connect.Client[v1.UncrossRequest, v1.UncrossResponse]
+	getOfficialClose             *connect.Client[v1.GetOfficialCloseRequest, v1.GetOfficialCloseResponse]
+	listOfficialCloses           *connect.Client[v1.ListOfficialClosesRequest, v1.ListOfficialClosesResponse]
+	getOrderBook                 *connect.Client[v1.GetOrderBookRequest, v1.GetOrderBookResponse]
+	getMarketDepth               *connect.Client[v1.GetMarketDepthRequest, v1.GetMarketDepthResponse]
+	getOrder                     *connect.Client[v1.GetOrderRequest, v1.GetOrderResponse]
+	listTrades                   *connect.Client[v1.ListTradesRequest, v1.ListTradesResponse]
+	listOrders                   *connect.Client[v1.ListOrdersRequest, v1.ListOrdersResponse]
+	listSymbols                  *connect.Client[v1.ListSymbolsRequest, v1.ListSymbolsResponse]
+	streamMarketDepth            *connect.Client[v1.StreamMarketDepthRequest, v1.GetMarketDepthResponse]
+	streamTrades                 *connect.Client[v1.StreamTradesRequest, v1.Trade]
+	streamIndicativeAuctionState *connect.Client[v1.StreamIndicativeAuctionStateRequest, v1.IndicativeAuctionState]
+	getCandles                   *connect.Client[v1.GetCandlesRequest, v1.GetCandlesResponse]
+	streamCandles                *connect.Client[v1.StreamCandlesRequest, v1.Candle]
+	getReplayBounds              *connect.Client[v1.GetReplayBoundsRequest, v1.GetReplayBoundsResponse]
+	replayOrderBook              *connect.Client[v1.ReplayOrderBookRequest, v1.ReplayOrderBookResponse]
 }
 
 // PlaceOrder calls orderbook.v1.OrderBookService.PlaceOrder.
@@ -373,6 +384,11 @@ func (c *orderBookServiceClient) StreamTrades(ctx context.Context, req *connect.
 	return c.streamTrades.CallServerStream(ctx, req)
 }
 
+// StreamIndicativeAuctionState calls orderbook.v1.OrderBookService.StreamIndicativeAuctionState.
+func (c *orderBookServiceClient) StreamIndicativeAuctionState(ctx context.Context, req *connect.Request[v1.StreamIndicativeAuctionStateRequest]) (*connect.ServerStreamForClient[v1.IndicativeAuctionState], error) {
+	return c.streamIndicativeAuctionState.CallServerStream(ctx, req)
+}
+
 // GetCandles calls orderbook.v1.OrderBookService.GetCandles.
 func (c *orderBookServiceClient) GetCandles(ctx context.Context, req *connect.Request[v1.GetCandlesRequest]) (*connect.Response[v1.GetCandlesResponse], error) {
 	return c.getCandles.CallUnary(ctx, req)
@@ -412,6 +428,7 @@ type OrderBookServiceHandler interface {
 	ListSymbols(context.Context, *connect.Request[v1.ListSymbolsRequest]) (*connect.Response[v1.ListSymbolsResponse], error)
 	StreamMarketDepth(context.Context, *connect.Request[v1.StreamMarketDepthRequest], *connect.ServerStream[v1.GetMarketDepthResponse]) error
 	StreamTrades(context.Context, *connect.Request[v1.StreamTradesRequest], *connect.ServerStream[v1.Trade]) error
+	StreamIndicativeAuctionState(context.Context, *connect.Request[v1.StreamIndicativeAuctionStateRequest], *connect.ServerStream[v1.IndicativeAuctionState]) error
 	GetCandles(context.Context, *connect.Request[v1.GetCandlesRequest]) (*connect.Response[v1.GetCandlesResponse], error)
 	StreamCandles(context.Context, *connect.Request[v1.StreamCandlesRequest], *connect.ServerStream[v1.Candle]) error
 	GetReplayBounds(context.Context, *connect.Request[v1.GetReplayBoundsRequest]) (*connect.Response[v1.GetReplayBoundsResponse], error)
@@ -527,6 +544,12 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 		connect.WithSchema(orderBookServiceMethods.ByName("StreamTrades")),
 		connect.WithHandlerOptions(opts...),
 	)
+	orderBookServiceStreamIndicativeAuctionStateHandler := connect.NewServerStreamHandler(
+		OrderBookServiceStreamIndicativeAuctionStateProcedure,
+		svc.StreamIndicativeAuctionState,
+		connect.WithSchema(orderBookServiceMethods.ByName("StreamIndicativeAuctionState")),
+		connect.WithHandlerOptions(opts...),
+	)
 	orderBookServiceGetCandlesHandler := connect.NewUnaryHandler(
 		OrderBookServiceGetCandlesProcedure,
 		svc.GetCandles,
@@ -587,6 +610,8 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 			orderBookServiceStreamMarketDepthHandler.ServeHTTP(w, r)
 		case OrderBookServiceStreamTradesProcedure:
 			orderBookServiceStreamTradesHandler.ServeHTTP(w, r)
+		case OrderBookServiceStreamIndicativeAuctionStateProcedure:
+			orderBookServiceStreamIndicativeAuctionStateHandler.ServeHTTP(w, r)
 		case OrderBookServiceGetCandlesProcedure:
 			orderBookServiceGetCandlesHandler.ServeHTTP(w, r)
 		case OrderBookServiceStreamCandlesProcedure:
@@ -670,6 +695,10 @@ func (UnimplementedOrderBookServiceHandler) StreamMarketDepth(context.Context, *
 
 func (UnimplementedOrderBookServiceHandler) StreamTrades(context.Context, *connect.Request[v1.StreamTradesRequest], *connect.ServerStream[v1.Trade]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.StreamTrades is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) StreamIndicativeAuctionState(context.Context, *connect.Request[v1.StreamIndicativeAuctionStateRequest], *connect.ServerStream[v1.IndicativeAuctionState]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.StreamIndicativeAuctionState is not implemented"))
 }
 
 func (UnimplementedOrderBookServiceHandler) GetCandles(context.Context, *connect.Request[v1.GetCandlesRequest]) (*connect.Response[v1.GetCandlesResponse], error) {

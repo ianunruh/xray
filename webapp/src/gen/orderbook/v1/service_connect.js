@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { BeginClosingAuctionRequest, BeginClosingAuctionResponse, CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOfficialCloseRequest, GetOfficialCloseResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, GetReplayBoundsRequest, GetReplayBoundsResponse, ListOfficialClosesRequest, ListOfficialClosesResponse, ListOrdersRequest, ListOrdersResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, OpenAuctionRequest, OpenAuctionResponse, PlaceOrderRequest, PlaceOrderResponse, ReplaceOrderRequest, ReplaceOrderResponse, ReplayOrderBookRequest, ReplayOrderBookResponse, StreamCandlesRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade, UncrossRequest, UncrossResponse } from "./service_pb.js";
+import { BeginClosingAuctionRequest, BeginClosingAuctionResponse, CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOfficialCloseRequest, GetOfficialCloseResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, GetReplayBoundsRequest, GetReplayBoundsResponse, IndicativeAuctionState, ListOfficialClosesRequest, ListOfficialClosesResponse, ListOrdersRequest, ListOrdersResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, OpenAuctionRequest, OpenAuctionResponse, PlaceOrderRequest, PlaceOrderResponse, ReplaceOrderRequest, ReplaceOrderResponse, ReplayOrderBookRequest, ReplayOrderBookResponse, StreamCandlesRequest, StreamIndicativeAuctionStateRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade, UncrossRequest, UncrossResponse } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -163,6 +163,15 @@ export const OrderBookService = {
       name: "StreamTrades",
       I: StreamTradesRequest,
       O: Trade,
+      kind: MethodKind.ServerStreaming,
+    },
+    /**
+     * @generated from rpc orderbook.v1.OrderBookService.StreamIndicativeAuctionState
+     */
+    streamIndicativeAuctionState: {
+      name: "StreamIndicativeAuctionState",
+      I: StreamIndicativeAuctionStateRequest,
+      O: IndicativeAuctionState,
       kind: MethodKind.ServerStreaming,
     },
     /**

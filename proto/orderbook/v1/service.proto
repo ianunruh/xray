@@ -33,6 +33,7 @@ service OrderBookService {
   rpc ListSymbols(ListSymbolsRequest) returns (ListSymbolsResponse);
   rpc StreamMarketDepth(StreamMarketDepthRequest) returns (stream GetMarketDepthResponse);
   rpc StreamTrades(StreamTradesRequest) returns (stream Trade);
+  rpc StreamIndicativeAuctionState(StreamIndicativeAuctionStateRequest) returns (stream IndicativeAuctionState);
   rpc GetCandles(GetCandlesRequest) returns (GetCandlesResponse);
   rpc StreamCandles(StreamCandlesRequest) returns (stream Candle);
   rpc GetReplayBounds(GetReplayBoundsRequest) returns (GetReplayBoundsResponse);
@@ -244,6 +245,34 @@ message StreamMarketDepthRequest {
 
 message StreamTradesRequest {
   string symbol = 1;
+}
+
+message StreamIndicativeAuctionStateRequest {
+  string symbol = 1;
+}
+
+// IndicativeAuctionState is the live "what would uncross do right now"
+// view streamed during an auction phase. The server pushes a fresh
+// snapshot on every order arrival for the symbol and on a 1Hz
+// heartbeat. Always includes phase so the client can stop rendering
+// when the auction ends (the server keeps the subscription open across
+// phase transitions).
+message IndicativeAuctionState {
+  string symbol = 1;
+  MarketPhase phase = 2;
+  // The price the uncross would clear at right now. Zero when no
+  // cross is possible (one-sided book, no reference for pure-market
+  // crosses, no overlap).
+  int64 indicative_price = 3;
+  // Quantity that would trade at indicative_price.
+  int64 matched_qty = 4;
+  // Standing imbalance at indicative_price; side carries the
+  // direction. Zero matched_qty + non-zero imbalance is the
+  // one-sided-book case.
+  int64 imbalance_qty = 5;
+  Side imbalance_side = 6;
+  // When the snapshot was computed (server clock).
+  google.protobuf.Timestamp computed_at = 7;
 }
 
 enum CandleInterval {
