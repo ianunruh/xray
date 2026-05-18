@@ -4,7 +4,7 @@ price_source: polygon
 symbols:
   - symbol: AAPL
     account_id: noise-AAPL
-    instances: 20
+    instances: 4
     initial_deposit: 5000000000 # $500K
     initial_shares: 500
     random_initial_shares: true # credit a uniform random count in [0, initial_shares] per instance
