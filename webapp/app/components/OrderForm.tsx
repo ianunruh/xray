@@ -29,6 +29,8 @@ import { usePreviewOrderImpact } from "../hooks/usePreviewOrderImpact";
 const ORDER_TYPES: Record<string, OrderType> = {
   LIMIT: OrderType.LIMIT,
   MARKET: OrderType.MARKET,
+  STOP_MARKET: OrderType.STOP_MARKET,
+  STOP_LIMIT: OrderType.STOP_LIMIT,
   TRAILING_STOP_MARKET: OrderType.TRAILING_STOP_MARKET,
   TRAILING_STOP_LIMIT: OrderType.TRAILING_STOP_LIMIT,
 };
@@ -239,6 +241,9 @@ export function OrderForm({
   const isOCO = mode === "OCO";
   const isTwap = mode === "TWAP";
   const isMarket = orderType === "MARKET";
+  const isStopMarket = orderType === "STOP_MARKET";
+  const isStopLimit = orderType === "STOP_LIMIT";
+  const isStop = isStopMarket || isStopLimit;
   const isTrailingMarket = orderType === "TRAILING_STOP_MARKET";
   const isTrailingLimit = orderType === "TRAILING_STOP_LIMIT";
   const isTrailing = isTrailingMarket || isTrailingLimit;
@@ -280,7 +285,7 @@ export function OrderForm({
   const qtyNum = Number(quantity);
   const prcNum = Number(price);
   const previewParams =
-    !isOCO && !isTrailing && qtyNum > 0 && (isMarket || prcNum > 0)
+    !isOCO && !isTrailing && !isStop && qtyNum > 0 && (isMarket || prcNum > 0)
       ? {
           accountId,
           symbol,
@@ -304,6 +309,12 @@ export function OrderForm({
     }
     if (next === "LIMIT" && tif === "IOC") {
       setTif("DAY");
+    }
+    // Stops (and trailing stops) lock TIF to GTC at submit; reset the
+    // selector so the disabled control doesn't show a stale AT_OPEN/etc.
+    if (next === "STOP_MARKET" || next === "STOP_LIMIT" ||
+        next === "TRAILING_STOP_MARKET" || next === "TRAILING_STOP_LIMIT") {
+      setTif("GTC");
     }
   }
 
@@ -373,6 +384,65 @@ export function OrderForm({
         successTitle: "TWAP placed",
         successMessage: `${verb} TWAP ${qty} ${symbol} over ${slc} slices`,
         failureTitle: "TWAP failed",
+      });
+      return;
+    }
+
+    if (isSingle && isStop) {
+      const stop = typeof stopPrice === "number" ? stopPrice : parseFloat(stopPrice);
+      if (!stop || stop <= 0) {
+        notifications.show({ message: "Enter a stop price", color: "red" });
+        return;
+      }
+      let limit = 0;
+      if (isStopLimit) {
+        limit = typeof price === "number" ? price : parseFloat(price);
+        if (!limit || limit <= 0) {
+          notifications.show({
+            message: "Stop-limit requires a limit price",
+            color: "red",
+          });
+          return;
+        }
+      }
+      const verb = ACTION_MAP[action].verb;
+      const rows: { label: string; value: string }[] = [
+        { label: "Type", value: isStopLimit ? "Stop limit" : "Stop market" },
+        { label: "Stop", value: `$${stop.toFixed(4)}` },
+      ];
+      if (isStopLimit) {
+        rows.push({ label: "Limit", value: `$${limit.toFixed(4)}` });
+      }
+      setPending({
+        request: {
+          $typeName: "saga.v1.PlaceSagaRequest",
+          accountId,
+          plan: {
+            case: "singleOrder",
+            value: {
+              $typeName: "saga.v1.SingleOrderPlan",
+              symbol,
+              side,
+              orderType: ORDER_TYPES[orderType] ?? OrderType.STOP_MARKET,
+              price: isStopLimit ? moneyToPrice(limit) : 0n,
+              stopPrice: moneyToPrice(stop),
+              quantity: BigInt(qty),
+              displayQuantity: 0n,
+              trailAmount: 0n,
+              trailOffsetBps: 0,
+              limitOffset: 0n,
+              timeInForce: TimeInForce.GTC,
+              positionSide: ps,
+              replaceOrderId: "",
+            },
+          },
+        },
+        heading: `${verb} ${qty} ${symbol} (${isStopLimit ? "stop limit" : "stop"})`,
+        color: ACTION_MAP[action].color,
+        rows,
+        successTitle: "Stop order placed",
+        successMessage: `${verb} ${qty} ${symbol} @ stop $${stop}`,
+        failureTitle: "Stop order failed",
       });
       return;
     }
@@ -745,6 +815,8 @@ export function OrderForm({
               data={[
                 { label: "Limit", value: "LIMIT" },
                 { label: "Market", value: "MARKET" },
+                { label: "Stop (market)", value: "STOP_MARKET" },
+                { label: "Stop (limit)", value: "STOP_LIMIT" },
                 { label: "Trailing stop (market)", value: "TRAILING_STOP_MARKET" },
                 { label: "Trailing stop (limit)", value: "TRAILING_STOP_LIMIT" },
               ]}
@@ -757,14 +829,14 @@ export function OrderForm({
               onChange={(v) => setTif(v ?? "IOC")}
               data={isMarket ? MARKET_TIF_OPTIONS : LIMIT_TIF_OPTIONS}
               checkIconPosition="right"
-              disabled={isTrailing}
+              disabled={isTrailing || isStop}
             />
           </Group>
         )}
-        {((isSingle && !isMarket && !isTrailing) || isBracket || isTwap) && (
+        {((isSingle && !isMarket && !isTrailing && !isStopMarket) || isBracket || isTwap) && (
           <Stack gap={4}>
             <NumberInput
-              label={isBracket ? "Entry Price" : isTwap ? "Limit Price" : "Price"}
+              label={isBracket ? "Entry Price" : isTwap || isStopLimit ? "Limit Price" : "Price"}
               size="xs"
               placeholder="0.00"
               min={0}
@@ -772,7 +844,7 @@ export function OrderForm({
               value={price}
               onChange={setPrice}
             />
-            {isSingle && !isMarket && (
+            {isSingle && !isMarket && !isStop && (
               <Button.Group>
                 <Button
                   size="compact-xs"
@@ -810,6 +882,22 @@ export function OrderForm({
               </Button.Group>
             )}
           </Stack>
+        )}
+        {isSingle && isStop && (
+          <NumberInput
+            label="Stop price"
+            description={
+              action === "BUY" || action === "COVER"
+                ? `Triggers a ${isStopLimit ? "limit" : "market"} buy when last trade ≥ this price.`
+                : `Triggers a ${isStopLimit ? "limit" : "market"} sell when last trade ≤ this price.`
+            }
+            size="xs"
+            placeholder="0.00"
+            min={0}
+            decimalScale={4}
+            value={stopPrice}
+            onChange={setStopPrice}
+          />
         )}
         {isSingle && isTrailing && (
           <Stack gap={4}>
@@ -868,7 +956,7 @@ export function OrderForm({
           value={quantity}
           onChange={setQuantity}
         />
-        {isSingle && !isMarket && !isTrailing && (tif === "GTC" || tif === "DAY") && (
+        {isSingle && !isMarket && !isTrailing && !isStop && (tif === "GTC" || tif === "DAY") && (
           <Stack gap={4}>
             <Switch
               size="xs"
