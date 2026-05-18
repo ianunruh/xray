@@ -76,12 +76,13 @@ export function MarketPanel({
         </Group>
 
         {mode === "live" ? (
-          <LiveBody symbol={symbol} />
+          <LiveBody symbol={symbol} officialClose={officialClose} />
         ) : (
           <ReplayBody
             symbol={symbol}
             bounds={replayBounds}
             onRefresh={onRefreshReplay}
+            officialClose={officialClose}
           />
         )}
 
@@ -105,10 +106,12 @@ function MarketTicker({
   bid,
   ask,
   lastTrade,
+  officialClose,
 }: {
   bid: PriceLevel | undefined;
   ask: PriceLevel | undefined;
   lastTrade: Trade | undefined;
+  officialClose: GetOfficialCloseResponse | null;
 }) {
   const spread =
     bid && ask && ask.price > bid.price ? ask.price - bid.price : null;
@@ -141,7 +144,67 @@ function MarketTicker({
         price={lastTrade?.price}
         quantity={lastTrade?.quantity}
       />
+      <ChangeCell lastPrice={lastTrade?.price} officialClose={officialClose} />
     </Group>
+  );
+}
+
+// ChangeCell renders signed price/percent delta of the most recent trade
+// against the official close. Bigint pct math is scaled by 1e6 (delta is
+// already in 1e-4 dollars; another 1e2 keeps two pct decimals).
+function ChangeCell({
+  lastPrice,
+  officialClose,
+}: {
+  lastPrice: bigint | undefined;
+  officialClose: GetOfficialCloseResponse | null;
+}) {
+  const closePrice = officialClose?.closePrice ?? 0n;
+  const cellStyle = { minWidth: 170 };
+  if (closePrice <= 0n) {
+    return (
+      <div style={cellStyle}>
+        <Text size="xs" c="dimmed">
+          Change vs Close
+        </Text>
+        <Text fw={700} c="dimmed" ff="monospace">
+          no close yet
+        </Text>
+      </div>
+    );
+  }
+  if (lastPrice === undefined || lastPrice <= 0n) {
+    return (
+      <div style={cellStyle}>
+        <Text size="xs" c="dimmed">
+          Change vs Close
+        </Text>
+        <Text fw={700} c="dimmed" ff="monospace">
+          —
+        </Text>
+      </div>
+    );
+  }
+  const delta = lastPrice - closePrice;
+  const pctBp = (delta * 1000000n) / closePrice;
+  const pct = Number(pctBp) / 10000;
+  const sign = delta > 0n ? "+" : delta < 0n ? "−" : "";
+  const absDelta = delta < 0n ? -delta : delta;
+  const color = delta > 0n ? "teal" : delta < 0n ? "red" : "bright";
+  return (
+    <div
+      style={cellStyle}
+      title={`vs official close ${officialClose?.sessionDate}: ${formatPrice(closePrice)}`}
+    >
+      <Text size="xs" c="dimmed">
+        Change vs Close
+      </Text>
+      <Text fw={700} c={color} ff="monospace">
+        {sign}
+        {formatPrice(absDelta)} ({sign}
+        {Math.abs(pct).toFixed(2)}%)
+      </Text>
+    </div>
   );
 }
 
@@ -196,12 +259,23 @@ function useLiveTrades(symbol: string): Trade[] {
   return trades;
 }
 
-function LiveBody({ symbol }: { symbol: string }) {
+function LiveBody({
+  symbol,
+  officialClose,
+}: {
+  symbol: string;
+  officialClose: GetOfficialCloseResponse | null;
+}) {
   const { bids, asks, maxQuantity } = useSharedMarketDepth();
   const trades = useLiveTrades(symbol);
   return (
     <>
-      <MarketTicker bid={bids[0]} ask={asks[0]} lastTrade={trades[0]} />
+      <MarketTicker
+        bid={bids[0]}
+        ask={asks[0]}
+        lastTrade={trades[0]}
+        officialClose={officialClose}
+      />
       <CandleChart symbol={symbol} />
       <Grid>
         <Grid.Col span={6}>
@@ -230,10 +304,12 @@ function ReplayBody({
   symbol,
   bounds,
   onRefresh,
+  officialClose,
 }: {
   symbol: string;
   bounds: ReplayBounds | null;
   onRefresh: () => void;
+  officialClose: GetOfficialCloseResponse | null;
 }) {
   const [target, setTarget] = useState<ReplayTarget | null>(null);
   const effectiveTarget: ReplayTarget | null =
@@ -297,6 +373,7 @@ function ReplayBody({
         bid={snapshot?.bids?.[0]}
         ask={snapshot?.asks?.[0]}
         lastTrade={lastTrade}
+        officialClose={officialClose}
       />
       <Grid>
         <Grid.Col span={4}>
