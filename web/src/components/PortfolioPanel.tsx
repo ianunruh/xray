@@ -401,6 +401,15 @@ export function PortfolioSummary({
   }
 
   const totalRealizedPnl = portfolio.totalRealizedPnl;
+  // totalUnrealizedPnl sums the mark-to-market gain/loss across every
+  // open position (long and short). Symbols with missing marks
+  // contribute zero — the missingMarks banner below warns the user.
+  const totalUnrealizedPnl =
+    margin?.positions.reduce(
+      (acc, p) => (p.markMissing ? acc : acc + p.unrealizedPnl),
+      0n,
+    ) ?? 0n;
+  const hasOpenPositions = (margin?.positions.length ?? 0) > 0;
 
   return (
     <Card withBorder>
@@ -447,6 +456,13 @@ export function PortfolioSummary({
 
         <Group gap="xl">
           <Stat label="Cash Available" value={formatMoney(portfolio.cashBalance)} />
+          {hasOpenPositions && (
+            <Stat
+              label="Unrealized P&L"
+              value={formatMoney(totalUnrealizedPnl)}
+              color={totalUnrealizedPnl >= 0n ? "green" : "red"}
+            />
+          )}
           <Stat
             label="Realized P&L"
             value={formatMoney(totalRealizedPnl)}
@@ -549,6 +565,14 @@ export function PortfolioPositions({
 
   const shortPositions =
     margin?.positions.filter((p) => p.side === PositionSide.SHORT) ?? [];
+  // longMargin maps symbol → PositionMarginInfo for LONG positions, so
+  // the holdings table can join each row to its mark / market value /
+  // unrealized P&L without a per-row find().
+  const longMargin = new Map(
+    margin?.positions
+      .filter((p) => p.side === PositionSide.LONG)
+      .map((p) => [p.symbol, p]) ?? [],
+  );
   const hasContent =
     shortPositions.length > 0 ||
     portfolio.holdings.length > 0 ||
@@ -671,21 +695,48 @@ export function PortfolioPositions({
                   <Table.Th>Symbol</Table.Th>
                   <Table.Th ta="right">Qty</Table.Th>
                   <Table.Th ta="right">Avg Cost</Table.Th>
-                  <Table.Th ta="right">Total Cost</Table.Th>
+                  <Table.Th ta="right">Mark</Table.Th>
+                  <Table.Th ta="right">Market Value</Table.Th>
                   <Table.Th ta="right">Held</Table.Th>
+                  <Table.Th ta="right">Unrealized P&L</Table.Th>
                   <Table.Th ta="right">Realized P&L</Table.Th>
                   <Table.Th />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {portfolio.holdings.map((h) => (
+                {portfolio.holdings.map((h) => {
+                  const m = longMargin.get(h.symbol);
+                  return (
                   <Table.Tr key={h.symbol}>
                     <Table.Td>{h.symbol}</Table.Td>
                     <Table.Td ta="right">{formatQuantity(h.quantity)}</Table.Td>
                     <Table.Td ta="right">{formatMoney(h.averageCost)}</Table.Td>
-                    <Table.Td ta="right">{formatMoney(h.totalCost)}</Table.Td>
+                    <Table.Td ta="right">
+                      {m && !m.markMissing ? (
+                        formatMoney(m.markPrice)
+                      ) : (
+                        <Text size="xs" c="dimmed">
+                          —
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td ta="right">
+                      {m && !m.markMissing ? formatMoney(m.marketValue) : "—"}
+                    </Table.Td>
                     <Table.Td ta="right">
                       {formatQuantity(h.sharesHeld)}
+                    </Table.Td>
+                    <Table.Td
+                      ta="right"
+                      c={
+                        !m || m.markMissing
+                          ? undefined
+                          : m.unrealizedPnl >= 0n
+                            ? "green"
+                            : "red"
+                      }
+                    >
+                      {m && !m.markMissing ? formatMoney(m.unrealizedPnl) : "—"}
                     </Table.Td>
                     <Table.Td
                       ta="right"
@@ -736,7 +787,8 @@ export function PortfolioPositions({
                       </Group>
                     </Table.Td>
                   </Table.Tr>
-                ))}
+                  );
+                })}
               </Table.Tbody>
             </Table>
           </>

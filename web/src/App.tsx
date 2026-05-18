@@ -24,6 +24,7 @@ import {
 import { BracketsPanel } from "./components/BracketsPanel";
 import { OcosPanel } from "./components/OcosPanel";
 import { TwapsPanel } from "./components/TwapsPanel";
+import { RecentPnLPanel } from "./components/RecentPnLPanel";
 import { MarketPanel } from "./components/MarketPanel";
 import { OrderForm, type OrderPrefill } from "./components/OrderForm";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
@@ -210,10 +211,13 @@ export function App() {
           </Tabs.Panel>
 
           <Tabs.Panel value="positions" pt="md">
-            <PortfolioPositions
-              onJumpToAggregate={jumpToAggregate}
-              onPrefillOrder={applyOrderPrefill}
-            />
+            <Stack gap="md">
+              <PortfolioPositions
+                onJumpToAggregate={jumpToAggregate}
+                onPrefillOrder={applyOrderPrefill}
+              />
+              <RecentPnLPanel accountId={account} />
+            </Stack>
           </Tabs.Panel>
         </Tabs>
       </Stack>
