@@ -1,11 +1,12 @@
 # xray
 
 Event-sourced order book — a learning project implementing a simple but realistic
-stock exchange with limit/market/stop/auction orders, brackets, OCO and TWAP
-execution sagas, short selling on margin with auto-liquidation, periodic interest
-and borrow-fee accrual, opening/closing call auctions with crossing prints, plus
-a live web UI with replay/scrub, diagnostics, and a causation-chain viewer.
-Uses event sourcing with protobuf serialization throughout.
+stock exchange with limit/market/stop/trailing-stop/auction orders, iceberg
+display sizing, brackets, OCO and TWAP execution sagas, short selling on margin
+with auto-liquidation, periodic interest and borrow-fee accrual, opening/closing
+call auctions with crossing prints, plus a live web UI with replay/scrub,
+diagnostics, and a causation-chain viewer. Uses event sourcing with protobuf
+serialization throughout.
 
 ![Web UI](docs/webui.png)
 
@@ -316,11 +317,19 @@ The server exposes RPCs via Connect (gRPC, gRPC-Web, and JSON-over-HTTP on the s
 
 ## Order types and time-in-force
 
-Order types: `LIMIT`, `MARKET`, `STOP_MARKET` (triggers as market when `trigger_price` is touched), `STOP_LIMIT` (triggers as limit). Stop triggers emit a `StopTriggered` event before matching.
+Order types: `LIMIT`, `MARKET`, `STOP_MARKET` (triggers as market when `trigger_price` is touched), `STOP_LIMIT` (triggers as limit), `TRAILING_STOP_MARKET` / `TRAILING_STOP_LIMIT` (stop price ratchets with the mark — see below). Stop triggers emit a `StopTriggered` event before matching.
 
 Time-in-force: `GTC`, `IOC`, `FOK`, `DAY`, plus `AT_OPEN` / `AT_CLOSE` which bind an order to a specific auction cross. `AT_OPEN` + `MARKET` = MOO, `AT_OPEN` + `LIMIT` = LOO, etc. Unfilled at uncross → cancelled with reason `missed_auction`.
 
 OCO group: any `OrderPlaced` may carry an `oco_group_id`. The first order in the group to trade *any* qty atomically cancels every other order in the group before further matching or stop-trigger passes.
+
+### Iceberg orders
+
+Any `LIMIT` + `GTC`/`DAY` order may carry a `display_quantity > 0`. Only that slice is exposed to the matching engine (and to depth) at a time; the rest is hidden reserve. When the displayed slice fully fills, the engine emits `IcebergSliceReplenished` and re-inserts the order at the back of its price level — the new slice loses time priority to anyone already resting at that level (standard NASDAQ behavior). The portfolio hold still covers the full quantity. Final slice shrinks to whatever's left in reserve.
+
+### Trailing stops
+
+`TRAILING_STOP_MARKET` / `TRAILING_STOP_LIMIT` take an initial `stop_price` plus exactly one of `trail_amount` (absolute, price units) or `trail_offset_bps` (basis points of mark). After every continuous trade the engine ratchets each trailing stop's trigger *tighter* on favorable mark moves — SELL stops rise as the mark rises, BUY stops fall as the mark falls — emitting `TrailingStopAdjusted` so replay reproduces the ratchet path exactly. The stop never widens on adverse moves. `TRAILING_STOP_LIMIT` additionally carries a `limit_offset`: when the stop fires, the activated limit price is `stop ± limit_offset` (below stop for sells, above for buys).
 
 ## Market phases and auctions
 
@@ -438,6 +447,62 @@ buf curl --protocol grpc --http2-prior-knowledge \
       "order_type":"ORDER_TYPE_LIMIT",
       "time_in_force":"TIME_IN_FORCE_GTC",
       "position_side":"POSITION_SIDE_SHORT"
+    }
+  }'
+
+# Iceberg SELL 1000 @ $150, only 100 shown at a time. Each slice that
+# fills replenishes from the hidden reserve at the back of the queue.
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/saga.v1.SagaService/Place \
+  -d '{
+    "account_id":"acct-1",
+    "single_order":{
+      "symbol":"AAPL",
+      "side":"SIDE_SELL",
+      "price":"1500000",
+      "quantity":"1000",
+      "display_quantity":"100",
+      "order_type":"ORDER_TYPE_LIMIT",
+      "time_in_force":"TIME_IN_FORCE_GTC",
+      "position_side":"POSITION_SIDE_LONG"
+    }
+  }'
+
+# Trailing-stop SELL on a long position: initial stop $149, trails the
+# mark by $1. As price rises the stop ratchets up; it never widens.
+# Fires as a market IOC when the mark touches the ratcheted stop.
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/saga.v1.SagaService/Place \
+  -d '{
+    "account_id":"acct-1",
+    "single_order":{
+      "symbol":"AAPL",
+      "side":"SIDE_SELL",
+      "quantity":"100",
+      "stop_price":"1490000",
+      "trail_amount":"10000",
+      "order_type":"ORDER_TYPE_TRAILING_STOP_MARKET",
+      "time_in_force":"TIME_IN_FORCE_GTC",
+      "position_side":"POSITION_SIDE_LONG"
+    }
+  }'
+
+# Trailing-stop-limit SELL using a 50bps trail and a $0.50 limit offset.
+# When triggered, places a limit at (stop - $0.50).
+buf curl --protocol grpc --http2-prior-knowledge \
+  --schema proto http://localhost:8080/saga.v1.SagaService/Place \
+  -d '{
+    "account_id":"acct-1",
+    "single_order":{
+      "symbol":"AAPL",
+      "side":"SIDE_SELL",
+      "quantity":"100",
+      "stop_price":"1490000",
+      "trail_offset_bps":50,
+      "limit_offset":"5000",
+      "order_type":"ORDER_TYPE_TRAILING_STOP_LIMIT",
+      "time_in_force":"TIME_IN_FORCE_GTC",
+      "position_side":"POSITION_SIDE_LONG"
     }
   }'
 
