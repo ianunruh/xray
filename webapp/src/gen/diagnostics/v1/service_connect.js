@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { GetAggregateEventsRequest, GetAggregateEventsResponse, GetEventChainRequest, GetEventChainResponse, ListAggregatesRequest, ListAggregatesResponse, ListProjectionsRequest, ListProjectionsResponse, ProjectionProgress, RebuildProjectionRequest, RebuildProjectionResponse, StreamProjectionProgressRequest } from "./service_pb.js";
+import { GetAggregateEventsRequest, GetAggregateEventsResponse, GetEventChainRequest, GetEventChainResponse, GetOperationsStatusRequest, GetOperationsStatusResponse, ListAggregatesRequest, ListAggregatesResponse, ListProjectionsRequest, ListProjectionsResponse, ProjectionProgress, RebuildProjectionRequest, RebuildProjectionResponse, StreamProjectionProgressRequest } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -80,6 +80,19 @@ export const DiagnosticsService = {
       I: StreamProjectionProgressRequest,
       O: ProjectionProgress,
       kind: MethodKind.ServerStreaming,
+    },
+    /**
+     * GetOperationsStatus returns a point-in-time snapshot of the three
+     * background loops (fees accruer, periodic reconciler, margin
+     * reactor) so the UI can show "is this thing running."
+     *
+     * @generated from rpc diagnostics.v1.DiagnosticsService.GetOperationsStatus
+     */
+    getOperationsStatus: {
+      name: "GetOperationsStatus",
+      I: GetOperationsStatusRequest,
+      O: GetOperationsStatusResponse,
+      kind: MethodKind.Unary,
     },
   }
 };

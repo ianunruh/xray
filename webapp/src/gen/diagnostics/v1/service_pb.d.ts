@@ -409,6 +409,155 @@ export declare type ProjectionProgress = Message<"diagnostics.v1.ProjectionProgr
 export declare const ProjectionProgressSchema: GenMessage<ProjectionProgress>;
 
 /**
+ * @generated from message diagnostics.v1.GetOperationsStatusRequest
+ */
+export declare type GetOperationsStatusRequest = Message<"diagnostics.v1.GetOperationsStatusRequest"> & {
+};
+
+/**
+ * Describes the message diagnostics.v1.GetOperationsStatusRequest.
+ * Use `create(GetOperationsStatusRequestSchema)` to create a new message.
+ */
+export declare const GetOperationsStatusRequestSchema: GenMessage<GetOperationsStatusRequest>;
+
+/**
+ * @generated from message diagnostics.v1.GetOperationsStatusResponse
+ */
+export declare type GetOperationsStatusResponse = Message<"diagnostics.v1.GetOperationsStatusResponse"> & {
+  /**
+   * @generated from field: diagnostics.v1.AccruerStatus accruer = 1;
+   */
+  accruer?: AccruerStatus | undefined;
+
+  /**
+   * @generated from field: diagnostics.v1.ReconcilerStatus reconciler = 2;
+   */
+  reconciler?: ReconcilerStatus | undefined;
+
+  /**
+   * @generated from field: diagnostics.v1.MarginReactorStatus margin_reactor = 3;
+   */
+  marginReactor?: MarginReactorStatus | undefined;
+};
+
+/**
+ * Describes the message diagnostics.v1.GetOperationsStatusResponse.
+ * Use `create(GetOperationsStatusResponseSchema)` to create a new message.
+ */
+export declare const GetOperationsStatusResponseSchema: GenMessage<GetOperationsStatusResponse>;
+
+/**
+ * AccruerStatus mirrors internal/feesaccruer.Status. Durations are in
+ * milliseconds. LastTickAt unset = the loop hasn't ticked yet.
+ *
+ * @generated from message diagnostics.v1.AccruerStatus
+ */
+export declare type AccruerStatus = Message<"diagnostics.v1.AccruerStatus"> & {
+  /**
+   * @generated from field: int64 interval_ms = 1;
+   */
+  intervalMs: bigint;
+
+  /**
+   * @generated from field: int64 min_elapsed_ms = 2;
+   */
+  minElapsedMs: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_tick_at = 3;
+   */
+  lastTickAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: int64 last_tick_ms = 4;
+   */
+  lastTickMs: bigint;
+
+  /**
+   * @generated from field: int32 last_tick_accounts = 5;
+   */
+  lastTickAccounts: number;
+
+  /**
+   * @generated from field: int32 last_tick_failed = 6;
+   */
+  lastTickFailed: number;
+};
+
+/**
+ * Describes the message diagnostics.v1.AccruerStatus.
+ * Use `create(AccruerStatusSchema)` to create a new message.
+ */
+export declare const AccruerStatusSchema: GenMessage<AccruerStatus>;
+
+/**
+ * ReconcilerStatus mirrors internal/reconciler.Status.
+ *
+ * @generated from message diagnostics.v1.ReconcilerStatus
+ */
+export declare type ReconcilerStatus = Message<"diagnostics.v1.ReconcilerStatus"> & {
+  /**
+   * @generated from field: int64 interval_ms = 1;
+   */
+  intervalMs: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_tick_at = 2;
+   */
+  lastTickAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: int64 last_tick_ms = 3;
+   */
+  lastTickMs: bigint;
+
+  /**
+   * @generated from field: int32 last_tick_sagas_reconciled = 4;
+   */
+  lastTickSagasReconciled: number;
+
+  /**
+   * @generated from field: int32 last_tick_margin_calls_evaluated = 5;
+   */
+  lastTickMarginCallsEvaluated: number;
+
+  /**
+   * @generated from field: int32 last_tick_failed_sagas = 6;
+   */
+  lastTickFailedSagas: number;
+};
+
+/**
+ * Describes the message diagnostics.v1.ReconcilerStatus.
+ * Use `create(ReconcilerStatusSchema)` to create a new message.
+ */
+export declare const ReconcilerStatusSchema: GenMessage<ReconcilerStatus>;
+
+/**
+ * MarginReactorStatus is the reactor's static config plus a live
+ * count of open margin calls. Event-driven, no tick semantics.
+ *
+ * @generated from message diagnostics.v1.MarginReactorStatus
+ */
+export declare type MarginReactorStatus = Message<"diagnostics.v1.MarginReactorStatus"> & {
+  /**
+   * @generated from field: int64 grace_ms = 1;
+   */
+  graceMs: bigint;
+
+  /**
+   * @generated from field: int32 active_call_count = 2;
+   */
+  activeCallCount: number;
+};
+
+/**
+ * Describes the message diagnostics.v1.MarginReactorStatus.
+ * Use `create(MarginReactorStatusSchema)` to create a new message.
+ */
+export declare const MarginReactorStatusSchema: GenMessage<MarginReactorStatus>;
+
+/**
  * @generated from enum diagnostics.v1.ProjectionPhase
  */
 export enum ProjectionPhase {
@@ -509,6 +658,18 @@ export declare const DiagnosticsService: GenService<{
     methodKind: "server_streaming";
     input: typeof StreamProjectionProgressRequestSchema;
     output: typeof ProjectionProgressSchema;
+  },
+  /**
+   * GetOperationsStatus returns a point-in-time snapshot of the three
+   * background loops (fees accruer, periodic reconciler, margin
+   * reactor) so the UI can show "is this thing running."
+   *
+   * @generated from rpc diagnostics.v1.DiagnosticsService.GetOperationsStatus
+   */
+  getOperationsStatus: {
+    methodKind: "unary";
+    input: typeof GetOperationsStatusRequestSchema;
+    output: typeof GetOperationsStatusResponseSchema;
   },
 }>;
 

@@ -51,6 +51,9 @@ const (
 	// DiagnosticsServiceStreamProjectionProgressProcedure is the fully-qualified name of the
 	// DiagnosticsService's StreamProjectionProgress RPC.
 	DiagnosticsServiceStreamProjectionProgressProcedure = "/diagnostics.v1.DiagnosticsService/StreamProjectionProgress"
+	// DiagnosticsServiceGetOperationsStatusProcedure is the fully-qualified name of the
+	// DiagnosticsService's GetOperationsStatus RPC.
+	DiagnosticsServiceGetOperationsStatusProcedure = "/diagnostics.v1.DiagnosticsService/GetOperationsStatus"
 )
 
 // DiagnosticsServiceClient is a client for the diagnostics.v1.DiagnosticsService service.
@@ -72,6 +75,10 @@ type DiagnosticsServiceClient interface {
 	// rebuild, plus a terminal tick when the consumer returns to RUNNING
 	// or FAILED. The stream closes when the rebuild terminates.
 	StreamProjectionProgress(context.Context, *connect.Request[v1.StreamProjectionProgressRequest]) (*connect.ServerStreamForClient[v1.ProjectionProgress], error)
+	// GetOperationsStatus returns a point-in-time snapshot of the three
+	// background loops (fees accruer, periodic reconciler, margin
+	// reactor) so the UI can show "is this thing running."
+	GetOperationsStatus(context.Context, *connect.Request[v1.GetOperationsStatusRequest]) (*connect.Response[v1.GetOperationsStatusResponse], error)
 }
 
 // NewDiagnosticsServiceClient constructs a client for the diagnostics.v1.DiagnosticsService
@@ -121,6 +128,12 @@ func NewDiagnosticsServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(diagnosticsServiceMethods.ByName("StreamProjectionProgress")),
 			connect.WithClientOptions(opts...),
 		),
+		getOperationsStatus: connect.NewClient[v1.GetOperationsStatusRequest, v1.GetOperationsStatusResponse](
+			httpClient,
+			baseURL+DiagnosticsServiceGetOperationsStatusProcedure,
+			connect.WithSchema(diagnosticsServiceMethods.ByName("GetOperationsStatus")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -132,6 +145,7 @@ type diagnosticsServiceClient struct {
 	listProjections          *connect.Client[v1.ListProjectionsRequest, v1.ListProjectionsResponse]
 	rebuildProjection        *connect.Client[v1.RebuildProjectionRequest, v1.RebuildProjectionResponse]
 	streamProjectionProgress *connect.Client[v1.StreamProjectionProgressRequest, v1.ProjectionProgress]
+	getOperationsStatus      *connect.Client[v1.GetOperationsStatusRequest, v1.GetOperationsStatusResponse]
 }
 
 // ListAggregates calls diagnostics.v1.DiagnosticsService.ListAggregates.
@@ -164,6 +178,11 @@ func (c *diagnosticsServiceClient) StreamProjectionProgress(ctx context.Context,
 	return c.streamProjectionProgress.CallServerStream(ctx, req)
 }
 
+// GetOperationsStatus calls diagnostics.v1.DiagnosticsService.GetOperationsStatus.
+func (c *diagnosticsServiceClient) GetOperationsStatus(ctx context.Context, req *connect.Request[v1.GetOperationsStatusRequest]) (*connect.Response[v1.GetOperationsStatusResponse], error) {
+	return c.getOperationsStatus.CallUnary(ctx, req)
+}
+
 // DiagnosticsServiceHandler is an implementation of the diagnostics.v1.DiagnosticsService service.
 type DiagnosticsServiceHandler interface {
 	ListAggregates(context.Context, *connect.Request[v1.ListAggregatesRequest]) (*connect.Response[v1.ListAggregatesResponse], error)
@@ -183,6 +202,10 @@ type DiagnosticsServiceHandler interface {
 	// rebuild, plus a terminal tick when the consumer returns to RUNNING
 	// or FAILED. The stream closes when the rebuild terminates.
 	StreamProjectionProgress(context.Context, *connect.Request[v1.StreamProjectionProgressRequest], *connect.ServerStream[v1.ProjectionProgress]) error
+	// GetOperationsStatus returns a point-in-time snapshot of the three
+	// background loops (fees accruer, periodic reconciler, margin
+	// reactor) so the UI can show "is this thing running."
+	GetOperationsStatus(context.Context, *connect.Request[v1.GetOperationsStatusRequest]) (*connect.Response[v1.GetOperationsStatusResponse], error)
 }
 
 // NewDiagnosticsServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -228,6 +251,12 @@ func NewDiagnosticsServiceHandler(svc DiagnosticsServiceHandler, opts ...connect
 		connect.WithSchema(diagnosticsServiceMethods.ByName("StreamProjectionProgress")),
 		connect.WithHandlerOptions(opts...),
 	)
+	diagnosticsServiceGetOperationsStatusHandler := connect.NewUnaryHandler(
+		DiagnosticsServiceGetOperationsStatusProcedure,
+		svc.GetOperationsStatus,
+		connect.WithSchema(diagnosticsServiceMethods.ByName("GetOperationsStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/diagnostics.v1.DiagnosticsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DiagnosticsServiceListAggregatesProcedure:
@@ -242,6 +271,8 @@ func NewDiagnosticsServiceHandler(svc DiagnosticsServiceHandler, opts ...connect
 			diagnosticsServiceRebuildProjectionHandler.ServeHTTP(w, r)
 		case DiagnosticsServiceStreamProjectionProgressProcedure:
 			diagnosticsServiceStreamProjectionProgressHandler.ServeHTTP(w, r)
+		case DiagnosticsServiceGetOperationsStatusProcedure:
+			diagnosticsServiceGetOperationsStatusHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -273,4 +304,8 @@ func (UnimplementedDiagnosticsServiceHandler) RebuildProjection(context.Context,
 
 func (UnimplementedDiagnosticsServiceHandler) StreamProjectionProgress(context.Context, *connect.Request[v1.StreamProjectionProgressRequest], *connect.ServerStream[v1.ProjectionProgress]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("diagnostics.v1.DiagnosticsService.StreamProjectionProgress is not implemented"))
+}
+
+func (UnimplementedDiagnosticsServiceHandler) GetOperationsStatus(context.Context, *connect.Request[v1.GetOperationsStatusRequest]) (*connect.Response[v1.GetOperationsStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("diagnostics.v1.DiagnosticsService.GetOperationsStatus is not implemented"))
 }

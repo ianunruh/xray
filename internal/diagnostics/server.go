@@ -13,6 +13,9 @@ import (
 
 	diagnosticsv1 "github.com/ianunruh/xray/gen/diagnostics/v1"
 	"github.com/ianunruh/xray/gen/diagnostics/v1/diagnosticsv1connect"
+	"github.com/ianunruh/xray/internal/feesaccruer"
+	"github.com/ianunruh/xray/internal/margincall"
+	"github.com/ianunruh/xray/internal/reconciler"
 	"github.com/ianunruh/xray/pkg/es"
 	"github.com/ianunruh/xray/pkg/es/natsstore"
 	"github.com/ianunruh/xray/pkg/es/pgstore"
@@ -29,22 +32,37 @@ const (
 type Server struct {
 	diagnosticsv1connect.UnimplementedDiagnosticsServiceHandler
 
-	store      *pgstore.Store
-	registry   *es.Registry
-	projection *natsstore.ProjectionManager
-	marshal    protojson.MarshalOptions
-	log        *slog.Logger
+	store         *pgstore.Store
+	registry      *es.Registry
+	projection    *natsstore.ProjectionManager
+	accruer       *feesaccruer.Accruer
+	reconciler    *reconciler.Reconciler
+	marginReactor *margincall.Reactor
+	marshal       protojson.MarshalOptions
+	log           *slog.Logger
 }
 
 // NewServer constructs a diagnostics server backed by the given event store,
 // event-type registry, and (optionally) a projection manager. When the
 // manager is nil the Projection RPCs return Unimplemented; pass a non-nil
-// manager in production.
-func NewServer(store *pgstore.Store, registry *es.Registry, projection *natsstore.ProjectionManager, log *slog.Logger) *Server {
+// manager in production. The three background-loop pointers may also be
+// nil — GetOperationsStatus returns zero values for any unwired source.
+func NewServer(
+	store *pgstore.Store,
+	registry *es.Registry,
+	projection *natsstore.ProjectionManager,
+	accruer *feesaccruer.Accruer,
+	reconciler *reconciler.Reconciler,
+	marginReactor *margincall.Reactor,
+	log *slog.Logger,
+) *Server {
 	return &Server{
-		store:      store,
-		registry:   registry,
-		projection: projection,
+		store:         store,
+		registry:      registry,
+		projection:    projection,
+		accruer:       accruer,
+		reconciler:    reconciler,
+		marginReactor: marginReactor,
 		marshal: protojson.MarshalOptions{
 			EmitUnpopulated: true,
 			Indent:          "  ",
@@ -307,6 +325,45 @@ func progressToProto(evt natsstore.ProgressEvent) *diagnosticsv1.ProjectionProgr
 		out.At = timestamppb.New(evt.At)
 	}
 	return out
+}
+
+// GetOperationsStatus aggregates the live state of the three
+// background loops. Any unwired source surfaces as a zero-valued
+// message so the UI can render "—" rather than a partial response.
+func (s *Server) GetOperationsStatus(ctx context.Context, _ *connect.Request[diagnosticsv1.GetOperationsStatusRequest]) (*connect.Response[diagnosticsv1.GetOperationsStatusResponse], error) {
+	out := &diagnosticsv1.GetOperationsStatusResponse{
+		Accruer:       &diagnosticsv1.AccruerStatus{},
+		Reconciler:    &diagnosticsv1.ReconcilerStatus{},
+		MarginReactor: &diagnosticsv1.MarginReactorStatus{},
+	}
+	if s.accruer != nil {
+		a := s.accruer.Status()
+		out.Accruer.IntervalMs = a.Interval.Milliseconds()
+		out.Accruer.MinElapsedMs = a.MinElapsed.Milliseconds()
+		if !a.LastTickAt.IsZero() {
+			out.Accruer.LastTickAt = timestamppb.New(a.LastTickAt)
+		}
+		out.Accruer.LastTickMs = a.LastTickDuration.Milliseconds()
+		out.Accruer.LastTickAccounts = int32(a.LastTickAccounts)
+		out.Accruer.LastTickFailed = int32(a.LastTickFailed)
+	}
+	if s.reconciler != nil {
+		r := s.reconciler.Status()
+		out.Reconciler.IntervalMs = r.Interval.Milliseconds()
+		if !r.LastTickAt.IsZero() {
+			out.Reconciler.LastTickAt = timestamppb.New(r.LastTickAt)
+		}
+		out.Reconciler.LastTickMs = r.LastTickDuration.Milliseconds()
+		out.Reconciler.LastTickSagasReconciled = int32(r.LastTickSagasReconciled)
+		out.Reconciler.LastTickMarginCallsEvaluated = int32(r.LastTickMarginCallsEvaluated)
+		out.Reconciler.LastTickFailedSagas = int32(r.LastTickFailedSagas)
+	}
+	if s.marginReactor != nil {
+		m := s.marginReactor.Status(ctx)
+		out.MarginReactor.GraceMs = m.Grace.Milliseconds()
+		out.MarginReactor.ActiveCallCount = int32(m.ActiveCallCount)
+	}
+	return connect.NewResponse(out), nil
 }
 
 func phaseToProto(p natsstore.ProjectionPhase) diagnosticsv1.ProjectionPhase {

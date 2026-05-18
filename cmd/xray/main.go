@@ -281,7 +281,7 @@ func main() {
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, dailyCloseProjection, broker)
 	portfolioSrv := portfolio.NewServer(portfolioHandler, obHandler, portfolioProjection, pnlProjection, markProjection, marginCallsProjection, feesProjection, shortsProjection, portfolioBroker, log)
 	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, ocoSagaHandler, twapHandler, obHandler, portfolioHandler, twapReactor, markProjection, sagaProjection, log)
-	diagnosticsSrv := diagnostics.NewServer(store, registry, projectionManager, log)
+	diagnosticsSrv := diagnostics.NewServer(store, registry, projectionManager, accruer, rec, marginReactor, log)
 	traderSrv := tradermgr.NewServer(traderMgr)
 
 	mux := http.NewServeMux()

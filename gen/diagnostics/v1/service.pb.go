@@ -970,6 +970,327 @@ func (x *ProjectionProgress) GetAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type GetOperationsStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetOperationsStatusRequest) Reset() {
+	*x = GetOperationsStatusRequest{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetOperationsStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetOperationsStatusRequest) ProtoMessage() {}
+
+func (x *GetOperationsStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetOperationsStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetOperationsStatusRequest) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{15}
+}
+
+type GetOperationsStatusResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Accruer       *AccruerStatus         `protobuf:"bytes,1,opt,name=accruer,proto3" json:"accruer,omitempty"`
+	Reconciler    *ReconcilerStatus      `protobuf:"bytes,2,opt,name=reconciler,proto3" json:"reconciler,omitempty"`
+	MarginReactor *MarginReactorStatus   `protobuf:"bytes,3,opt,name=margin_reactor,json=marginReactor,proto3" json:"margin_reactor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetOperationsStatusResponse) Reset() {
+	*x = GetOperationsStatusResponse{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetOperationsStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetOperationsStatusResponse) ProtoMessage() {}
+
+func (x *GetOperationsStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetOperationsStatusResponse.ProtoReflect.Descriptor instead.
+func (*GetOperationsStatusResponse) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GetOperationsStatusResponse) GetAccruer() *AccruerStatus {
+	if x != nil {
+		return x.Accruer
+	}
+	return nil
+}
+
+func (x *GetOperationsStatusResponse) GetReconciler() *ReconcilerStatus {
+	if x != nil {
+		return x.Reconciler
+	}
+	return nil
+}
+
+func (x *GetOperationsStatusResponse) GetMarginReactor() *MarginReactorStatus {
+	if x != nil {
+		return x.MarginReactor
+	}
+	return nil
+}
+
+// AccruerStatus mirrors internal/feesaccruer.Status. Durations are in
+// milliseconds. LastTickAt unset = the loop hasn't ticked yet.
+type AccruerStatus struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	IntervalMs       int64                  `protobuf:"varint,1,opt,name=interval_ms,json=intervalMs,proto3" json:"interval_ms,omitempty"`
+	MinElapsedMs     int64                  `protobuf:"varint,2,opt,name=min_elapsed_ms,json=minElapsedMs,proto3" json:"min_elapsed_ms,omitempty"`
+	LastTickAt       *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=last_tick_at,json=lastTickAt,proto3" json:"last_tick_at,omitempty"`
+	LastTickMs       int64                  `protobuf:"varint,4,opt,name=last_tick_ms,json=lastTickMs,proto3" json:"last_tick_ms,omitempty"`
+	LastTickAccounts int32                  `protobuf:"varint,5,opt,name=last_tick_accounts,json=lastTickAccounts,proto3" json:"last_tick_accounts,omitempty"`
+	LastTickFailed   int32                  `protobuf:"varint,6,opt,name=last_tick_failed,json=lastTickFailed,proto3" json:"last_tick_failed,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *AccruerStatus) Reset() {
+	*x = AccruerStatus{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccruerStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccruerStatus) ProtoMessage() {}
+
+func (x *AccruerStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccruerStatus.ProtoReflect.Descriptor instead.
+func (*AccruerStatus) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *AccruerStatus) GetIntervalMs() int64 {
+	if x != nil {
+		return x.IntervalMs
+	}
+	return 0
+}
+
+func (x *AccruerStatus) GetMinElapsedMs() int64 {
+	if x != nil {
+		return x.MinElapsedMs
+	}
+	return 0
+}
+
+func (x *AccruerStatus) GetLastTickAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastTickAt
+	}
+	return nil
+}
+
+func (x *AccruerStatus) GetLastTickMs() int64 {
+	if x != nil {
+		return x.LastTickMs
+	}
+	return 0
+}
+
+func (x *AccruerStatus) GetLastTickAccounts() int32 {
+	if x != nil {
+		return x.LastTickAccounts
+	}
+	return 0
+}
+
+func (x *AccruerStatus) GetLastTickFailed() int32 {
+	if x != nil {
+		return x.LastTickFailed
+	}
+	return 0
+}
+
+// ReconcilerStatus mirrors internal/reconciler.Status.
+type ReconcilerStatus struct {
+	state                        protoimpl.MessageState `protogen:"open.v1"`
+	IntervalMs                   int64                  `protobuf:"varint,1,opt,name=interval_ms,json=intervalMs,proto3" json:"interval_ms,omitempty"`
+	LastTickAt                   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=last_tick_at,json=lastTickAt,proto3" json:"last_tick_at,omitempty"`
+	LastTickMs                   int64                  `protobuf:"varint,3,opt,name=last_tick_ms,json=lastTickMs,proto3" json:"last_tick_ms,omitempty"`
+	LastTickSagasReconciled      int32                  `protobuf:"varint,4,opt,name=last_tick_sagas_reconciled,json=lastTickSagasReconciled,proto3" json:"last_tick_sagas_reconciled,omitempty"`
+	LastTickMarginCallsEvaluated int32                  `protobuf:"varint,5,opt,name=last_tick_margin_calls_evaluated,json=lastTickMarginCallsEvaluated,proto3" json:"last_tick_margin_calls_evaluated,omitempty"`
+	LastTickFailedSagas          int32                  `protobuf:"varint,6,opt,name=last_tick_failed_sagas,json=lastTickFailedSagas,proto3" json:"last_tick_failed_sagas,omitempty"`
+	unknownFields                protoimpl.UnknownFields
+	sizeCache                    protoimpl.SizeCache
+}
+
+func (x *ReconcilerStatus) Reset() {
+	*x = ReconcilerStatus{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReconcilerStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReconcilerStatus) ProtoMessage() {}
+
+func (x *ReconcilerStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReconcilerStatus.ProtoReflect.Descriptor instead.
+func (*ReconcilerStatus) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ReconcilerStatus) GetIntervalMs() int64 {
+	if x != nil {
+		return x.IntervalMs
+	}
+	return 0
+}
+
+func (x *ReconcilerStatus) GetLastTickAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastTickAt
+	}
+	return nil
+}
+
+func (x *ReconcilerStatus) GetLastTickMs() int64 {
+	if x != nil {
+		return x.LastTickMs
+	}
+	return 0
+}
+
+func (x *ReconcilerStatus) GetLastTickSagasReconciled() int32 {
+	if x != nil {
+		return x.LastTickSagasReconciled
+	}
+	return 0
+}
+
+func (x *ReconcilerStatus) GetLastTickMarginCallsEvaluated() int32 {
+	if x != nil {
+		return x.LastTickMarginCallsEvaluated
+	}
+	return 0
+}
+
+func (x *ReconcilerStatus) GetLastTickFailedSagas() int32 {
+	if x != nil {
+		return x.LastTickFailedSagas
+	}
+	return 0
+}
+
+// MarginReactorStatus is the reactor's static config plus a live
+// count of open margin calls. Event-driven, no tick semantics.
+type MarginReactorStatus struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	GraceMs         int64                  `protobuf:"varint,1,opt,name=grace_ms,json=graceMs,proto3" json:"grace_ms,omitempty"`
+	ActiveCallCount int32                  `protobuf:"varint,2,opt,name=active_call_count,json=activeCallCount,proto3" json:"active_call_count,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *MarginReactorStatus) Reset() {
+	*x = MarginReactorStatus{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MarginReactorStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MarginReactorStatus) ProtoMessage() {}
+
+func (x *MarginReactorStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MarginReactorStatus.ProtoReflect.Descriptor instead.
+func (*MarginReactorStatus) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *MarginReactorStatus) GetGraceMs() int64 {
+	if x != nil {
+		return x.GraceMs
+	}
+	return 0
+}
+
+func (x *MarginReactorStatus) GetActiveCallCount() int32 {
+	if x != nil {
+		return x.ActiveCallCount
+	}
+	return 0
+}
+
 var File_diagnostics_v1_service_proto protoreflect.FileDescriptor
 
 const file_diagnostics_v1_service_proto_rawDesc = "" +
@@ -1040,20 +1361,51 @@ const file_diagnostics_v1_service_proto_rawDesc = "" +
 	"\n" +
 	"batch_size\x18\a \x01(\x05R\tbatchSize\x12\x14\n" +
 	"\x05error\x18\b \x01(\tR\x05error\x12*\n" +
-	"\x02at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\x02at*\xad\x01\n" +
+	"\x02at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\x02at\"\x1c\n" +
+	"\x1aGetOperationsStatusRequest\"\xe4\x01\n" +
+	"\x1bGetOperationsStatusResponse\x127\n" +
+	"\aaccruer\x18\x01 \x01(\v2\x1d.diagnostics.v1.AccruerStatusR\aaccruer\x12@\n" +
+	"\n" +
+	"reconciler\x18\x02 \x01(\v2 .diagnostics.v1.ReconcilerStatusR\n" +
+	"reconciler\x12J\n" +
+	"\x0emargin_reactor\x18\x03 \x01(\v2#.diagnostics.v1.MarginReactorStatusR\rmarginReactor\"\x8e\x02\n" +
+	"\rAccruerStatus\x12\x1f\n" +
+	"\vinterval_ms\x18\x01 \x01(\x03R\n" +
+	"intervalMs\x12$\n" +
+	"\x0emin_elapsed_ms\x18\x02 \x01(\x03R\fminElapsedMs\x12<\n" +
+	"\flast_tick_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"lastTickAt\x12 \n" +
+	"\flast_tick_ms\x18\x04 \x01(\x03R\n" +
+	"lastTickMs\x12,\n" +
+	"\x12last_tick_accounts\x18\x05 \x01(\x05R\x10lastTickAccounts\x12(\n" +
+	"\x10last_tick_failed\x18\x06 \x01(\x05R\x0elastTickFailed\"\xcd\x02\n" +
+	"\x10ReconcilerStatus\x12\x1f\n" +
+	"\vinterval_ms\x18\x01 \x01(\x03R\n" +
+	"intervalMs\x12<\n" +
+	"\flast_tick_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"lastTickAt\x12 \n" +
+	"\flast_tick_ms\x18\x03 \x01(\x03R\n" +
+	"lastTickMs\x12;\n" +
+	"\x1alast_tick_sagas_reconciled\x18\x04 \x01(\x05R\x17lastTickSagasReconciled\x12F\n" +
+	" last_tick_margin_calls_evaluated\x18\x05 \x01(\x05R\x1clastTickMarginCallsEvaluated\x123\n" +
+	"\x16last_tick_failed_sagas\x18\x06 \x01(\x05R\x13lastTickFailedSagas\"\\\n" +
+	"\x13MarginReactorStatus\x12\x19\n" +
+	"\bgrace_ms\x18\x01 \x01(\x03R\agraceMs\x12*\n" +
+	"\x11active_call_count\x18\x02 \x01(\x05R\x0factiveCallCount*\xad\x01\n" +
 	"\x0fProjectionPhase\x12 \n" +
 	"\x1cPROJECTION_PHASE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18PROJECTION_PHASE_RUNNING\x10\x01\x12\x1f\n" +
 	"\x1bPROJECTION_PHASE_REBUILDING\x10\x02\x12\x1c\n" +
 	"\x18PROJECTION_PHASE_STOPPED\x10\x03\x12\x1b\n" +
-	"\x17PROJECTION_PHASE_FAILED\x10\x042\x81\x05\n" +
+	"\x17PROJECTION_PHASE_FAILED\x10\x042\xf1\x05\n" +
 	"\x12DiagnosticsService\x12_\n" +
 	"\x0eListAggregates\x12%.diagnostics.v1.ListAggregatesRequest\x1a&.diagnostics.v1.ListAggregatesResponse\x12k\n" +
 	"\x12GetAggregateEvents\x12).diagnostics.v1.GetAggregateEventsRequest\x1a*.diagnostics.v1.GetAggregateEventsResponse\x12\\\n" +
 	"\rGetEventChain\x12$.diagnostics.v1.GetEventChainRequest\x1a%.diagnostics.v1.GetEventChainResponse\x12b\n" +
 	"\x0fListProjections\x12&.diagnostics.v1.ListProjectionsRequest\x1a'.diagnostics.v1.ListProjectionsResponse\x12h\n" +
 	"\x11RebuildProjection\x12(.diagnostics.v1.RebuildProjectionRequest\x1a).diagnostics.v1.RebuildProjectionResponse\x12q\n" +
-	"\x18StreamProjectionProgress\x12/.diagnostics.v1.StreamProjectionProgressRequest\x1a\".diagnostics.v1.ProjectionProgress0\x01B;Z9github.com/ianunruh/xray/gen/diagnostics/v1;diagnosticsv1b\x06proto3"
+	"\x18StreamProjectionProgress\x12/.diagnostics.v1.StreamProjectionProgressRequest\x1a\".diagnostics.v1.ProjectionProgress0\x01\x12n\n" +
+	"\x13GetOperationsStatus\x12*.diagnostics.v1.GetOperationsStatusRequest\x1a+.diagnostics.v1.GetOperationsStatusResponseB;Z9github.com/ianunruh/xray/gen/diagnostics/v1;diagnosticsv1b\x06proto3"
 
 var (
 	file_diagnostics_v1_service_proto_rawDescOnce sync.Once
@@ -1068,7 +1420,7 @@ func file_diagnostics_v1_service_proto_rawDescGZIP() []byte {
 }
 
 var file_diagnostics_v1_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_diagnostics_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_diagnostics_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_diagnostics_v1_service_proto_goTypes = []any{
 	(ProjectionPhase)(0),                    // 0: diagnostics.v1.ProjectionPhase
 	(*ListAggregatesRequest)(nil),           // 1: diagnostics.v1.ListAggregatesRequest
@@ -1086,37 +1438,49 @@ var file_diagnostics_v1_service_proto_goTypes = []any{
 	(*RebuildProjectionResponse)(nil),       // 13: diagnostics.v1.RebuildProjectionResponse
 	(*StreamProjectionProgressRequest)(nil), // 14: diagnostics.v1.StreamProjectionProgressRequest
 	(*ProjectionProgress)(nil),              // 15: diagnostics.v1.ProjectionProgress
-	(*timestamppb.Timestamp)(nil),           // 16: google.protobuf.Timestamp
+	(*GetOperationsStatusRequest)(nil),      // 16: diagnostics.v1.GetOperationsStatusRequest
+	(*GetOperationsStatusResponse)(nil),     // 17: diagnostics.v1.GetOperationsStatusResponse
+	(*AccruerStatus)(nil),                   // 18: diagnostics.v1.AccruerStatus
+	(*ReconcilerStatus)(nil),                // 19: diagnostics.v1.ReconcilerStatus
+	(*MarginReactorStatus)(nil),             // 20: diagnostics.v1.MarginReactorStatus
+	(*timestamppb.Timestamp)(nil),           // 21: google.protobuf.Timestamp
 }
 var file_diagnostics_v1_service_proto_depIdxs = []int32{
-	16, // 0: diagnostics.v1.AggregateSummary.first_event_at:type_name -> google.protobuf.Timestamp
-	16, // 1: diagnostics.v1.AggregateSummary.last_event_at:type_name -> google.protobuf.Timestamp
+	21, // 0: diagnostics.v1.AggregateSummary.first_event_at:type_name -> google.protobuf.Timestamp
+	21, // 1: diagnostics.v1.AggregateSummary.last_event_at:type_name -> google.protobuf.Timestamp
 	2,  // 2: diagnostics.v1.ListAggregatesResponse.aggregates:type_name -> diagnostics.v1.AggregateSummary
-	16, // 3: diagnostics.v1.DiagnosticEvent.timestamp:type_name -> google.protobuf.Timestamp
+	21, // 3: diagnostics.v1.DiagnosticEvent.timestamp:type_name -> google.protobuf.Timestamp
 	5,  // 4: diagnostics.v1.GetAggregateEventsResponse.events:type_name -> diagnostics.v1.DiagnosticEvent
 	5,  // 5: diagnostics.v1.GetEventChainResponse.events:type_name -> diagnostics.v1.DiagnosticEvent
 	0,  // 6: diagnostics.v1.ProjectionStatus.phase:type_name -> diagnostics.v1.ProjectionPhase
-	16, // 7: diagnostics.v1.ProjectionStatus.rebuild_started_at:type_name -> google.protobuf.Timestamp
+	21, // 7: diagnostics.v1.ProjectionStatus.rebuild_started_at:type_name -> google.protobuf.Timestamp
 	10, // 8: diagnostics.v1.ListProjectionsResponse.projections:type_name -> diagnostics.v1.ProjectionStatus
 	0,  // 9: diagnostics.v1.ProjectionProgress.phase:type_name -> diagnostics.v1.ProjectionPhase
-	16, // 10: diagnostics.v1.ProjectionProgress.at:type_name -> google.protobuf.Timestamp
-	1,  // 11: diagnostics.v1.DiagnosticsService.ListAggregates:input_type -> diagnostics.v1.ListAggregatesRequest
-	4,  // 12: diagnostics.v1.DiagnosticsService.GetAggregateEvents:input_type -> diagnostics.v1.GetAggregateEventsRequest
-	7,  // 13: diagnostics.v1.DiagnosticsService.GetEventChain:input_type -> diagnostics.v1.GetEventChainRequest
-	9,  // 14: diagnostics.v1.DiagnosticsService.ListProjections:input_type -> diagnostics.v1.ListProjectionsRequest
-	12, // 15: diagnostics.v1.DiagnosticsService.RebuildProjection:input_type -> diagnostics.v1.RebuildProjectionRequest
-	14, // 16: diagnostics.v1.DiagnosticsService.StreamProjectionProgress:input_type -> diagnostics.v1.StreamProjectionProgressRequest
-	3,  // 17: diagnostics.v1.DiagnosticsService.ListAggregates:output_type -> diagnostics.v1.ListAggregatesResponse
-	6,  // 18: diagnostics.v1.DiagnosticsService.GetAggregateEvents:output_type -> diagnostics.v1.GetAggregateEventsResponse
-	8,  // 19: diagnostics.v1.DiagnosticsService.GetEventChain:output_type -> diagnostics.v1.GetEventChainResponse
-	11, // 20: diagnostics.v1.DiagnosticsService.ListProjections:output_type -> diagnostics.v1.ListProjectionsResponse
-	13, // 21: diagnostics.v1.DiagnosticsService.RebuildProjection:output_type -> diagnostics.v1.RebuildProjectionResponse
-	15, // 22: diagnostics.v1.DiagnosticsService.StreamProjectionProgress:output_type -> diagnostics.v1.ProjectionProgress
-	17, // [17:23] is the sub-list for method output_type
-	11, // [11:17] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	21, // 10: diagnostics.v1.ProjectionProgress.at:type_name -> google.protobuf.Timestamp
+	18, // 11: diagnostics.v1.GetOperationsStatusResponse.accruer:type_name -> diagnostics.v1.AccruerStatus
+	19, // 12: diagnostics.v1.GetOperationsStatusResponse.reconciler:type_name -> diagnostics.v1.ReconcilerStatus
+	20, // 13: diagnostics.v1.GetOperationsStatusResponse.margin_reactor:type_name -> diagnostics.v1.MarginReactorStatus
+	21, // 14: diagnostics.v1.AccruerStatus.last_tick_at:type_name -> google.protobuf.Timestamp
+	21, // 15: diagnostics.v1.ReconcilerStatus.last_tick_at:type_name -> google.protobuf.Timestamp
+	1,  // 16: diagnostics.v1.DiagnosticsService.ListAggregates:input_type -> diagnostics.v1.ListAggregatesRequest
+	4,  // 17: diagnostics.v1.DiagnosticsService.GetAggregateEvents:input_type -> diagnostics.v1.GetAggregateEventsRequest
+	7,  // 18: diagnostics.v1.DiagnosticsService.GetEventChain:input_type -> diagnostics.v1.GetEventChainRequest
+	9,  // 19: diagnostics.v1.DiagnosticsService.ListProjections:input_type -> diagnostics.v1.ListProjectionsRequest
+	12, // 20: diagnostics.v1.DiagnosticsService.RebuildProjection:input_type -> diagnostics.v1.RebuildProjectionRequest
+	14, // 21: diagnostics.v1.DiagnosticsService.StreamProjectionProgress:input_type -> diagnostics.v1.StreamProjectionProgressRequest
+	16, // 22: diagnostics.v1.DiagnosticsService.GetOperationsStatus:input_type -> diagnostics.v1.GetOperationsStatusRequest
+	3,  // 23: diagnostics.v1.DiagnosticsService.ListAggregates:output_type -> diagnostics.v1.ListAggregatesResponse
+	6,  // 24: diagnostics.v1.DiagnosticsService.GetAggregateEvents:output_type -> diagnostics.v1.GetAggregateEventsResponse
+	8,  // 25: diagnostics.v1.DiagnosticsService.GetEventChain:output_type -> diagnostics.v1.GetEventChainResponse
+	11, // 26: diagnostics.v1.DiagnosticsService.ListProjections:output_type -> diagnostics.v1.ListProjectionsResponse
+	13, // 27: diagnostics.v1.DiagnosticsService.RebuildProjection:output_type -> diagnostics.v1.RebuildProjectionResponse
+	15, // 28: diagnostics.v1.DiagnosticsService.StreamProjectionProgress:output_type -> diagnostics.v1.ProjectionProgress
+	17, // 29: diagnostics.v1.DiagnosticsService.GetOperationsStatus:output_type -> diagnostics.v1.GetOperationsStatusResponse
+	23, // [23:30] is the sub-list for method output_type
+	16, // [16:23] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_diagnostics_v1_service_proto_init() }
@@ -1130,7 +1494,7 @@ func file_diagnostics_v1_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_diagnostics_v1_service_proto_rawDesc), len(file_diagnostics_v1_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   15,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

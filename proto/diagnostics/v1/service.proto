@@ -25,6 +25,11 @@ service DiagnosticsService {
   // rebuild, plus a terminal tick when the consumer returns to RUNNING
   // or FAILED. The stream closes when the rebuild terminates.
   rpc StreamProjectionProgress(StreamProjectionProgressRequest) returns (stream ProjectionProgress);
+
+  // GetOperationsStatus returns a point-in-time snapshot of the three
+  // background loops (fees accruer, periodic reconciler, margin
+  // reactor) so the UI can show "is this thing running."
+  rpc GetOperationsStatus(GetOperationsStatusRequest) returns (GetOperationsStatusResponse);
 }
 
 message ListAggregatesRequest {
@@ -128,4 +133,40 @@ message ProjectionProgress {
   // Non-empty when phase=FAILED.
   string error = 8;
   google.protobuf.Timestamp at = 9;
+}
+
+message GetOperationsStatusRequest {}
+
+message GetOperationsStatusResponse {
+  AccruerStatus       accruer        = 1;
+  ReconcilerStatus    reconciler     = 2;
+  MarginReactorStatus margin_reactor = 3;
+}
+
+// AccruerStatus mirrors internal/feesaccruer.Status. Durations are in
+// milliseconds. LastTickAt unset = the loop hasn't ticked yet.
+message AccruerStatus {
+  int64                     interval_ms        = 1;
+  int64                     min_elapsed_ms     = 2;
+  google.protobuf.Timestamp last_tick_at       = 3;
+  int64                     last_tick_ms       = 4;
+  int32                     last_tick_accounts = 5;
+  int32                     last_tick_failed   = 6;
+}
+
+// ReconcilerStatus mirrors internal/reconciler.Status.
+message ReconcilerStatus {
+  int64                     interval_ms                       = 1;
+  google.protobuf.Timestamp last_tick_at                      = 2;
+  int64                     last_tick_ms                      = 3;
+  int32                     last_tick_sagas_reconciled        = 4;
+  int32                     last_tick_margin_calls_evaluated  = 5;
+  int32                     last_tick_failed_sagas            = 6;
+}
+
+// MarginReactorStatus is the reactor's static config plus a live
+// count of open margin calls. Event-driven, no tick semantics.
+message MarginReactorStatus {
+  int64 grace_ms          = 1;
+  int32 active_call_count = 2;
 }
