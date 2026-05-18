@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CreateTraderRequest, DeleteTraderRequest, DeleteTraderResponse, GetTraderRequest, ListTradersRequest, ListTradersResponse, StartTraderRequest, StopTraderRequest, Trader, UpdateTraderRequest } from "./service_pb.js";
+import { CreateTraderRequest, DeleteTraderRequest, DeleteTraderResponse, GetTraderRequest, ListTradersRequest, ListTradersResponse, StartAllTradersRequest, StartAllTradersResponse, StartTraderRequest, StopAllTradersRequest, StopAllTradersResponse, StopTraderRequest, Trader, UpdateTraderRequest } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -73,6 +73,24 @@ export declare const TraderService: {
       readonly name: "StopTrader",
       readonly I: typeof StopTraderRequest,
       readonly O: typeof Trader,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc trader.v1.TraderService.StartAllTraders
+     */
+    readonly startAllTraders: {
+      readonly name: "StartAllTraders",
+      readonly I: typeof StartAllTradersRequest,
+      readonly O: typeof StartAllTradersResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc trader.v1.TraderService.StopAllTraders
+     */
+    readonly stopAllTraders: {
+      readonly name: "StopAllTraders",
+      readonly I: typeof StopAllTradersRequest,
+      readonly O: typeof StopAllTradersResponse,
       readonly kind: MethodKind.Unary,
     },
   }

@@ -99,6 +99,27 @@ func (s *Server) StopTrader(ctx context.Context, req *connect.Request[traderv1.S
 	return connect.NewResponse(t), nil
 }
 
+func (s *Server) StartAllTraders(ctx context.Context, _ *connect.Request[traderv1.StartAllTradersRequest]) (*connect.Response[traderv1.StartAllTradersResponse], error) {
+	started, failed, err := s.mgr.StartAll(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&traderv1.StartAllTradersResponse{
+		Started: int32(started),
+		Failed:  int32(failed),
+	}), nil
+}
+
+func (s *Server) StopAllTraders(ctx context.Context, _ *connect.Request[traderv1.StopAllTradersRequest]) (*connect.Response[traderv1.StopAllTradersResponse], error) {
+	stopped, err := s.mgr.StopAll(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&traderv1.StopAllTradersResponse{
+		Stopped: int32(stopped),
+	}), nil
+}
+
 func mapErr(err error) error {
 	if err == nil {
 		return nil

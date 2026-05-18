@@ -53,6 +53,12 @@ const (
 	// TraderServiceStopTraderProcedure is the fully-qualified name of the TraderService's StopTrader
 	// RPC.
 	TraderServiceStopTraderProcedure = "/trader.v1.TraderService/StopTrader"
+	// TraderServiceStartAllTradersProcedure is the fully-qualified name of the TraderService's
+	// StartAllTraders RPC.
+	TraderServiceStartAllTradersProcedure = "/trader.v1.TraderService/StartAllTraders"
+	// TraderServiceStopAllTradersProcedure is the fully-qualified name of the TraderService's
+	// StopAllTraders RPC.
+	TraderServiceStopAllTradersProcedure = "/trader.v1.TraderService/StopAllTraders"
 )
 
 // TraderServiceClient is a client for the trader.v1.TraderService service.
@@ -64,6 +70,8 @@ type TraderServiceClient interface {
 	DeleteTrader(context.Context, *connect.Request[v1.DeleteTraderRequest]) (*connect.Response[v1.DeleteTraderResponse], error)
 	StartTrader(context.Context, *connect.Request[v1.StartTraderRequest]) (*connect.Response[v1.Trader], error)
 	StopTrader(context.Context, *connect.Request[v1.StopTraderRequest]) (*connect.Response[v1.Trader], error)
+	StartAllTraders(context.Context, *connect.Request[v1.StartAllTradersRequest]) (*connect.Response[v1.StartAllTradersResponse], error)
+	StopAllTraders(context.Context, *connect.Request[v1.StopAllTradersRequest]) (*connect.Response[v1.StopAllTradersResponse], error)
 }
 
 // NewTraderServiceClient constructs a client for the trader.v1.TraderService service. By default,
@@ -119,18 +127,32 @@ func NewTraderServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(traderServiceMethods.ByName("StopTrader")),
 			connect.WithClientOptions(opts...),
 		),
+		startAllTraders: connect.NewClient[v1.StartAllTradersRequest, v1.StartAllTradersResponse](
+			httpClient,
+			baseURL+TraderServiceStartAllTradersProcedure,
+			connect.WithSchema(traderServiceMethods.ByName("StartAllTraders")),
+			connect.WithClientOptions(opts...),
+		),
+		stopAllTraders: connect.NewClient[v1.StopAllTradersRequest, v1.StopAllTradersResponse](
+			httpClient,
+			baseURL+TraderServiceStopAllTradersProcedure,
+			connect.WithSchema(traderServiceMethods.ByName("StopAllTraders")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // traderServiceClient implements TraderServiceClient.
 type traderServiceClient struct {
-	listTraders  *connect.Client[v1.ListTradersRequest, v1.ListTradersResponse]
-	getTrader    *connect.Client[v1.GetTraderRequest, v1.Trader]
-	createTrader *connect.Client[v1.CreateTraderRequest, v1.Trader]
-	updateTrader *connect.Client[v1.UpdateTraderRequest, v1.Trader]
-	deleteTrader *connect.Client[v1.DeleteTraderRequest, v1.DeleteTraderResponse]
-	startTrader  *connect.Client[v1.StartTraderRequest, v1.Trader]
-	stopTrader   *connect.Client[v1.StopTraderRequest, v1.Trader]
+	listTraders     *connect.Client[v1.ListTradersRequest, v1.ListTradersResponse]
+	getTrader       *connect.Client[v1.GetTraderRequest, v1.Trader]
+	createTrader    *connect.Client[v1.CreateTraderRequest, v1.Trader]
+	updateTrader    *connect.Client[v1.UpdateTraderRequest, v1.Trader]
+	deleteTrader    *connect.Client[v1.DeleteTraderRequest, v1.DeleteTraderResponse]
+	startTrader     *connect.Client[v1.StartTraderRequest, v1.Trader]
+	stopTrader      *connect.Client[v1.StopTraderRequest, v1.Trader]
+	startAllTraders *connect.Client[v1.StartAllTradersRequest, v1.StartAllTradersResponse]
+	stopAllTraders  *connect.Client[v1.StopAllTradersRequest, v1.StopAllTradersResponse]
 }
 
 // ListTraders calls trader.v1.TraderService.ListTraders.
@@ -168,6 +190,16 @@ func (c *traderServiceClient) StopTrader(ctx context.Context, req *connect.Reque
 	return c.stopTrader.CallUnary(ctx, req)
 }
 
+// StartAllTraders calls trader.v1.TraderService.StartAllTraders.
+func (c *traderServiceClient) StartAllTraders(ctx context.Context, req *connect.Request[v1.StartAllTradersRequest]) (*connect.Response[v1.StartAllTradersResponse], error) {
+	return c.startAllTraders.CallUnary(ctx, req)
+}
+
+// StopAllTraders calls trader.v1.TraderService.StopAllTraders.
+func (c *traderServiceClient) StopAllTraders(ctx context.Context, req *connect.Request[v1.StopAllTradersRequest]) (*connect.Response[v1.StopAllTradersResponse], error) {
+	return c.stopAllTraders.CallUnary(ctx, req)
+}
+
 // TraderServiceHandler is an implementation of the trader.v1.TraderService service.
 type TraderServiceHandler interface {
 	ListTraders(context.Context, *connect.Request[v1.ListTradersRequest]) (*connect.Response[v1.ListTradersResponse], error)
@@ -177,6 +209,8 @@ type TraderServiceHandler interface {
 	DeleteTrader(context.Context, *connect.Request[v1.DeleteTraderRequest]) (*connect.Response[v1.DeleteTraderResponse], error)
 	StartTrader(context.Context, *connect.Request[v1.StartTraderRequest]) (*connect.Response[v1.Trader], error)
 	StopTrader(context.Context, *connect.Request[v1.StopTraderRequest]) (*connect.Response[v1.Trader], error)
+	StartAllTraders(context.Context, *connect.Request[v1.StartAllTradersRequest]) (*connect.Response[v1.StartAllTradersResponse], error)
+	StopAllTraders(context.Context, *connect.Request[v1.StopAllTradersRequest]) (*connect.Response[v1.StopAllTradersResponse], error)
 }
 
 // NewTraderServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -228,6 +262,18 @@ func NewTraderServiceHandler(svc TraderServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(traderServiceMethods.ByName("StopTrader")),
 		connect.WithHandlerOptions(opts...),
 	)
+	traderServiceStartAllTradersHandler := connect.NewUnaryHandler(
+		TraderServiceStartAllTradersProcedure,
+		svc.StartAllTraders,
+		connect.WithSchema(traderServiceMethods.ByName("StartAllTraders")),
+		connect.WithHandlerOptions(opts...),
+	)
+	traderServiceStopAllTradersHandler := connect.NewUnaryHandler(
+		TraderServiceStopAllTradersProcedure,
+		svc.StopAllTraders,
+		connect.WithSchema(traderServiceMethods.ByName("StopAllTraders")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/trader.v1.TraderService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TraderServiceListTradersProcedure:
@@ -244,6 +290,10 @@ func NewTraderServiceHandler(svc TraderServiceHandler, opts ...connect.HandlerOp
 			traderServiceStartTraderHandler.ServeHTTP(w, r)
 		case TraderServiceStopTraderProcedure:
 			traderServiceStopTraderHandler.ServeHTTP(w, r)
+		case TraderServiceStartAllTradersProcedure:
+			traderServiceStartAllTradersHandler.ServeHTTP(w, r)
+		case TraderServiceStopAllTradersProcedure:
+			traderServiceStopAllTradersHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -279,4 +329,12 @@ func (UnimplementedTraderServiceHandler) StartTrader(context.Context, *connect.R
 
 func (UnimplementedTraderServiceHandler) StopTrader(context.Context, *connect.Request[v1.StopTraderRequest]) (*connect.Response[v1.Trader], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("trader.v1.TraderService.StopTrader is not implemented"))
+}
+
+func (UnimplementedTraderServiceHandler) StartAllTraders(context.Context, *connect.Request[v1.StartAllTradersRequest]) (*connect.Response[v1.StartAllTradersResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("trader.v1.TraderService.StartAllTraders is not implemented"))
+}
+
+func (UnimplementedTraderServiceHandler) StopAllTraders(context.Context, *connect.Request[v1.StopAllTradersRequest]) (*connect.Response[v1.StopAllTradersResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("trader.v1.TraderService.StopAllTraders is not implemented"))
 }

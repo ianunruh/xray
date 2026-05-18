@@ -1005,6 +1005,177 @@ func (x *StopTraderRequest) GetId() string {
 	return ""
 }
 
+type StartAllTradersRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StartAllTradersRequest) Reset() {
+	*x = StartAllTradersRequest{}
+	mi := &file_trader_v1_service_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StartAllTradersRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StartAllTradersRequest) ProtoMessage() {}
+
+func (x *StartAllTradersRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_trader_v1_service_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StartAllTradersRequest.ProtoReflect.Descriptor instead.
+func (*StartAllTradersRequest) Descriptor() ([]byte, []int) {
+	return file_trader_v1_service_proto_rawDescGZIP(), []int{13}
+}
+
+type StartAllTradersResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Number of traders that were not already running and got started.
+	Started int32 `protobuf:"varint,1,opt,name=started,proto3" json:"started,omitempty"`
+	// Number of traders that failed to start; their last_error is persisted.
+	Failed        int32 `protobuf:"varint,2,opt,name=failed,proto3" json:"failed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StartAllTradersResponse) Reset() {
+	*x = StartAllTradersResponse{}
+	mi := &file_trader_v1_service_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StartAllTradersResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StartAllTradersResponse) ProtoMessage() {}
+
+func (x *StartAllTradersResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_trader_v1_service_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StartAllTradersResponse.ProtoReflect.Descriptor instead.
+func (*StartAllTradersResponse) Descriptor() ([]byte, []int) {
+	return file_trader_v1_service_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *StartAllTradersResponse) GetStarted() int32 {
+	if x != nil {
+		return x.Started
+	}
+	return 0
+}
+
+func (x *StartAllTradersResponse) GetFailed() int32 {
+	if x != nil {
+		return x.Failed
+	}
+	return 0
+}
+
+type StopAllTradersRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopAllTradersRequest) Reset() {
+	*x = StopAllTradersRequest{}
+	mi := &file_trader_v1_service_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopAllTradersRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopAllTradersRequest) ProtoMessage() {}
+
+func (x *StopAllTradersRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_trader_v1_service_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopAllTradersRequest.ProtoReflect.Descriptor instead.
+func (*StopAllTradersRequest) Descriptor() ([]byte, []int) {
+	return file_trader_v1_service_proto_rawDescGZIP(), []int{15}
+}
+
+type StopAllTradersResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Number of traders that were running and got stopped.
+	Stopped       int32 `protobuf:"varint,1,opt,name=stopped,proto3" json:"stopped,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopAllTradersResponse) Reset() {
+	*x = StopAllTradersResponse{}
+	mi := &file_trader_v1_service_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopAllTradersResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopAllTradersResponse) ProtoMessage() {}
+
+func (x *StopAllTradersResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_trader_v1_service_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopAllTradersResponse.ProtoReflect.Descriptor instead.
+func (*StopAllTradersResponse) Descriptor() ([]byte, []int) {
+	return file_trader_v1_service_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *StopAllTradersResponse) GetStopped() int32 {
+	if x != nil {
+		return x.Stopped
+	}
+	return 0
+}
+
 var File_trader_v1_service_proto protoreflect.FileDescriptor
 
 const file_trader_v1_service_proto_rawDesc = "" +
@@ -1077,7 +1248,14 @@ const file_trader_v1_service_proto_rawDesc = "" +
 	"\x12StartTraderRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"#\n" +
 	"\x11StopTraderRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id*T\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x18\n" +
+	"\x16StartAllTradersRequest\"K\n" +
+	"\x17StartAllTradersResponse\x12\x18\n" +
+	"\astarted\x18\x01 \x01(\x05R\astarted\x12\x16\n" +
+	"\x06failed\x18\x02 \x01(\x05R\x06failed\"\x17\n" +
+	"\x15StopAllTradersRequest\"2\n" +
+	"\x16StopAllTradersResponse\x12\x18\n" +
+	"\astopped\x18\x01 \x01(\x05R\astopped*T\n" +
 	"\n" +
 	"TraderType\x12\x1b\n" +
 	"\x17TRADER_TYPE_UNSPECIFIED\x10\x00\x12\x12\n" +
@@ -1087,7 +1265,7 @@ const file_trader_v1_service_proto_rawDesc = "" +
 	"\x19TRADER_STATUS_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15TRADER_STATUS_STOPPED\x10\x01\x12\x19\n" +
 	"\x15TRADER_STATUS_RUNNING\x10\x02\x12\x18\n" +
-	"\x14TRADER_STATUS_FAILED\x10\x032\xf1\x03\n" +
+	"\x14TRADER_STATUS_FAILED\x10\x032\xa2\x05\n" +
 	"\rTraderService\x12L\n" +
 	"\vListTraders\x12\x1d.trader.v1.ListTradersRequest\x1a\x1e.trader.v1.ListTradersResponse\x12;\n" +
 	"\tGetTrader\x12\x1b.trader.v1.GetTraderRequest\x1a\x11.trader.v1.Trader\x12A\n" +
@@ -1096,7 +1274,9 @@ const file_trader_v1_service_proto_rawDesc = "" +
 	"\fDeleteTrader\x12\x1e.trader.v1.DeleteTraderRequest\x1a\x1f.trader.v1.DeleteTraderResponse\x12?\n" +
 	"\vStartTrader\x12\x1d.trader.v1.StartTraderRequest\x1a\x11.trader.v1.Trader\x12=\n" +
 	"\n" +
-	"StopTrader\x12\x1c.trader.v1.StopTraderRequest\x1a\x11.trader.v1.TraderB1Z/github.com/ianunruh/xray/gen/trader/v1;traderv1b\x06proto3"
+	"StopTrader\x12\x1c.trader.v1.StopTraderRequest\x1a\x11.trader.v1.Trader\x12X\n" +
+	"\x0fStartAllTraders\x12!.trader.v1.StartAllTradersRequest\x1a\".trader.v1.StartAllTradersResponse\x12U\n" +
+	"\x0eStopAllTraders\x12 .trader.v1.StopAllTradersRequest\x1a!.trader.v1.StopAllTradersResponseB1Z/github.com/ianunruh/xray/gen/trader/v1;traderv1b\x06proto3"
 
 var (
 	file_trader_v1_service_proto_rawDescOnce sync.Once
@@ -1111,30 +1291,34 @@ func file_trader_v1_service_proto_rawDescGZIP() []byte {
 }
 
 var file_trader_v1_service_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_trader_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_trader_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_trader_v1_service_proto_goTypes = []any{
-	(TraderType)(0),               // 0: trader.v1.TraderType
-	(TraderStatus)(0),             // 1: trader.v1.TraderStatus
-	(*Trader)(nil),                // 2: trader.v1.Trader
-	(*TraderConfig)(nil),          // 3: trader.v1.TraderConfig
-	(*MMConfig)(nil),              // 4: trader.v1.MMConfig
-	(*NoiseConfig)(nil),           // 5: trader.v1.NoiseConfig
-	(*ListTradersRequest)(nil),    // 6: trader.v1.ListTradersRequest
-	(*ListTradersResponse)(nil),   // 7: trader.v1.ListTradersResponse
-	(*GetTraderRequest)(nil),      // 8: trader.v1.GetTraderRequest
-	(*CreateTraderRequest)(nil),   // 9: trader.v1.CreateTraderRequest
-	(*UpdateTraderRequest)(nil),   // 10: trader.v1.UpdateTraderRequest
-	(*DeleteTraderRequest)(nil),   // 11: trader.v1.DeleteTraderRequest
-	(*DeleteTraderResponse)(nil),  // 12: trader.v1.DeleteTraderResponse
-	(*StartTraderRequest)(nil),    // 13: trader.v1.StartTraderRequest
-	(*StopTraderRequest)(nil),     // 14: trader.v1.StopTraderRequest
-	(*timestamppb.Timestamp)(nil), // 15: google.protobuf.Timestamp
+	(TraderType)(0),                 // 0: trader.v1.TraderType
+	(TraderStatus)(0),               // 1: trader.v1.TraderStatus
+	(*Trader)(nil),                  // 2: trader.v1.Trader
+	(*TraderConfig)(nil),            // 3: trader.v1.TraderConfig
+	(*MMConfig)(nil),                // 4: trader.v1.MMConfig
+	(*NoiseConfig)(nil),             // 5: trader.v1.NoiseConfig
+	(*ListTradersRequest)(nil),      // 6: trader.v1.ListTradersRequest
+	(*ListTradersResponse)(nil),     // 7: trader.v1.ListTradersResponse
+	(*GetTraderRequest)(nil),        // 8: trader.v1.GetTraderRequest
+	(*CreateTraderRequest)(nil),     // 9: trader.v1.CreateTraderRequest
+	(*UpdateTraderRequest)(nil),     // 10: trader.v1.UpdateTraderRequest
+	(*DeleteTraderRequest)(nil),     // 11: trader.v1.DeleteTraderRequest
+	(*DeleteTraderResponse)(nil),    // 12: trader.v1.DeleteTraderResponse
+	(*StartTraderRequest)(nil),      // 13: trader.v1.StartTraderRequest
+	(*StopTraderRequest)(nil),       // 14: trader.v1.StopTraderRequest
+	(*StartAllTradersRequest)(nil),  // 15: trader.v1.StartAllTradersRequest
+	(*StartAllTradersResponse)(nil), // 16: trader.v1.StartAllTradersResponse
+	(*StopAllTradersRequest)(nil),   // 17: trader.v1.StopAllTradersRequest
+	(*StopAllTradersResponse)(nil),  // 18: trader.v1.StopAllTradersResponse
+	(*timestamppb.Timestamp)(nil),   // 19: google.protobuf.Timestamp
 }
 var file_trader_v1_service_proto_depIdxs = []int32{
 	0,  // 0: trader.v1.Trader.type:type_name -> trader.v1.TraderType
 	1,  // 1: trader.v1.Trader.status:type_name -> trader.v1.TraderStatus
-	15, // 2: trader.v1.Trader.created_at:type_name -> google.protobuf.Timestamp
-	15, // 3: trader.v1.Trader.updated_at:type_name -> google.protobuf.Timestamp
+	19, // 2: trader.v1.Trader.created_at:type_name -> google.protobuf.Timestamp
+	19, // 3: trader.v1.Trader.updated_at:type_name -> google.protobuf.Timestamp
 	3,  // 4: trader.v1.Trader.config:type_name -> trader.v1.TraderConfig
 	4,  // 5: trader.v1.TraderConfig.mm:type_name -> trader.v1.MMConfig
 	5,  // 6: trader.v1.TraderConfig.noise:type_name -> trader.v1.NoiseConfig
@@ -1149,15 +1333,19 @@ var file_trader_v1_service_proto_depIdxs = []int32{
 	11, // 15: trader.v1.TraderService.DeleteTrader:input_type -> trader.v1.DeleteTraderRequest
 	13, // 16: trader.v1.TraderService.StartTrader:input_type -> trader.v1.StartTraderRequest
 	14, // 17: trader.v1.TraderService.StopTrader:input_type -> trader.v1.StopTraderRequest
-	7,  // 18: trader.v1.TraderService.ListTraders:output_type -> trader.v1.ListTradersResponse
-	2,  // 19: trader.v1.TraderService.GetTrader:output_type -> trader.v1.Trader
-	2,  // 20: trader.v1.TraderService.CreateTrader:output_type -> trader.v1.Trader
-	2,  // 21: trader.v1.TraderService.UpdateTrader:output_type -> trader.v1.Trader
-	12, // 22: trader.v1.TraderService.DeleteTrader:output_type -> trader.v1.DeleteTraderResponse
-	2,  // 23: trader.v1.TraderService.StartTrader:output_type -> trader.v1.Trader
-	2,  // 24: trader.v1.TraderService.StopTrader:output_type -> trader.v1.Trader
-	18, // [18:25] is the sub-list for method output_type
-	11, // [11:18] is the sub-list for method input_type
+	15, // 18: trader.v1.TraderService.StartAllTraders:input_type -> trader.v1.StartAllTradersRequest
+	17, // 19: trader.v1.TraderService.StopAllTraders:input_type -> trader.v1.StopAllTradersRequest
+	7,  // 20: trader.v1.TraderService.ListTraders:output_type -> trader.v1.ListTradersResponse
+	2,  // 21: trader.v1.TraderService.GetTrader:output_type -> trader.v1.Trader
+	2,  // 22: trader.v1.TraderService.CreateTrader:output_type -> trader.v1.Trader
+	2,  // 23: trader.v1.TraderService.UpdateTrader:output_type -> trader.v1.Trader
+	12, // 24: trader.v1.TraderService.DeleteTrader:output_type -> trader.v1.DeleteTraderResponse
+	2,  // 25: trader.v1.TraderService.StartTrader:output_type -> trader.v1.Trader
+	2,  // 26: trader.v1.TraderService.StopTrader:output_type -> trader.v1.Trader
+	16, // 27: trader.v1.TraderService.StartAllTraders:output_type -> trader.v1.StartAllTradersResponse
+	18, // 28: trader.v1.TraderService.StopAllTraders:output_type -> trader.v1.StopAllTradersResponse
+	20, // [20:29] is the sub-list for method output_type
+	11, // [11:20] is the sub-list for method input_type
 	11, // [11:11] is the sub-list for extension type_name
 	11, // [11:11] is the sub-list for extension extendee
 	0,  // [0:11] is the sub-list for field type_name
@@ -1178,7 +1366,7 @@ func file_trader_v1_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_trader_v1_service_proto_rawDesc), len(file_trader_v1_service_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   13,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -413,6 +413,73 @@ export declare type StopTraderRequest = Message<"trader.v1.StopTraderRequest"> &
 export declare const StopTraderRequestSchema: GenMessage<StopTraderRequest>;
 
 /**
+ * @generated from message trader.v1.StartAllTradersRequest
+ */
+export declare type StartAllTradersRequest = Message<"trader.v1.StartAllTradersRequest"> & {
+};
+
+/**
+ * Describes the message trader.v1.StartAllTradersRequest.
+ * Use `create(StartAllTradersRequestSchema)` to create a new message.
+ */
+export declare const StartAllTradersRequestSchema: GenMessage<StartAllTradersRequest>;
+
+/**
+ * @generated from message trader.v1.StartAllTradersResponse
+ */
+export declare type StartAllTradersResponse = Message<"trader.v1.StartAllTradersResponse"> & {
+  /**
+   * Number of traders that were not already running and got started.
+   *
+   * @generated from field: int32 started = 1;
+   */
+  started: number;
+
+  /**
+   * Number of traders that failed to start; their last_error is persisted.
+   *
+   * @generated from field: int32 failed = 2;
+   */
+  failed: number;
+};
+
+/**
+ * Describes the message trader.v1.StartAllTradersResponse.
+ * Use `create(StartAllTradersResponseSchema)` to create a new message.
+ */
+export declare const StartAllTradersResponseSchema: GenMessage<StartAllTradersResponse>;
+
+/**
+ * @generated from message trader.v1.StopAllTradersRequest
+ */
+export declare type StopAllTradersRequest = Message<"trader.v1.StopAllTradersRequest"> & {
+};
+
+/**
+ * Describes the message trader.v1.StopAllTradersRequest.
+ * Use `create(StopAllTradersRequestSchema)` to create a new message.
+ */
+export declare const StopAllTradersRequestSchema: GenMessage<StopAllTradersRequest>;
+
+/**
+ * @generated from message trader.v1.StopAllTradersResponse
+ */
+export declare type StopAllTradersResponse = Message<"trader.v1.StopAllTradersResponse"> & {
+  /**
+   * Number of traders that were running and got stopped.
+   *
+   * @generated from field: int32 stopped = 1;
+   */
+  stopped: number;
+};
+
+/**
+ * Describes the message trader.v1.StopAllTradersResponse.
+ * Use `create(StopAllTradersResponseSchema)` to create a new message.
+ */
+export declare const StopAllTradersResponseSchema: GenMessage<StopAllTradersResponse>;
+
+/**
  * @generated from enum trader.v1.TraderType
  */
 export enum TraderType {
@@ -526,6 +593,22 @@ export declare const TraderService: GenService<{
     methodKind: "unary";
     input: typeof StopTraderRequestSchema;
     output: typeof TraderSchema;
+  },
+  /**
+   * @generated from rpc trader.v1.TraderService.StartAllTraders
+   */
+  startAllTraders: {
+    methodKind: "unary";
+    input: typeof StartAllTradersRequestSchema;
+    output: typeof StartAllTradersResponseSchema;
+  },
+  /**
+   * @generated from rpc trader.v1.TraderService.StopAllTraders
+   */
+  stopAllTraders: {
+    methodKind: "unary";
+    input: typeof StopAllTradersRequestSchema;
+    output: typeof StopAllTradersResponseSchema;
   },
 }>;
 

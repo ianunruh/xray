@@ -230,6 +230,56 @@ func (m *Manager) Stop(ctx context.Context, id string) (*traderv1.Trader, error)
 	return m.Get(ctx, id)
 }
 
+// StartAll starts every persisted trader that isn't already running. Failed
+// starts are recorded per-trader (enabled cleared, last_error persisted) but
+// don't abort the loop — callers get back counts so the UI can surface a
+// summary notification.
+func (m *Manager) StartAll(ctx context.Context) (started, failed int, err error) {
+	records, err := m.store.List(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, r := range records {
+		if m.isRunning(r.ID) {
+			continue
+		}
+		if _, startErr := m.Start(ctx, r.ID); startErr != nil {
+			failed++
+			m.log.Warn("start-all: trader failed to start", "id", r.ID, "name", r.Name, "error", startErr)
+			continue
+		}
+		started++
+	}
+	return started, failed, nil
+}
+
+// StopAll stops every currently-running trader and clears each one's enabled
+// flag so they don't auto-start on the next server boot. Returns the number
+// of traders that were actually running.
+func (m *Manager) StopAll(ctx context.Context) (int, error) {
+	m.mu.Lock()
+	ids := make([]string, 0, len(m.running))
+	for id := range m.running {
+		ids = append(ids, id)
+	}
+	m.mu.Unlock()
+
+	stopped := 0
+	for _, id := range ids {
+		if _, err := m.Stop(ctx, id); err != nil {
+			if errors.Is(err, ErrNotFound) {
+				// Trader was deleted between snapshot and stop — best-effort
+				// cancel the goroutine and move on.
+				m.stop(id)
+				continue
+			}
+			return stopped, err
+		}
+		stopped++
+	}
+	return stopped, nil
+}
+
 func (m *Manager) Delete(ctx context.Context, id string) error {
 	m.stop(id)
 	return m.store.Delete(ctx, id)

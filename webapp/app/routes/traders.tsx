@@ -29,6 +29,7 @@ import {
   accountOf,
   buildConfig,
   depositOf,
+  duplicateForm,
   emptyForm,
   formFromTrader,
   symbolOf,
@@ -121,6 +122,21 @@ export async function action({
         await traderClient.deleteTrader({ id });
         return { ok: true, intent };
       }
+      case "startAll": {
+        const r = await traderClient.startAllTraders({});
+        if (r.failed > 0) {
+          return {
+            ok: false,
+            intent,
+            error: `${r.started} started, ${r.failed} failed — see status column`,
+          };
+        }
+        return { ok: true, intent };
+      }
+      case "stopAll": {
+        await traderClient.stopAllTraders({});
+        return { ok: true, intent };
+      }
       default:
         return { ok: false, intent, error: `unknown intent: ${intent}` };
     }
@@ -157,6 +173,7 @@ export default function Traders({ loaderData }: Route.ComponentProps) {
   const revalidator = useRevalidator();
   const mutationFetcher = useFetcher<typeof action>();
   const rowFetcher = useFetcher<typeof action>();
+  const bulkFetcher = useFetcher<typeof action>();
 
   const [form, setForm] = useState<FormState>(emptyForm());
   const [editing, setEditing] = useState(false);
@@ -195,6 +212,19 @@ export default function Traders({ loaderData }: Route.ComponentProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mutationFetcher.state, mutationFetcher.data]);
 
+  // React to bulk start/stop completion — surface failures as notifications.
+  useEffect(() => {
+    if (bulkFetcher.state !== "idle" || !bulkFetcher.data) return;
+    if (!bulkFetcher.data.ok) {
+      notifications.show({
+        title: `${bulkFetcher.data.intent} failed`,
+        message: bulkFetcher.data.error,
+        color: "red",
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkFetcher.state, bulkFetcher.data]);
+
   // React to per-row fetcher completion (start/stop button); clear busyId.
   useEffect(() => {
     if (rowFetcher.state !== "idle") return;
@@ -219,6 +249,30 @@ export default function Traders({ loaderData }: Route.ComponentProps) {
     setForm(t.form);
     setEditing(true);
     modalHandlers.open();
+  }
+
+  function openDuplicate(t: TraderRow) {
+    setForm(
+      duplicateForm(
+        t.form,
+        traders.map((x) => x.name),
+        traders.map((x) => x.accountId).filter(Boolean),
+      ),
+    );
+    setEditing(false);
+    modalHandlers.open();
+  }
+
+  function bulkStart() {
+    const fd = new FormData();
+    fd.set("intent", "startAll");
+    bulkFetcher.submit(fd, { method: "post" });
+  }
+
+  function bulkStop() {
+    const fd = new FormData();
+    fd.set("intent", "stopAll");
+    bulkFetcher.submit(fd, { method: "post" });
   }
 
   function save(startNow: boolean) {
@@ -266,12 +320,42 @@ export default function Traders({ loaderData }: Route.ComponentProps) {
   const deleting =
     mutationFetcher.state !== "idle" &&
     mutationFetcher.formData?.get("intent") === "delete";
+  const starting =
+    bulkFetcher.state !== "idle" &&
+    bulkFetcher.formData?.get("intent") === "startAll";
+  const stopping =
+    bulkFetcher.state !== "idle" &&
+    bulkFetcher.formData?.get("intent") === "stopAll";
+  const runningCount = traders.filter(
+    (t) => t.status === TraderStatus.RUNNING,
+  ).length;
+  const startableCount = traders.length - runningCount;
 
   return (
     <Stack gap="md">
       <Group justify="space-between">
         <Title order={3}>Traders</Title>
         <Group gap="xs">
+          <Button
+            size="xs"
+            variant="default"
+            color="green"
+            onClick={bulkStart}
+            loading={starting}
+            disabled={startableCount === 0}
+          >
+            Start all
+          </Button>
+          <Button
+            size="xs"
+            variant="default"
+            color="red"
+            onClick={bulkStop}
+            loading={stopping}
+            disabled={runningCount === 0}
+          >
+            Stop all
+          </Button>
           <Button
             size="xs"
             variant="default"
@@ -303,7 +387,7 @@ export default function Traders({ loaderData }: Route.ComponentProps) {
                 <Table.Th>Account</Table.Th>
                 <Table.Th>Initial deposit</Table.Th>
                 <Table.Th>Status</Table.Th>
-                <Table.Th style={{ width: 240 }}>Actions</Table.Th>
+                <Table.Th style={{ width: 340 }}>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -346,6 +430,13 @@ export default function Traders({ loaderData }: Route.ComponentProps) {
                         onClick={() => openEdit(t)}
                       >
                         Edit
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="default"
+                        onClick={() => openDuplicate(t)}
+                      >
+                        Duplicate
                       </Button>
                       <Button
                         size="xs"

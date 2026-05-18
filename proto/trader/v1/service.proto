@@ -14,6 +14,8 @@ service TraderService {
   rpc DeleteTrader(DeleteTraderRequest) returns (DeleteTraderResponse);
   rpc StartTrader(StartTraderRequest) returns (Trader);
   rpc StopTrader(StopTraderRequest) returns (Trader);
+  rpc StartAllTraders(StartAllTradersRequest) returns (StartAllTradersResponse);
+  rpc StopAllTraders(StopAllTradersRequest) returns (StopAllTradersResponse);
 }
 
 enum TraderType {
@@ -121,4 +123,20 @@ message StartTraderRequest {
 
 message StopTraderRequest {
   string id = 1;
+}
+
+message StartAllTradersRequest {}
+
+message StartAllTradersResponse {
+  // Number of traders that were not already running and got started.
+  int32 started = 1;
+  // Number of traders that failed to start; their last_error is persisted.
+  int32 failed = 2;
+}
+
+message StopAllTradersRequest {}
+
+message StopAllTradersResponse {
+  // Number of traders that were running and got stopped.
+  int32 stopped = 1;
 }

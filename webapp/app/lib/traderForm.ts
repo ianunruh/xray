@@ -200,6 +200,46 @@ export function accountOf(t: Trader): string {
   return "";
 }
 
+// uniqueIncrement returns the next "<base>-<n>" string that isn't in `taken`.
+// A trailing "-<digits>" on base is treated as the starting suffix; otherwise
+// counting begins at 2. Empty base returns empty (the duplicate flow leaves
+// blank fields blank so the user notices they're required).
+export function uniqueIncrement(base: string, taken: Iterable<string>): string {
+  const trimmed = base.trim();
+  if (!trimmed) return "";
+  const set = new Set(taken);
+  const m = trimmed.match(/^(.*?)-(\d+)$/);
+  const root = m ? m[1] : trimmed;
+  let n = m ? Number(m[2]) + 1 : 2;
+  while (set.has(`${root}-${n}`)) n++;
+  return `${root}-${n}`;
+}
+
+// duplicateForm returns a deep-copied form pre-filled from `source` with the
+// name and the active config's accountId bumped to avoid collisions with
+// already-used names/accountIds across all traders.
+export function duplicateForm(
+  source: FormState,
+  takenNames: Iterable<string>,
+  takenAccountIds: Iterable<string>,
+): FormState {
+  const copy: FormState = {
+    name: uniqueIncrement(source.name, takenNames),
+    type: source.type,
+    mm: { ...source.mm },
+    noise: { ...source.noise },
+  };
+  if (copy.type === TraderType.MM) {
+    copy.mm.accountId = uniqueIncrement(source.mm.accountId, takenAccountIds);
+  } else {
+    copy.noise.accountId = uniqueIncrement(
+      source.noise.accountId,
+      takenAccountIds,
+    );
+  }
+  return copy;
+}
+
 export function depositOf(t: Trader): bigint {
   if (t.config?.config.case === "mm") return t.config.config.value.initialDeposit;
   if (t.config?.config.case === "noise")
