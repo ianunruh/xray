@@ -38,6 +38,7 @@ import (
 	"github.com/ianunruh/xray/pkg/es"
 	"github.com/ianunruh/xray/pkg/es/natsstore"
 	"github.com/ianunruh/xray/pkg/es/pgstore"
+	"github.com/ianunruh/xray/pkg/es/snapshotter"
 )
 
 func main() {
@@ -216,6 +217,8 @@ func main() {
 			WithPersistent(store, sagaProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "daily-close-projection").
 			WithPersistent(store, dailyCloseProjection),
+		natsstore.NewProjectionConsumer(js, registry, log, "snapshotter").
+			WithPersistent(store, newSnapshotter(store, registry, log)),
 	}
 	// Bootstrap broker's saga→account routing map BEFORE consumers
 	// start. The consumer resumes from checkpoint so OrderSagaStarted
@@ -325,6 +328,17 @@ func main() {
 	}
 
 	log.Info("shutdown complete")
+}
+
+// newSnapshotter constructs the async snapshotter and registers every
+// aggregate type whose factory produces a Snapshotable. Today only the
+// OrderBook qualifies; new entries are one-liners.
+func newSnapshotter(store *pgstore.Store, registry *es.Registry, log *slog.Logger) *snapshotter.Snapshotter {
+	s := snapshotter.New(store, store, registry, log)
+	s.Register("orderbook", func(id string) es.Aggregate {
+		return orderbook.NewOrderBook(id)
+	})
+	return s
 }
 
 // setupPriceSource builds the shared price source the in-process trader
