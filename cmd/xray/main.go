@@ -172,6 +172,8 @@ func main() {
 	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shortsProjection, longsProjection, activeUserSagasProjection, markProjection,
 		margincall.Config{Grace: 30 * time.Second}, log)
 
+	snap := newSnapshotter(store, registry, log).WithMaxIdle(30 * time.Minute)
+
 	// One consumer per persistent projection so each one's cursor advances
 	// independently. Ephemeral projections (in-memory) share a single
 	// consumer whose JetStream cursor is reset on every boot, so their
@@ -218,7 +220,7 @@ func main() {
 		natsstore.NewProjectionConsumer(js, registry, log, "daily-close-projection").
 			WithPersistent(store, dailyCloseProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "snapshotter").
-			WithPersistent(store, newSnapshotter(store, registry, log)),
+			WithPersistent(store, snap),
 	}
 	// Bootstrap broker's saga→account routing map BEFORE consumers
 	// start. The consumer resumes from checkpoint so OrderSagaStarted
@@ -253,6 +255,8 @@ func main() {
 	accruer := feesaccruer.NewAccruer(portfolioHandler, accruableAccounts, markProjection, time.Now,
 		feesaccruer.Config{Interval: time.Hour}, log)
 	go accruer.Run(ctx)
+
+	go runSnapshotSweeper(ctx, snap, 5*time.Minute)
 
 	// In-process trader manager. Persists trader configs in PG and
 	// supervises enabled traders as goroutines. Reuses the same
@@ -341,6 +345,21 @@ func newSnapshotter(store *pgstore.Store, registry *es.Registry, log *slog.Logge
 		return portfolio.NewPortfolio(id)
 	})
 	return s
+}
+
+// runSnapshotSweeper periodically asks the snapshotter to evict idle
+// aggregates from its in-memory map. Stops when ctx is done.
+func runSnapshotSweeper(ctx context.Context, s *snapshotter.Snapshotter, interval time.Duration) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			s.Sweep()
+		}
+	}
 }
 
 // setupPriceSource builds the shared price source the in-process trader

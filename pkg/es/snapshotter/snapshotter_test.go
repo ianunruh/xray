@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -131,6 +132,28 @@ func dispatch(id string, fromVersion, toVersion int) []es.Event {
 		})
 	}
 	return events
+}
+
+// fakeClock is a controllable monotonic clock for eviction tests.
+type fakeClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func newFakeClock(start time.Time) *fakeClock {
+	return &fakeClock{now: start}
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *fakeClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
 }
 
 // feed dispatches events one-by-one into the snapshotter, appending each to
@@ -433,6 +456,115 @@ func TestSnapshotter_CatchUpCoalescesSaves(t *testing.T) {
 	batch := append(dispatch("orderbook:GOOG", 1, 500), dispatch("orderbook:MSFT", 1, 500)...)
 	require.NoError(t, snap.HandleEvents(context.Background(), batch))
 	assert.Equal(t, int64(2), counting.saves.Load(), "two aggregates → two saves")
+}
+
+func TestSnapshotter_EvictsIdleAggregates(t *testing.T) {
+	registry := newRegistry()
+	store := memstore.New()
+	counting := &saveCountingStore{Store: store}
+
+	clock := newFakeClock(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+	snap := snapshotter.New(store, counting, registry, slog.Default()).
+		WithMaxIdle(10 * time.Minute).
+		WithClock(clock.Now)
+	snap.Register("orderbook", func(id string) es.Aggregate {
+		return newSnapshotAggregate(id, 3)
+	})
+
+	feed(t, snap, store, registry, "orderbook:AAPL", 1, 3)
+	feed(t, snap, store, registry, "orderbook:GOOG", 1, 3)
+	require.Equal(t, 2, snap.Len(), "both aggregates in memory")
+
+	// Advance time past the idle threshold without touching either.
+	clock.Advance(11 * time.Minute)
+	evicted := snap.Sweep()
+	assert.Equal(t, 2, evicted)
+	assert.Equal(t, 0, snap.Len(), "both aggregates evicted")
+}
+
+func TestSnapshotter_SweepKeepsRecent(t *testing.T) {
+	registry := newRegistry()
+	store := memstore.New()
+	counting := &saveCountingStore{Store: store}
+
+	clock := newFakeClock(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+	snap := snapshotter.New(store, counting, registry, slog.Default()).
+		WithMaxIdle(10 * time.Minute).
+		WithClock(clock.Now)
+	snap.Register("orderbook", func(id string) es.Aggregate {
+		return newSnapshotAggregate(id, 3)
+	})
+
+	feed(t, snap, store, registry, "orderbook:AAPL", 1, 3)
+
+	// Less than maxIdle elapsed → no eviction.
+	clock.Advance(9 * time.Minute)
+	assert.Equal(t, 0, snap.Sweep())
+	assert.Equal(t, 1, snap.Len())
+}
+
+func TestSnapshotter_DisabledByDefault(t *testing.T) {
+	registry := newRegistry()
+	store := memstore.New()
+	counting := &saveCountingStore{Store: store}
+
+	clock := newFakeClock(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+	snap := snapshotter.New(store, counting, registry, slog.Default()).
+		WithClock(clock.Now)
+	// No WithMaxIdle call.
+	snap.Register("orderbook", func(id string) es.Aggregate {
+		return newSnapshotAggregate(id, 3)
+	})
+
+	feed(t, snap, store, registry, "orderbook:AAPL", 1, 3)
+	clock.Advance(100 * time.Hour)
+	assert.Equal(t, 0, snap.Sweep(), "eviction disabled → Sweep is a no-op")
+	assert.Equal(t, 1, snap.Len())
+}
+
+func TestSnapshotter_EvictedAggregateLazyRehydrates(t *testing.T) {
+	// After eviction, the next event for the same aggregate must
+	// re-hydrate from the persisted snapshot rather than apply against
+	// stale state. The boundary check fires correctly from the rehydrated
+	// state.
+	registry := newRegistry()
+	store := memstore.New()
+	counting := &saveCountingStore{Store: store}
+
+	clock := newFakeClock(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+	snap := snapshotter.New(store, counting, registry, slog.Default()).
+		WithMaxIdle(time.Minute).
+		WithClock(clock.Now)
+	snap.Register("orderbook", func(id string) es.Aggregate {
+		return newSnapshotAggregate(id, 3)
+	})
+
+	// Feed v1-v3 → saves at v3, in-memory at v3.
+	feed(t, snap, store, registry, "orderbook:AAPL", 1, 3)
+	require.Equal(t, int64(1), counting.saves.Load())
+
+	// Sweep evicts the entry.
+	clock.Advance(2 * time.Minute)
+	require.Equal(t, 1, snap.Sweep())
+	require.Equal(t, 0, snap.Len())
+
+	// Append + dispatch v4. Lazy hydrate from snapshot at v3 → apply v4.
+	// 4/3=1, lastSaved/3=3/3=1 → no boundary crossed, no save.
+	evt := appendEvent(t, store, registry, "orderbook:AAPL", 4)
+	require.NoError(t, snap.HandleEvents(context.Background(), []es.Event{evt}))
+	assert.Equal(t, int64(1), counting.saves.Load())
+	assert.Equal(t, 1, snap.Len(), "rehydrated entry back in memory")
+
+	// Dispatch v5, v6 → crosses 6/3=2 > 1 → save at v6.
+	for v := 5; v <= 6; v++ {
+		evt := appendEvent(t, store, registry, "orderbook:AAPL", v)
+		require.NoError(t, snap.HandleEvents(context.Background(), []es.Event{evt}))
+	}
+	assert.Equal(t, int64(2), counting.saves.Load())
+
+	persisted, err := counting.LoadSnapshot(context.Background(), "orderbook:AAPL")
+	require.NoError(t, err)
+	assert.Equal(t, 6, persisted.Version)
 }
 
 func TestSnapshotter_MalformedIDIgnored(t *testing.T) {

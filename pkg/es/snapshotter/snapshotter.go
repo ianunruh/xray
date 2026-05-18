@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -31,7 +33,11 @@ type Snapshotter struct {
 	snapshots es.SnapshotStore
 	registry  *es.Registry
 	factories map[string]Factory
-	aggs      map[string]*entry
+
+	mu      sync.Mutex
+	aggs    map[string]*entry
+	maxIdle time.Duration  // 0 = never evict
+	now     func() time.Time
 }
 
 // entry holds the live in-memory state for one aggregate.
@@ -40,6 +46,7 @@ type entry struct {
 	version          int
 	lastSavedVersion int
 	interval         int
+	lastSeen         time.Time
 }
 
 // New constructs a Snapshotter. store is used for lazy hydration
@@ -53,12 +60,29 @@ func New(store es.EventStore, snapshots es.SnapshotStore, registry *es.Registry,
 		registry:  registry,
 		factories: make(map[string]Factory),
 		aggs:      make(map[string]*entry),
+		now:       time.Now,
 	}
 }
 
 // Register associates a factory with an aggregate-ID prefix.
 func (s *Snapshotter) Register(prefix string, factory Factory) {
 	s.factories[prefix] = factory
+}
+
+// WithMaxIdle configures eviction: in-memory aggregates that haven't seen
+// an event in d are dropped by Sweep. Zero (the default) disables
+// eviction. Evicted aggregates lazy-rehydrate on the next event, so
+// eviction never loses data — only in-memory state.
+func (s *Snapshotter) WithMaxIdle(d time.Duration) *Snapshotter {
+	s.maxIdle = d
+	return s
+}
+
+// WithClock overrides the time source. Used in tests to drive eviction
+// deterministically. Production callers shouldn't need this.
+func (s *Snapshotter) WithClock(now func() time.Time) *Snapshotter {
+	s.now = now
+	return s
 }
 
 // HandleEvents applies each event to its in-memory aggregate and saves a
@@ -71,7 +95,11 @@ func (s *Snapshotter) Register(prefix string, factory Factory) {
 // only one save per aggregate fires regardless of how many boundaries were
 // crossed.
 func (s *Snapshotter) HandleEvents(ctx context.Context, events []es.Event) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	pending := make(map[string]*entry)
+	now := s.now()
 
 	for _, evt := range events {
 		e, err := s.ensureAggregate(ctx, evt.AggregateID)
@@ -86,6 +114,7 @@ func (s *Snapshotter) HandleEvents(ctx context.Context, events []es.Event) error
 
 		if evt.Version <= e.version {
 			// Already applied during lazy hydrate.
+			e.lastSeen = now
 			continue
 		}
 		if evt.Version != e.version+1 {
@@ -97,6 +126,7 @@ func (s *Snapshotter) HandleEvents(ctx context.Context, events []es.Event) error
 			return fmt.Errorf("apply v%d to %s: %w", evt.Version, evt.AggregateID, err)
 		}
 		e.version = evt.Version
+		e.lastSeen = now
 
 		if e.version/e.interval > e.lastSavedVersion/e.interval {
 			pending[evt.AggregateID] = e
@@ -111,6 +141,39 @@ func (s *Snapshotter) HandleEvents(ctx context.Context, events []es.Event) error
 		}
 	}
 	return nil
+}
+
+// Sweep drops in-memory aggregates whose lastSeen is older than the
+// configured maxIdle. Returns the number of entries evicted. Safe to
+// call concurrently with HandleEvents — the next event for an evicted
+// aggregate triggers a fresh lazy hydrate.
+func (s *Snapshotter) Sweep() int {
+	if s.maxIdle <= 0 {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cutoff := s.now().Add(-s.maxIdle)
+	n := 0
+	for id, e := range s.aggs {
+		if e.lastSeen.Before(cutoff) {
+			delete(s.aggs, id)
+			n++
+		}
+	}
+	if n > 0 {
+		s.log.Info("snapshotter swept idle aggregates", "evicted", n, "remaining", len(s.aggs))
+	}
+	return n
+}
+
+// Len returns the number of in-memory aggregates the snapshotter is
+// currently holding. Useful for telemetry and tests.
+func (s *Snapshotter) Len() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.aggs)
 }
 
 // ensureAggregate returns the in-memory entry for id, lazy-hydrating from
@@ -180,6 +243,7 @@ func (s *Snapshotter) ensureAggregate(ctx context.Context, id string) (*entry, e
 		version:          version,
 		lastSavedVersion: lastSaved,
 		interval:         interval,
+		lastSeen:         s.now(),
 	}
 	s.aggs[id] = e
 
