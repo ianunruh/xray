@@ -23,6 +23,7 @@ import {
 } from "./components/PortfolioPanel";
 import { BracketsPanel } from "./components/BracketsPanel";
 import { OcosPanel } from "./components/OcosPanel";
+import { TwapsPanel } from "./components/TwapsPanel";
 import { MarketPanel } from "./components/MarketPanel";
 import { OrderForm, type OrderPrefill } from "./components/OrderForm";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
@@ -198,6 +199,10 @@ export function App() {
                 onJumpToAggregate={jumpToAggregate}
               />
               <OcosPanel
+                accountId={account}
+                onJumpToAggregate={jumpToAggregate}
+              />
+              <TwapsPanel
                 accountId={account}
                 onJumpToAggregate={jumpToAggregate}
               />

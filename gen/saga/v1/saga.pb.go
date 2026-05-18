@@ -31,6 +31,7 @@ const (
 	SagaKind_SAGA_KIND_SINGLE_ORDER SagaKind = 1
 	SagaKind_SAGA_KIND_BRACKET      SagaKind = 2
 	SagaKind_SAGA_KIND_OCO          SagaKind = 3
+	SagaKind_SAGA_KIND_TWAP         SagaKind = 4
 )
 
 // Enum value maps for SagaKind.
@@ -40,12 +41,14 @@ var (
 		1: "SAGA_KIND_SINGLE_ORDER",
 		2: "SAGA_KIND_BRACKET",
 		3: "SAGA_KIND_OCO",
+		4: "SAGA_KIND_TWAP",
 	}
 	SagaKind_value = map[string]int32{
 		"SAGA_KIND_UNSPECIFIED":  0,
 		"SAGA_KIND_SINGLE_ORDER": 1,
 		"SAGA_KIND_BRACKET":      2,
 		"SAGA_KIND_OCO":          3,
+		"SAGA_KIND_TWAP":         4,
 	}
 )
 
@@ -360,6 +363,57 @@ func (OCOPhase) EnumDescriptor() ([]byte, []int) {
 	return file_saga_v1_saga_proto_rawDescGZIP(), []int{5}
 }
 
+// TWAPPhase is the granular state for SAGA_KIND_TWAP. Coarse-grained
+// since the per-slice timeline lives in TWAPDetails.slices.
+type TWAPPhase int32
+
+const (
+	TWAPPhase_TWAP_PHASE_UNSPECIFIED TWAPPhase = 0
+	TWAPPhase_TWAP_PHASE_ACTIVE      TWAPPhase = 1
+	TWAPPhase_TWAP_PHASE_COMPLETED   TWAPPhase = 2
+)
+
+// Enum value maps for TWAPPhase.
+var (
+	TWAPPhase_name = map[int32]string{
+		0: "TWAP_PHASE_UNSPECIFIED",
+		1: "TWAP_PHASE_ACTIVE",
+		2: "TWAP_PHASE_COMPLETED",
+	}
+	TWAPPhase_value = map[string]int32{
+		"TWAP_PHASE_UNSPECIFIED": 0,
+		"TWAP_PHASE_ACTIVE":      1,
+		"TWAP_PHASE_COMPLETED":   2,
+	}
+)
+
+func (x TWAPPhase) Enum() *TWAPPhase {
+	p := new(TWAPPhase)
+	*p = x
+	return p
+}
+
+func (x TWAPPhase) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TWAPPhase) Descriptor() protoreflect.EnumDescriptor {
+	return file_saga_v1_saga_proto_enumTypes[6].Descriptor()
+}
+
+func (TWAPPhase) Type() protoreflect.EnumType {
+	return &file_saga_v1_saga_proto_enumTypes[6]
+}
+
+func (x TWAPPhase) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TWAPPhase.Descriptor instead.
+func (TWAPPhase) EnumDescriptor() ([]byte, []int) {
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{6}
+}
+
 type PlaceSagaRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	AccountId string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
@@ -368,6 +422,7 @@ type PlaceSagaRequest struct {
 	//	*PlaceSagaRequest_SingleOrder
 	//	*PlaceSagaRequest_Bracket
 	//	*PlaceSagaRequest_Oco
+	//	*PlaceSagaRequest_Twap
 	Plan          isPlaceSagaRequest_Plan `protobuf_oneof:"plan"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -444,6 +499,15 @@ func (x *PlaceSagaRequest) GetOco() *OCOPlan {
 	return nil
 }
 
+func (x *PlaceSagaRequest) GetTwap() *TWAPPlan {
+	if x != nil {
+		if x, ok := x.Plan.(*PlaceSagaRequest_Twap); ok {
+			return x.Twap
+		}
+	}
+	return nil
+}
+
 type isPlaceSagaRequest_Plan interface {
 	isPlaceSagaRequest_Plan()
 }
@@ -460,11 +524,17 @@ type PlaceSagaRequest_Oco struct {
 	Oco *OCOPlan `protobuf:"bytes,4,opt,name=oco,proto3,oneof"`
 }
 
+type PlaceSagaRequest_Twap struct {
+	Twap *TWAPPlan `protobuf:"bytes,5,opt,name=twap,proto3,oneof"`
+}
+
 func (*PlaceSagaRequest_SingleOrder) isPlaceSagaRequest_Plan() {}
 
 func (*PlaceSagaRequest_Bracket) isPlaceSagaRequest_Plan() {}
 
 func (*PlaceSagaRequest_Oco) isPlaceSagaRequest_Plan() {}
+
+func (*PlaceSagaRequest_Twap) isPlaceSagaRequest_Plan() {}
 
 type SingleOrderPlan struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
@@ -757,6 +827,106 @@ func (x *OCOPlan) GetPositionSide() v1.PositionSide {
 	return v1.PositionSide(0)
 }
 
+// TWAPPlan slices a parent order into `slice_count` child orders spaced
+// `slice_interval_ms` apart. Each slice is a marketable limit IOC at
+// `limit_price` — the saga never crosses past this price. Underfilled
+// quantity rolls into the next slice. The aggregate is just an
+// orchestrator; cash holds, share holds, and settlement all live in the
+// per-slice child OrderSagas.
+type TWAPPlan struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Symbol          string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Side            v1.Side                `protobuf:"varint,2,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
+	PositionSide    v1.PositionSide        `protobuf:"varint,3,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
+	TotalQuantity   int64                  `protobuf:"varint,4,opt,name=total_quantity,json=totalQuantity,proto3" json:"total_quantity,omitempty"`
+	SliceCount      int32                  `protobuf:"varint,5,opt,name=slice_count,json=sliceCount,proto3" json:"slice_count,omitempty"`
+	SliceIntervalMs int64                  `protobuf:"varint,6,opt,name=slice_interval_ms,json=sliceIntervalMs,proto3" json:"slice_interval_ms,omitempty"`
+	// limit_price caps the worst price any slice will accept. Each child
+	// OrderSaga places an IOC at this price; unfilled qty rolls forward.
+	LimitPrice    int64 `protobuf:"varint,7,opt,name=limit_price,json=limitPrice,proto3" json:"limit_price,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TWAPPlan) Reset() {
+	*x = TWAPPlan{}
+	mi := &file_saga_v1_saga_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TWAPPlan) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TWAPPlan) ProtoMessage() {}
+
+func (x *TWAPPlan) ProtoReflect() protoreflect.Message {
+	mi := &file_saga_v1_saga_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TWAPPlan.ProtoReflect.Descriptor instead.
+func (*TWAPPlan) Descriptor() ([]byte, []int) {
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *TWAPPlan) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *TWAPPlan) GetSide() v1.Side {
+	if x != nil {
+		return x.Side
+	}
+	return v1.Side(0)
+}
+
+func (x *TWAPPlan) GetPositionSide() v1.PositionSide {
+	if x != nil {
+		return x.PositionSide
+	}
+	return v1.PositionSide(0)
+}
+
+func (x *TWAPPlan) GetTotalQuantity() int64 {
+	if x != nil {
+		return x.TotalQuantity
+	}
+	return 0
+}
+
+func (x *TWAPPlan) GetSliceCount() int32 {
+	if x != nil {
+		return x.SliceCount
+	}
+	return 0
+}
+
+func (x *TWAPPlan) GetSliceIntervalMs() int64 {
+	if x != nil {
+		return x.SliceIntervalMs
+	}
+	return 0
+}
+
+func (x *TWAPPlan) GetLimitPrice() int64 {
+	if x != nil {
+		return x.LimitPrice
+	}
+	return 0
+}
+
 type PlaceSagaResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SagaId        string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
@@ -766,7 +936,7 @@ type PlaceSagaResponse struct {
 
 func (x *PlaceSagaResponse) Reset() {
 	*x = PlaceSagaResponse{}
-	mi := &file_saga_v1_saga_proto_msgTypes[4]
+	mi := &file_saga_v1_saga_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -778,7 +948,7 @@ func (x *PlaceSagaResponse) String() string {
 func (*PlaceSagaResponse) ProtoMessage() {}
 
 func (x *PlaceSagaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_saga_v1_saga_proto_msgTypes[4]
+	mi := &file_saga_v1_saga_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -791,7 +961,7 @@ func (x *PlaceSagaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlaceSagaResponse.ProtoReflect.Descriptor instead.
 func (*PlaceSagaResponse) Descriptor() ([]byte, []int) {
-	return file_saga_v1_saga_proto_rawDescGZIP(), []int{4}
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PlaceSagaResponse) GetSagaId() string {
@@ -810,7 +980,7 @@ type GetSagaRequest struct {
 
 func (x *GetSagaRequest) Reset() {
 	*x = GetSagaRequest{}
-	mi := &file_saga_v1_saga_proto_msgTypes[5]
+	mi := &file_saga_v1_saga_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -822,7 +992,7 @@ func (x *GetSagaRequest) String() string {
 func (*GetSagaRequest) ProtoMessage() {}
 
 func (x *GetSagaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_saga_v1_saga_proto_msgTypes[5]
+	mi := &file_saga_v1_saga_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -835,7 +1005,7 @@ func (x *GetSagaRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSagaRequest.ProtoReflect.Descriptor instead.
 func (*GetSagaRequest) Descriptor() ([]byte, []int) {
-	return file_saga_v1_saga_proto_rawDescGZIP(), []int{5}
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GetSagaRequest) GetSagaId() string {
@@ -860,6 +1030,7 @@ type GetSagaResponse struct {
 	//	*GetSagaResponse_SingleOrder
 	//	*GetSagaResponse_Bracket
 	//	*GetSagaResponse_Oco
+	//	*GetSagaResponse_Twap
 	Details       isGetSagaResponse_Details `protobuf_oneof:"details"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -867,7 +1038,7 @@ type GetSagaResponse struct {
 
 func (x *GetSagaResponse) Reset() {
 	*x = GetSagaResponse{}
-	mi := &file_saga_v1_saga_proto_msgTypes[6]
+	mi := &file_saga_v1_saga_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -879,7 +1050,7 @@ func (x *GetSagaResponse) String() string {
 func (*GetSagaResponse) ProtoMessage() {}
 
 func (x *GetSagaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_saga_v1_saga_proto_msgTypes[6]
+	mi := &file_saga_v1_saga_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -892,7 +1063,7 @@ func (x *GetSagaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSagaResponse.ProtoReflect.Descriptor instead.
 func (*GetSagaResponse) Descriptor() ([]byte, []int) {
-	return file_saga_v1_saga_proto_rawDescGZIP(), []int{6}
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetSagaResponse) GetSagaId() string {
@@ -985,6 +1156,15 @@ func (x *GetSagaResponse) GetOco() *OCODetails {
 	return nil
 }
 
+func (x *GetSagaResponse) GetTwap() *TWAPDetails {
+	if x != nil {
+		if x, ok := x.Details.(*GetSagaResponse_Twap); ok {
+			return x.Twap
+		}
+	}
+	return nil
+}
+
 type isGetSagaResponse_Details interface {
 	isGetSagaResponse_Details()
 }
@@ -1001,11 +1181,17 @@ type GetSagaResponse_Oco struct {
 	Oco *OCODetails `protobuf:"bytes,11,opt,name=oco,proto3,oneof"`
 }
 
+type GetSagaResponse_Twap struct {
+	Twap *TWAPDetails `protobuf:"bytes,12,opt,name=twap,proto3,oneof"`
+}
+
 func (*GetSagaResponse_SingleOrder) isGetSagaResponse_Details() {}
 
 func (*GetSagaResponse_Bracket) isGetSagaResponse_Details() {}
 
 func (*GetSagaResponse_Oco) isGetSagaResponse_Details() {}
+
+func (*GetSagaResponse_Twap) isGetSagaResponse_Details() {}
 
 type SingleOrderDetails struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
@@ -1027,7 +1213,7 @@ type SingleOrderDetails struct {
 
 func (x *SingleOrderDetails) Reset() {
 	*x = SingleOrderDetails{}
-	mi := &file_saga_v1_saga_proto_msgTypes[7]
+	mi := &file_saga_v1_saga_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1039,7 +1225,7 @@ func (x *SingleOrderDetails) String() string {
 func (*SingleOrderDetails) ProtoMessage() {}
 
 func (x *SingleOrderDetails) ProtoReflect() protoreflect.Message {
-	mi := &file_saga_v1_saga_proto_msgTypes[7]
+	mi := &file_saga_v1_saga_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1052,7 +1238,7 @@ func (x *SingleOrderDetails) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SingleOrderDetails.ProtoReflect.Descriptor instead.
 func (*SingleOrderDetails) Descriptor() ([]byte, []int) {
-	return file_saga_v1_saga_proto_rawDescGZIP(), []int{7}
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SingleOrderDetails) GetPhase() SingleOrderPhase {
@@ -1158,7 +1344,7 @@ type BracketDetails struct {
 
 func (x *BracketDetails) Reset() {
 	*x = BracketDetails{}
-	mi := &file_saga_v1_saga_proto_msgTypes[8]
+	mi := &file_saga_v1_saga_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1170,7 +1356,7 @@ func (x *BracketDetails) String() string {
 func (*BracketDetails) ProtoMessage() {}
 
 func (x *BracketDetails) ProtoReflect() protoreflect.Message {
-	mi := &file_saga_v1_saga_proto_msgTypes[8]
+	mi := &file_saga_v1_saga_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1183,7 +1369,7 @@ func (x *BracketDetails) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BracketDetails.ProtoReflect.Descriptor instead.
 func (*BracketDetails) Descriptor() ([]byte, []int) {
-	return file_saga_v1_saga_proto_rawDescGZIP(), []int{8}
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *BracketDetails) GetPhase() BracketPhase {
@@ -1281,7 +1467,7 @@ type OCODetails struct {
 
 func (x *OCODetails) Reset() {
 	*x = OCODetails{}
-	mi := &file_saga_v1_saga_proto_msgTypes[9]
+	mi := &file_saga_v1_saga_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1293,7 +1479,7 @@ func (x *OCODetails) String() string {
 func (*OCODetails) ProtoMessage() {}
 
 func (x *OCODetails) ProtoReflect() protoreflect.Message {
-	mi := &file_saga_v1_saga_proto_msgTypes[9]
+	mi := &file_saga_v1_saga_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1306,7 +1492,7 @@ func (x *OCODetails) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OCODetails.ProtoReflect.Descriptor instead.
 func (*OCODetails) Descriptor() ([]byte, []int) {
-	return file_saga_v1_saga_proto_rawDescGZIP(), []int{9}
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *OCODetails) GetPhase() OCOPhase {
@@ -1388,7 +1574,7 @@ type CancelSagaRequest struct {
 
 func (x *CancelSagaRequest) Reset() {
 	*x = CancelSagaRequest{}
-	mi := &file_saga_v1_saga_proto_msgTypes[10]
+	mi := &file_saga_v1_saga_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1400,7 +1586,7 @@ func (x *CancelSagaRequest) String() string {
 func (*CancelSagaRequest) ProtoMessage() {}
 
 func (x *CancelSagaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_saga_v1_saga_proto_msgTypes[10]
+	mi := &file_saga_v1_saga_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1413,7 +1599,7 @@ func (x *CancelSagaRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelSagaRequest.ProtoReflect.Descriptor instead.
 func (*CancelSagaRequest) Descriptor() ([]byte, []int) {
-	return file_saga_v1_saga_proto_rawDescGZIP(), []int{10}
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CancelSagaRequest) GetSagaId() string {
@@ -1431,7 +1617,7 @@ type CancelSagaResponse struct {
 
 func (x *CancelSagaResponse) Reset() {
 	*x = CancelSagaResponse{}
-	mi := &file_saga_v1_saga_proto_msgTypes[11]
+	mi := &file_saga_v1_saga_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1443,7 +1629,7 @@ func (x *CancelSagaResponse) String() string {
 func (*CancelSagaResponse) ProtoMessage() {}
 
 func (x *CancelSagaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_saga_v1_saga_proto_msgTypes[11]
+	mi := &file_saga_v1_saga_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1456,7 +1642,7 @@ func (x *CancelSagaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelSagaResponse.ProtoReflect.Descriptor instead.
 func (*CancelSagaResponse) Descriptor() ([]byte, []int) {
-	return file_saga_v1_saga_proto_rawDescGZIP(), []int{11}
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{12}
 }
 
 type ListSagasRequest struct {
@@ -1472,7 +1658,7 @@ type ListSagasRequest struct {
 
 func (x *ListSagasRequest) Reset() {
 	*x = ListSagasRequest{}
-	mi := &file_saga_v1_saga_proto_msgTypes[12]
+	mi := &file_saga_v1_saga_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1484,7 +1670,7 @@ func (x *ListSagasRequest) String() string {
 func (*ListSagasRequest) ProtoMessage() {}
 
 func (x *ListSagasRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_saga_v1_saga_proto_msgTypes[12]
+	mi := &file_saga_v1_saga_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1497,7 +1683,7 @@ func (x *ListSagasRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSagasRequest.ProtoReflect.Descriptor instead.
 func (*ListSagasRequest) Descriptor() ([]byte, []int) {
-	return file_saga_v1_saga_proto_rawDescGZIP(), []int{12}
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListSagasRequest) GetAccountId() string {
@@ -1537,7 +1723,7 @@ type ListSagasResponse struct {
 
 func (x *ListSagasResponse) Reset() {
 	*x = ListSagasResponse{}
-	mi := &file_saga_v1_saga_proto_msgTypes[13]
+	mi := &file_saga_v1_saga_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1549,7 +1735,7 @@ func (x *ListSagasResponse) String() string {
 func (*ListSagasResponse) ProtoMessage() {}
 
 func (x *ListSagasResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_saga_v1_saga_proto_msgTypes[13]
+	mi := &file_saga_v1_saga_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1562,7 +1748,7 @@ func (x *ListSagasResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSagasResponse.ProtoReflect.Descriptor instead.
 func (*ListSagasResponse) Descriptor() ([]byte, []int) {
-	return file_saga_v1_saga_proto_rawDescGZIP(), []int{13}
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListSagasResponse) GetSagas() []*GetSagaResponse {
@@ -1572,17 +1758,261 @@ func (x *ListSagasResponse) GetSagas() []*GetSagaResponse {
 	return nil
 }
 
+type TWAPDetails struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Phase               TWAPPhase              `protobuf:"varint,1,opt,name=phase,proto3,enum=saga.v1.TWAPPhase" json:"phase,omitempty"`
+	Side                v1.Side                `protobuf:"varint,2,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
+	PositionSide        v1.PositionSide        `protobuf:"varint,3,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
+	TotalQuantity       int64                  `protobuf:"varint,4,opt,name=total_quantity,json=totalQuantity,proto3" json:"total_quantity,omitempty"`
+	SliceCount          int32                  `protobuf:"varint,5,opt,name=slice_count,json=sliceCount,proto3" json:"slice_count,omitempty"`
+	SliceIntervalMs     int64                  `protobuf:"varint,6,opt,name=slice_interval_ms,json=sliceIntervalMs,proto3" json:"slice_interval_ms,omitempty"`
+	LimitPrice          int64                  `protobuf:"varint,7,opt,name=limit_price,json=limitPrice,proto3" json:"limit_price,omitempty"`
+	SlicesLaunched      int32                  `protobuf:"varint,8,opt,name=slices_launched,json=slicesLaunched,proto3" json:"slices_launched,omitempty"`
+	TotalFilledQuantity int64                  `protobuf:"varint,9,opt,name=total_filled_quantity,json=totalFilledQuantity,proto3" json:"total_filled_quantity,omitempty"`
+	// total_cash_settled is the gross notional moved across all completed
+	// slices. The UI derives weighted-avg fill price as
+	// total_cash_settled / total_filled_quantity.
+	TotalCashSettled int64                  `protobuf:"varint,10,opt,name=total_cash_settled,json=totalCashSettled,proto3" json:"total_cash_settled,omitempty"`
+	StartedAt        *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	Slices           []*TWAPSliceDetails    `protobuf:"bytes,12,rep,name=slices,proto3" json:"slices,omitempty"`
+	Initiator        Initiator              `protobuf:"varint,13,opt,name=initiator,proto3,enum=saga.v1.Initiator" json:"initiator,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *TWAPDetails) Reset() {
+	*x = TWAPDetails{}
+	mi := &file_saga_v1_saga_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TWAPDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TWAPDetails) ProtoMessage() {}
+
+func (x *TWAPDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_saga_v1_saga_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TWAPDetails.ProtoReflect.Descriptor instead.
+func (*TWAPDetails) Descriptor() ([]byte, []int) {
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *TWAPDetails) GetPhase() TWAPPhase {
+	if x != nil {
+		return x.Phase
+	}
+	return TWAPPhase_TWAP_PHASE_UNSPECIFIED
+}
+
+func (x *TWAPDetails) GetSide() v1.Side {
+	if x != nil {
+		return x.Side
+	}
+	return v1.Side(0)
+}
+
+func (x *TWAPDetails) GetPositionSide() v1.PositionSide {
+	if x != nil {
+		return x.PositionSide
+	}
+	return v1.PositionSide(0)
+}
+
+func (x *TWAPDetails) GetTotalQuantity() int64 {
+	if x != nil {
+		return x.TotalQuantity
+	}
+	return 0
+}
+
+func (x *TWAPDetails) GetSliceCount() int32 {
+	if x != nil {
+		return x.SliceCount
+	}
+	return 0
+}
+
+func (x *TWAPDetails) GetSliceIntervalMs() int64 {
+	if x != nil {
+		return x.SliceIntervalMs
+	}
+	return 0
+}
+
+func (x *TWAPDetails) GetLimitPrice() int64 {
+	if x != nil {
+		return x.LimitPrice
+	}
+	return 0
+}
+
+func (x *TWAPDetails) GetSlicesLaunched() int32 {
+	if x != nil {
+		return x.SlicesLaunched
+	}
+	return 0
+}
+
+func (x *TWAPDetails) GetTotalFilledQuantity() int64 {
+	if x != nil {
+		return x.TotalFilledQuantity
+	}
+	return 0
+}
+
+func (x *TWAPDetails) GetTotalCashSettled() int64 {
+	if x != nil {
+		return x.TotalCashSettled
+	}
+	return 0
+}
+
+func (x *TWAPDetails) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+func (x *TWAPDetails) GetSlices() []*TWAPSliceDetails {
+	if x != nil {
+		return x.Slices
+	}
+	return nil
+}
+
+func (x *TWAPDetails) GetInitiator() Initiator {
+	if x != nil {
+		return x.Initiator
+	}
+	return Initiator_INITIATOR_UNSPECIFIED
+}
+
+type TWAPSliceDetails struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	SliceIndex       int32                  `protobuf:"varint,1,opt,name=slice_index,json=sliceIndex,proto3" json:"slice_index,omitempty"`
+	ChildSagaId      string                 `protobuf:"bytes,2,opt,name=child_saga_id,json=childSagaId,proto3" json:"child_saga_id,omitempty"`
+	LaunchedQuantity int64                  `protobuf:"varint,3,opt,name=launched_quantity,json=launchedQuantity,proto3" json:"launched_quantity,omitempty"`
+	FilledQuantity   int64                  `protobuf:"varint,4,opt,name=filled_quantity,json=filledQuantity,proto3" json:"filled_quantity,omitempty"`
+	CashSettled      int64                  `protobuf:"varint,5,opt,name=cash_settled,json=cashSettled,proto3" json:"cash_settled,omitempty"`
+	LaunchedAt       *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=launched_at,json=launchedAt,proto3" json:"launched_at,omitempty"`
+	CompletedAt      *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	Completed        bool                   `protobuf:"varint,8,opt,name=completed,proto3" json:"completed,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *TWAPSliceDetails) Reset() {
+	*x = TWAPSliceDetails{}
+	mi := &file_saga_v1_saga_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TWAPSliceDetails) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TWAPSliceDetails) ProtoMessage() {}
+
+func (x *TWAPSliceDetails) ProtoReflect() protoreflect.Message {
+	mi := &file_saga_v1_saga_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TWAPSliceDetails.ProtoReflect.Descriptor instead.
+func (*TWAPSliceDetails) Descriptor() ([]byte, []int) {
+	return file_saga_v1_saga_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *TWAPSliceDetails) GetSliceIndex() int32 {
+	if x != nil {
+		return x.SliceIndex
+	}
+	return 0
+}
+
+func (x *TWAPSliceDetails) GetChildSagaId() string {
+	if x != nil {
+		return x.ChildSagaId
+	}
+	return ""
+}
+
+func (x *TWAPSliceDetails) GetLaunchedQuantity() int64 {
+	if x != nil {
+		return x.LaunchedQuantity
+	}
+	return 0
+}
+
+func (x *TWAPSliceDetails) GetFilledQuantity() int64 {
+	if x != nil {
+		return x.FilledQuantity
+	}
+	return 0
+}
+
+func (x *TWAPSliceDetails) GetCashSettled() int64 {
+	if x != nil {
+		return x.CashSettled
+	}
+	return 0
+}
+
+func (x *TWAPSliceDetails) GetLaunchedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LaunchedAt
+	}
+	return nil
+}
+
+func (x *TWAPSliceDetails) GetCompletedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CompletedAt
+	}
+	return nil
+}
+
+func (x *TWAPSliceDetails) GetCompleted() bool {
+	if x != nil {
+		return x.Completed
+	}
+	return false
+}
+
 var File_saga_v1_saga_proto protoreflect.FileDescriptor
 
 const file_saga_v1_saga_proto_rawDesc = "" +
 	"\n" +
-	"\x12saga/v1/saga.proto\x12\asaga.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"\xd0\x01\n" +
+	"\x12saga/v1/saga.proto\x12\asaga.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"\xf9\x01\n" +
 	"\x10PlaceSagaRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12=\n" +
 	"\fsingle_order\x18\x02 \x01(\v2\x18.saga.v1.SingleOrderPlanH\x00R\vsingleOrder\x120\n" +
 	"\abracket\x18\x03 \x01(\v2\x14.saga.v1.BracketPlanH\x00R\abracket\x12$\n" +
-	"\x03oco\x18\x04 \x01(\v2\x10.saga.v1.OCOPlanH\x00R\x03ocoB\x06\n" +
+	"\x03oco\x18\x04 \x01(\v2\x10.saga.v1.OCOPlanH\x00R\x03oco\x12'\n" +
+	"\x04twap\x18\x05 \x01(\v2\x11.saga.v1.TWAPPlanH\x00R\x04twapB\x06\n" +
 	"\x04plan\"\xe5\x02\n" +
 	"\x0fSingleOrderPlan\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12&\n" +
@@ -1610,11 +2040,21 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"\bquantity\x18\x03 \x01(\x03R\bquantity\x12*\n" +
 	"\x11take_profit_price\x18\x04 \x01(\x03R\x0ftakeProfitPrice\x12&\n" +
 	"\x0fstop_loss_price\x18\x05 \x01(\x03R\rstopLossPrice\x12?\n" +
-	"\rposition_side\x18\x06 \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\",\n" +
+	"\rposition_side\x18\x06 \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\"\xa0\x02\n" +
+	"\bTWAPPlan\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12&\n" +
+	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12?\n" +
+	"\rposition_side\x18\x03 \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\x12%\n" +
+	"\x0etotal_quantity\x18\x04 \x01(\x03R\rtotalQuantity\x12\x1f\n" +
+	"\vslice_count\x18\x05 \x01(\x05R\n" +
+	"sliceCount\x12*\n" +
+	"\x11slice_interval_ms\x18\x06 \x01(\x03R\x0fsliceIntervalMs\x12\x1f\n" +
+	"\vlimit_price\x18\a \x01(\x03R\n" +
+	"limitPrice\",\n" +
 	"\x11PlaceSagaResponse\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\")\n" +
 	"\x0eGetSagaRequest\x12\x17\n" +
-	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\"\xf3\x03\n" +
+	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\"\x9f\x04\n" +
 	"\x0fGetSagaResponse\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12%\n" +
 	"\x04kind\x18\x02 \x01(\x0e2\x11.saga.v1.SagaKindR\x04kind\x12+\n" +
@@ -1630,7 +2070,8 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"\fsingle_order\x18\t \x01(\v2\x1b.saga.v1.SingleOrderDetailsH\x00R\vsingleOrder\x123\n" +
 	"\abracket\x18\n" +
 	" \x01(\v2\x17.saga.v1.BracketDetailsH\x00R\abracket\x12'\n" +
-	"\x03oco\x18\v \x01(\v2\x13.saga.v1.OCODetailsH\x00R\x03ocoB\t\n" +
+	"\x03oco\x18\v \x01(\v2\x13.saga.v1.OCODetailsH\x00R\x03oco\x12*\n" +
+	"\x04twap\x18\f \x01(\v2\x14.saga.v1.TWAPDetailsH\x00R\x04twapB\t\n" +
 	"\adetails\"\x91\x04\n" +
 	"\x12SingleOrderDetails\x12/\n" +
 	"\x05phase\x18\x01 \x01(\x0e2\x19.saga.v1.SingleOrderPhaseR\x05phase\x12&\n" +
@@ -1686,12 +2127,42 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"\x04kind\x18\x03 \x01(\x0e2\x11.saga.v1.SagaKindR\x04kind\x12+\n" +
 	"\x06status\x18\x04 \x01(\x0e2\x13.saga.v1.SagaStatusR\x06status\"C\n" +
 	"\x11ListSagasResponse\x12.\n" +
-	"\x05sagas\x18\x01 \x03(\v2\x18.saga.v1.GetSagaResponseR\x05sagas*k\n" +
+	"\x05sagas\x18\x01 \x03(\v2\x18.saga.v1.GetSagaResponseR\x05sagas\"\xe0\x04\n" +
+	"\vTWAPDetails\x12(\n" +
+	"\x05phase\x18\x01 \x01(\x0e2\x12.saga.v1.TWAPPhaseR\x05phase\x12&\n" +
+	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12?\n" +
+	"\rposition_side\x18\x03 \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\x12%\n" +
+	"\x0etotal_quantity\x18\x04 \x01(\x03R\rtotalQuantity\x12\x1f\n" +
+	"\vslice_count\x18\x05 \x01(\x05R\n" +
+	"sliceCount\x12*\n" +
+	"\x11slice_interval_ms\x18\x06 \x01(\x03R\x0fsliceIntervalMs\x12\x1f\n" +
+	"\vlimit_price\x18\a \x01(\x03R\n" +
+	"limitPrice\x12'\n" +
+	"\x0fslices_launched\x18\b \x01(\x05R\x0eslicesLaunched\x122\n" +
+	"\x15total_filled_quantity\x18\t \x01(\x03R\x13totalFilledQuantity\x12,\n" +
+	"\x12total_cash_settled\x18\n" +
+	" \x01(\x03R\x10totalCashSettled\x129\n" +
+	"\n" +
+	"started_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x121\n" +
+	"\x06slices\x18\f \x03(\v2\x19.saga.v1.TWAPSliceDetailsR\x06slices\x120\n" +
+	"\tinitiator\x18\r \x01(\x0e2\x12.saga.v1.InitiatorR\tinitiator\"\xea\x02\n" +
+	"\x10TWAPSliceDetails\x12\x1f\n" +
+	"\vslice_index\x18\x01 \x01(\x05R\n" +
+	"sliceIndex\x12\"\n" +
+	"\rchild_saga_id\x18\x02 \x01(\tR\vchildSagaId\x12+\n" +
+	"\x11launched_quantity\x18\x03 \x01(\x03R\x10launchedQuantity\x12'\n" +
+	"\x0ffilled_quantity\x18\x04 \x01(\x03R\x0efilledQuantity\x12!\n" +
+	"\fcash_settled\x18\x05 \x01(\x03R\vcashSettled\x12;\n" +
+	"\vlaunched_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"launchedAt\x12=\n" +
+	"\fcompleted_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x12\x1c\n" +
+	"\tcompleted\x18\b \x01(\bR\tcompleted*\x7f\n" +
 	"\bSagaKind\x12\x19\n" +
 	"\x15SAGA_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16SAGA_KIND_SINGLE_ORDER\x10\x01\x12\x15\n" +
 	"\x11SAGA_KIND_BRACKET\x10\x02\x12\x11\n" +
-	"\rSAGA_KIND_OCO\x10\x03*\x90\x01\n" +
+	"\rSAGA_KIND_OCO\x10\x03\x12\x12\n" +
+	"\x0eSAGA_KIND_TWAP\x10\x04*\x90\x01\n" +
 	"\n" +
 	"SagaStatus\x12\x1b\n" +
 	"\x17SAGA_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
@@ -1718,7 +2189,11 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"\x15OCO_PHASE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11OCO_PHASE_STARTED\x10\x01\x12\x19\n" +
 	"\x15OCO_PHASE_SHARES_HELD\x10\x02\x12\x19\n" +
-	"\x15OCO_PHASE_EXIT_PLACED\x10\x032\x89\x02\n" +
+	"\x15OCO_PHASE_EXIT_PLACED\x10\x03*X\n" +
+	"\tTWAPPhase\x12\x1a\n" +
+	"\x16TWAP_PHASE_UNSPECIFIED\x10\x00\x12\x15\n" +
+	"\x11TWAP_PHASE_ACTIVE\x10\x01\x12\x18\n" +
+	"\x14TWAP_PHASE_COMPLETED\x10\x022\x89\x02\n" +
 	"\vSagaService\x12>\n" +
 	"\x05Place\x12\x19.saga.v1.PlaceSagaRequest\x1a\x1a.saga.v1.PlaceSagaResponse\x128\n" +
 	"\x03Get\x12\x17.saga.v1.GetSagaRequest\x1a\x18.saga.v1.GetSagaResponse\x12A\n" +
@@ -1737,8 +2212,8 @@ func file_saga_v1_saga_proto_rawDescGZIP() []byte {
 	return file_saga_v1_saga_proto_rawDescData
 }
 
-var file_saga_v1_saga_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_saga_v1_saga_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_saga_v1_saga_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
+var file_saga_v1_saga_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_saga_v1_saga_proto_goTypes = []any{
 	(SagaKind)(0),                 // 0: saga.v1.SagaKind
 	(SagaStatus)(0),               // 1: saga.v1.SagaStatus
@@ -1746,75 +2221,91 @@ var file_saga_v1_saga_proto_goTypes = []any{
 	(SingleOrderPhase)(0),         // 3: saga.v1.SingleOrderPhase
 	(BracketPhase)(0),             // 4: saga.v1.BracketPhase
 	(OCOPhase)(0),                 // 5: saga.v1.OCOPhase
-	(*PlaceSagaRequest)(nil),      // 6: saga.v1.PlaceSagaRequest
-	(*SingleOrderPlan)(nil),       // 7: saga.v1.SingleOrderPlan
-	(*BracketPlan)(nil),           // 8: saga.v1.BracketPlan
-	(*OCOPlan)(nil),               // 9: saga.v1.OCOPlan
-	(*PlaceSagaResponse)(nil),     // 10: saga.v1.PlaceSagaResponse
-	(*GetSagaRequest)(nil),        // 11: saga.v1.GetSagaRequest
-	(*GetSagaResponse)(nil),       // 12: saga.v1.GetSagaResponse
-	(*SingleOrderDetails)(nil),    // 13: saga.v1.SingleOrderDetails
-	(*BracketDetails)(nil),        // 14: saga.v1.BracketDetails
-	(*OCODetails)(nil),            // 15: saga.v1.OCODetails
-	(*CancelSagaRequest)(nil),     // 16: saga.v1.CancelSagaRequest
-	(*CancelSagaResponse)(nil),    // 17: saga.v1.CancelSagaResponse
-	(*ListSagasRequest)(nil),      // 18: saga.v1.ListSagasRequest
-	(*ListSagasResponse)(nil),     // 19: saga.v1.ListSagasResponse
-	(v1.Side)(0),                  // 20: orderbook.v1.Side
-	(v1.OrderType)(0),             // 21: orderbook.v1.OrderType
-	(v1.TimeInForce)(0),           // 22: orderbook.v1.TimeInForce
-	(v1.PositionSide)(0),          // 23: orderbook.v1.PositionSide
-	(*timestamppb.Timestamp)(nil), // 24: google.protobuf.Timestamp
+	(TWAPPhase)(0),                // 6: saga.v1.TWAPPhase
+	(*PlaceSagaRequest)(nil),      // 7: saga.v1.PlaceSagaRequest
+	(*SingleOrderPlan)(nil),       // 8: saga.v1.SingleOrderPlan
+	(*BracketPlan)(nil),           // 9: saga.v1.BracketPlan
+	(*OCOPlan)(nil),               // 10: saga.v1.OCOPlan
+	(*TWAPPlan)(nil),              // 11: saga.v1.TWAPPlan
+	(*PlaceSagaResponse)(nil),     // 12: saga.v1.PlaceSagaResponse
+	(*GetSagaRequest)(nil),        // 13: saga.v1.GetSagaRequest
+	(*GetSagaResponse)(nil),       // 14: saga.v1.GetSagaResponse
+	(*SingleOrderDetails)(nil),    // 15: saga.v1.SingleOrderDetails
+	(*BracketDetails)(nil),        // 16: saga.v1.BracketDetails
+	(*OCODetails)(nil),            // 17: saga.v1.OCODetails
+	(*CancelSagaRequest)(nil),     // 18: saga.v1.CancelSagaRequest
+	(*CancelSagaResponse)(nil),    // 19: saga.v1.CancelSagaResponse
+	(*ListSagasRequest)(nil),      // 20: saga.v1.ListSagasRequest
+	(*ListSagasResponse)(nil),     // 21: saga.v1.ListSagasResponse
+	(*TWAPDetails)(nil),           // 22: saga.v1.TWAPDetails
+	(*TWAPSliceDetails)(nil),      // 23: saga.v1.TWAPSliceDetails
+	(v1.Side)(0),                  // 24: orderbook.v1.Side
+	(v1.OrderType)(0),             // 25: orderbook.v1.OrderType
+	(v1.TimeInForce)(0),           // 26: orderbook.v1.TimeInForce
+	(v1.PositionSide)(0),          // 27: orderbook.v1.PositionSide
+	(*timestamppb.Timestamp)(nil), // 28: google.protobuf.Timestamp
 }
 var file_saga_v1_saga_proto_depIdxs = []int32{
-	7,  // 0: saga.v1.PlaceSagaRequest.single_order:type_name -> saga.v1.SingleOrderPlan
-	8,  // 1: saga.v1.PlaceSagaRequest.bracket:type_name -> saga.v1.BracketPlan
-	9,  // 2: saga.v1.PlaceSagaRequest.oco:type_name -> saga.v1.OCOPlan
-	20, // 3: saga.v1.SingleOrderPlan.side:type_name -> orderbook.v1.Side
-	21, // 4: saga.v1.SingleOrderPlan.order_type:type_name -> orderbook.v1.OrderType
-	22, // 5: saga.v1.SingleOrderPlan.time_in_force:type_name -> orderbook.v1.TimeInForce
-	23, // 6: saga.v1.SingleOrderPlan.position_side:type_name -> orderbook.v1.PositionSide
-	20, // 7: saga.v1.BracketPlan.entry_side:type_name -> orderbook.v1.Side
-	23, // 8: saga.v1.BracketPlan.position_side:type_name -> orderbook.v1.PositionSide
-	20, // 9: saga.v1.OCOPlan.exit_side:type_name -> orderbook.v1.Side
-	23, // 10: saga.v1.OCOPlan.position_side:type_name -> orderbook.v1.PositionSide
-	0,  // 11: saga.v1.GetSagaResponse.kind:type_name -> saga.v1.SagaKind
-	1,  // 12: saga.v1.GetSagaResponse.status:type_name -> saga.v1.SagaStatus
-	24, // 13: saga.v1.GetSagaResponse.started_at:type_name -> google.protobuf.Timestamp
-	24, // 14: saga.v1.GetSagaResponse.ended_at:type_name -> google.protobuf.Timestamp
-	13, // 15: saga.v1.GetSagaResponse.single_order:type_name -> saga.v1.SingleOrderDetails
-	14, // 16: saga.v1.GetSagaResponse.bracket:type_name -> saga.v1.BracketDetails
-	15, // 17: saga.v1.GetSagaResponse.oco:type_name -> saga.v1.OCODetails
-	3,  // 18: saga.v1.SingleOrderDetails.phase:type_name -> saga.v1.SingleOrderPhase
-	20, // 19: saga.v1.SingleOrderDetails.side:type_name -> orderbook.v1.Side
-	21, // 20: saga.v1.SingleOrderDetails.order_type:type_name -> orderbook.v1.OrderType
-	22, // 21: saga.v1.SingleOrderDetails.time_in_force:type_name -> orderbook.v1.TimeInForce
-	23, // 22: saga.v1.SingleOrderDetails.position_side:type_name -> orderbook.v1.PositionSide
-	2,  // 23: saga.v1.SingleOrderDetails.initiator:type_name -> saga.v1.Initiator
-	4,  // 24: saga.v1.BracketDetails.phase:type_name -> saga.v1.BracketPhase
-	20, // 25: saga.v1.BracketDetails.entry_side:type_name -> orderbook.v1.Side
-	23, // 26: saga.v1.BracketDetails.position_side:type_name -> orderbook.v1.PositionSide
-	2,  // 27: saga.v1.BracketDetails.initiator:type_name -> saga.v1.Initiator
-	5,  // 28: saga.v1.OCODetails.phase:type_name -> saga.v1.OCOPhase
-	20, // 29: saga.v1.OCODetails.exit_side:type_name -> orderbook.v1.Side
-	23, // 30: saga.v1.OCODetails.position_side:type_name -> orderbook.v1.PositionSide
-	2,  // 31: saga.v1.OCODetails.initiator:type_name -> saga.v1.Initiator
-	0,  // 32: saga.v1.ListSagasRequest.kind:type_name -> saga.v1.SagaKind
-	1,  // 33: saga.v1.ListSagasRequest.status:type_name -> saga.v1.SagaStatus
-	12, // 34: saga.v1.ListSagasResponse.sagas:type_name -> saga.v1.GetSagaResponse
-	6,  // 35: saga.v1.SagaService.Place:input_type -> saga.v1.PlaceSagaRequest
-	11, // 36: saga.v1.SagaService.Get:input_type -> saga.v1.GetSagaRequest
-	16, // 37: saga.v1.SagaService.Cancel:input_type -> saga.v1.CancelSagaRequest
-	18, // 38: saga.v1.SagaService.List:input_type -> saga.v1.ListSagasRequest
-	10, // 39: saga.v1.SagaService.Place:output_type -> saga.v1.PlaceSagaResponse
-	12, // 40: saga.v1.SagaService.Get:output_type -> saga.v1.GetSagaResponse
-	17, // 41: saga.v1.SagaService.Cancel:output_type -> saga.v1.CancelSagaResponse
-	19, // 42: saga.v1.SagaService.List:output_type -> saga.v1.ListSagasResponse
-	39, // [39:43] is the sub-list for method output_type
-	35, // [35:39] is the sub-list for method input_type
-	35, // [35:35] is the sub-list for extension type_name
-	35, // [35:35] is the sub-list for extension extendee
-	0,  // [0:35] is the sub-list for field type_name
+	8,  // 0: saga.v1.PlaceSagaRequest.single_order:type_name -> saga.v1.SingleOrderPlan
+	9,  // 1: saga.v1.PlaceSagaRequest.bracket:type_name -> saga.v1.BracketPlan
+	10, // 2: saga.v1.PlaceSagaRequest.oco:type_name -> saga.v1.OCOPlan
+	11, // 3: saga.v1.PlaceSagaRequest.twap:type_name -> saga.v1.TWAPPlan
+	24, // 4: saga.v1.SingleOrderPlan.side:type_name -> orderbook.v1.Side
+	25, // 5: saga.v1.SingleOrderPlan.order_type:type_name -> orderbook.v1.OrderType
+	26, // 6: saga.v1.SingleOrderPlan.time_in_force:type_name -> orderbook.v1.TimeInForce
+	27, // 7: saga.v1.SingleOrderPlan.position_side:type_name -> orderbook.v1.PositionSide
+	24, // 8: saga.v1.BracketPlan.entry_side:type_name -> orderbook.v1.Side
+	27, // 9: saga.v1.BracketPlan.position_side:type_name -> orderbook.v1.PositionSide
+	24, // 10: saga.v1.OCOPlan.exit_side:type_name -> orderbook.v1.Side
+	27, // 11: saga.v1.OCOPlan.position_side:type_name -> orderbook.v1.PositionSide
+	24, // 12: saga.v1.TWAPPlan.side:type_name -> orderbook.v1.Side
+	27, // 13: saga.v1.TWAPPlan.position_side:type_name -> orderbook.v1.PositionSide
+	0,  // 14: saga.v1.GetSagaResponse.kind:type_name -> saga.v1.SagaKind
+	1,  // 15: saga.v1.GetSagaResponse.status:type_name -> saga.v1.SagaStatus
+	28, // 16: saga.v1.GetSagaResponse.started_at:type_name -> google.protobuf.Timestamp
+	28, // 17: saga.v1.GetSagaResponse.ended_at:type_name -> google.protobuf.Timestamp
+	15, // 18: saga.v1.GetSagaResponse.single_order:type_name -> saga.v1.SingleOrderDetails
+	16, // 19: saga.v1.GetSagaResponse.bracket:type_name -> saga.v1.BracketDetails
+	17, // 20: saga.v1.GetSagaResponse.oco:type_name -> saga.v1.OCODetails
+	22, // 21: saga.v1.GetSagaResponse.twap:type_name -> saga.v1.TWAPDetails
+	3,  // 22: saga.v1.SingleOrderDetails.phase:type_name -> saga.v1.SingleOrderPhase
+	24, // 23: saga.v1.SingleOrderDetails.side:type_name -> orderbook.v1.Side
+	25, // 24: saga.v1.SingleOrderDetails.order_type:type_name -> orderbook.v1.OrderType
+	26, // 25: saga.v1.SingleOrderDetails.time_in_force:type_name -> orderbook.v1.TimeInForce
+	27, // 26: saga.v1.SingleOrderDetails.position_side:type_name -> orderbook.v1.PositionSide
+	2,  // 27: saga.v1.SingleOrderDetails.initiator:type_name -> saga.v1.Initiator
+	4,  // 28: saga.v1.BracketDetails.phase:type_name -> saga.v1.BracketPhase
+	24, // 29: saga.v1.BracketDetails.entry_side:type_name -> orderbook.v1.Side
+	27, // 30: saga.v1.BracketDetails.position_side:type_name -> orderbook.v1.PositionSide
+	2,  // 31: saga.v1.BracketDetails.initiator:type_name -> saga.v1.Initiator
+	5,  // 32: saga.v1.OCODetails.phase:type_name -> saga.v1.OCOPhase
+	24, // 33: saga.v1.OCODetails.exit_side:type_name -> orderbook.v1.Side
+	27, // 34: saga.v1.OCODetails.position_side:type_name -> orderbook.v1.PositionSide
+	2,  // 35: saga.v1.OCODetails.initiator:type_name -> saga.v1.Initiator
+	0,  // 36: saga.v1.ListSagasRequest.kind:type_name -> saga.v1.SagaKind
+	1,  // 37: saga.v1.ListSagasRequest.status:type_name -> saga.v1.SagaStatus
+	14, // 38: saga.v1.ListSagasResponse.sagas:type_name -> saga.v1.GetSagaResponse
+	6,  // 39: saga.v1.TWAPDetails.phase:type_name -> saga.v1.TWAPPhase
+	24, // 40: saga.v1.TWAPDetails.side:type_name -> orderbook.v1.Side
+	27, // 41: saga.v1.TWAPDetails.position_side:type_name -> orderbook.v1.PositionSide
+	28, // 42: saga.v1.TWAPDetails.started_at:type_name -> google.protobuf.Timestamp
+	23, // 43: saga.v1.TWAPDetails.slices:type_name -> saga.v1.TWAPSliceDetails
+	2,  // 44: saga.v1.TWAPDetails.initiator:type_name -> saga.v1.Initiator
+	28, // 45: saga.v1.TWAPSliceDetails.launched_at:type_name -> google.protobuf.Timestamp
+	28, // 46: saga.v1.TWAPSliceDetails.completed_at:type_name -> google.protobuf.Timestamp
+	7,  // 47: saga.v1.SagaService.Place:input_type -> saga.v1.PlaceSagaRequest
+	13, // 48: saga.v1.SagaService.Get:input_type -> saga.v1.GetSagaRequest
+	18, // 49: saga.v1.SagaService.Cancel:input_type -> saga.v1.CancelSagaRequest
+	20, // 50: saga.v1.SagaService.List:input_type -> saga.v1.ListSagasRequest
+	12, // 51: saga.v1.SagaService.Place:output_type -> saga.v1.PlaceSagaResponse
+	14, // 52: saga.v1.SagaService.Get:output_type -> saga.v1.GetSagaResponse
+	19, // 53: saga.v1.SagaService.Cancel:output_type -> saga.v1.CancelSagaResponse
+	21, // 54: saga.v1.SagaService.List:output_type -> saga.v1.ListSagasResponse
+	51, // [51:55] is the sub-list for method output_type
+	47, // [47:51] is the sub-list for method input_type
+	47, // [47:47] is the sub-list for extension type_name
+	47, // [47:47] is the sub-list for extension extendee
+	0,  // [0:47] is the sub-list for field type_name
 }
 
 func init() { file_saga_v1_saga_proto_init() }
@@ -1826,19 +2317,21 @@ func file_saga_v1_saga_proto_init() {
 		(*PlaceSagaRequest_SingleOrder)(nil),
 		(*PlaceSagaRequest_Bracket)(nil),
 		(*PlaceSagaRequest_Oco)(nil),
+		(*PlaceSagaRequest_Twap)(nil),
 	}
-	file_saga_v1_saga_proto_msgTypes[6].OneofWrappers = []any{
+	file_saga_v1_saga_proto_msgTypes[7].OneofWrappers = []any{
 		(*GetSagaResponse_SingleOrder)(nil),
 		(*GetSagaResponse_Bracket)(nil),
 		(*GetSagaResponse_Oco)(nil),
+		(*GetSagaResponse_Twap)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_saga_v1_saga_proto_rawDesc), len(file_saga_v1_saga_proto_rawDesc)),
-			NumEnums:      6,
-			NumMessages:   14,
+			NumEnums:      7,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

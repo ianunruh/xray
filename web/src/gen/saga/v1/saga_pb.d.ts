@@ -42,6 +42,12 @@ export declare type PlaceSagaRequest = Message<"saga.v1.PlaceSagaRequest"> & {
      */
     value: OCOPlan;
     case: "oco";
+  } | {
+    /**
+     * @generated from field: saga.v1.TWAPPlan twap = 5;
+     */
+    value: TWAPPlan;
+    case: "twap";
   } | { case: undefined; value?: undefined };
 };
 
@@ -210,6 +216,62 @@ export declare type OCOPlan = Message<"saga.v1.OCOPlan"> & {
 export declare const OCOPlanSchema: GenMessage<OCOPlan>;
 
 /**
+ * TWAPPlan slices a parent order into `slice_count` child orders spaced
+ * `slice_interval_ms` apart. Each slice is a marketable limit IOC at
+ * `limit_price` — the saga never crosses past this price. Underfilled
+ * quantity rolls into the next slice. The aggregate is just an
+ * orchestrator; cash holds, share holds, and settlement all live in the
+ * per-slice child OrderSagas.
+ *
+ * @generated from message saga.v1.TWAPPlan
+ */
+export declare type TWAPPlan = Message<"saga.v1.TWAPPlan"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: orderbook.v1.Side side = 2;
+   */
+  side: Side;
+
+  /**
+   * @generated from field: orderbook.v1.PositionSide position_side = 3;
+   */
+  positionSide: PositionSide;
+
+  /**
+   * @generated from field: int64 total_quantity = 4;
+   */
+  totalQuantity: bigint;
+
+  /**
+   * @generated from field: int32 slice_count = 5;
+   */
+  sliceCount: number;
+
+  /**
+   * @generated from field: int64 slice_interval_ms = 6;
+   */
+  sliceIntervalMs: bigint;
+
+  /**
+   * limit_price caps the worst price any slice will accept. Each child
+   * OrderSaga places an IOC at this price; unfilled qty rolls forward.
+   *
+   * @generated from field: int64 limit_price = 7;
+   */
+  limitPrice: bigint;
+};
+
+/**
+ * Describes the message saga.v1.TWAPPlan.
+ * Use `create(TWAPPlanSchema)` to create a new message.
+ */
+export declare const TWAPPlanSchema: GenMessage<TWAPPlan>;
+
+/**
  * @generated from message saga.v1.PlaceSagaResponse
  */
 export declare type PlaceSagaResponse = Message<"saga.v1.PlaceSagaResponse"> & {
@@ -306,6 +368,12 @@ export declare type GetSagaResponse = Message<"saga.v1.GetSagaResponse"> & {
      */
     value: OCODetails;
     case: "oco";
+  } | {
+    /**
+     * @generated from field: saga.v1.TWAPDetails twap = 12;
+     */
+    value: TWAPDetails;
+    case: "twap";
   } | { case: undefined; value?: undefined };
 };
 
@@ -591,6 +659,137 @@ export declare type ListSagasResponse = Message<"saga.v1.ListSagasResponse"> & {
 export declare const ListSagasResponseSchema: GenMessage<ListSagasResponse>;
 
 /**
+ * @generated from message saga.v1.TWAPDetails
+ */
+export declare type TWAPDetails = Message<"saga.v1.TWAPDetails"> & {
+  /**
+   * @generated from field: saga.v1.TWAPPhase phase = 1;
+   */
+  phase: TWAPPhase;
+
+  /**
+   * @generated from field: orderbook.v1.Side side = 2;
+   */
+  side: Side;
+
+  /**
+   * @generated from field: orderbook.v1.PositionSide position_side = 3;
+   */
+  positionSide: PositionSide;
+
+  /**
+   * @generated from field: int64 total_quantity = 4;
+   */
+  totalQuantity: bigint;
+
+  /**
+   * @generated from field: int32 slice_count = 5;
+   */
+  sliceCount: number;
+
+  /**
+   * @generated from field: int64 slice_interval_ms = 6;
+   */
+  sliceIntervalMs: bigint;
+
+  /**
+   * @generated from field: int64 limit_price = 7;
+   */
+  limitPrice: bigint;
+
+  /**
+   * @generated from field: int32 slices_launched = 8;
+   */
+  slicesLaunched: number;
+
+  /**
+   * @generated from field: int64 total_filled_quantity = 9;
+   */
+  totalFilledQuantity: bigint;
+
+  /**
+   * total_cash_settled is the gross notional moved across all completed
+   * slices. The UI derives weighted-avg fill price as
+   * total_cash_settled / total_filled_quantity.
+   *
+   * @generated from field: int64 total_cash_settled = 10;
+   */
+  totalCashSettled: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp started_at = 11;
+   */
+  startedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: repeated saga.v1.TWAPSliceDetails slices = 12;
+   */
+  slices: TWAPSliceDetails[];
+
+  /**
+   * @generated from field: saga.v1.Initiator initiator = 13;
+   */
+  initiator: Initiator;
+};
+
+/**
+ * Describes the message saga.v1.TWAPDetails.
+ * Use `create(TWAPDetailsSchema)` to create a new message.
+ */
+export declare const TWAPDetailsSchema: GenMessage<TWAPDetails>;
+
+/**
+ * @generated from message saga.v1.TWAPSliceDetails
+ */
+export declare type TWAPSliceDetails = Message<"saga.v1.TWAPSliceDetails"> & {
+  /**
+   * @generated from field: int32 slice_index = 1;
+   */
+  sliceIndex: number;
+
+  /**
+   * @generated from field: string child_saga_id = 2;
+   */
+  childSagaId: string;
+
+  /**
+   * @generated from field: int64 launched_quantity = 3;
+   */
+  launchedQuantity: bigint;
+
+  /**
+   * @generated from field: int64 filled_quantity = 4;
+   */
+  filledQuantity: bigint;
+
+  /**
+   * @generated from field: int64 cash_settled = 5;
+   */
+  cashSettled: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp launched_at = 6;
+   */
+  launchedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp completed_at = 7;
+   */
+  completedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: bool completed = 8;
+   */
+  completed: boolean;
+};
+
+/**
+ * Describes the message saga.v1.TWAPSliceDetails.
+ * Use `create(TWAPSliceDetailsSchema)` to create a new message.
+ */
+export declare const TWAPSliceDetailsSchema: GenMessage<TWAPSliceDetails>;
+
+/**
  * SagaKind identifies which underlying saga aggregate backs a saga ID.
  *
  * @generated from enum saga.v1.SagaKind
@@ -615,6 +814,11 @@ export enum SagaKind {
    * @generated from enum value: SAGA_KIND_OCO = 3;
    */
   OCO = 3,
+
+  /**
+   * @generated from enum value: SAGA_KIND_TWAP = 4;
+   */
+  TWAP = 4,
 }
 
 /**
@@ -806,6 +1010,34 @@ export enum OCOPhase {
  * Describes the enum saga.v1.OCOPhase.
  */
 export declare const OCOPhaseSchema: GenEnum<OCOPhase>;
+
+/**
+ * TWAPPhase is the granular state for SAGA_KIND_TWAP. Coarse-grained
+ * since the per-slice timeline lives in TWAPDetails.slices.
+ *
+ * @generated from enum saga.v1.TWAPPhase
+ */
+export enum TWAPPhase {
+  /**
+   * @generated from enum value: TWAP_PHASE_UNSPECIFIED = 0;
+   */
+  TWAP_PHASE_UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: TWAP_PHASE_ACTIVE = 1;
+   */
+  TWAP_PHASE_ACTIVE = 1,
+
+  /**
+   * @generated from enum value: TWAP_PHASE_COMPLETED = 2;
+   */
+  TWAP_PHASE_COMPLETED = 2,
+}
+
+/**
+ * Describes the enum saga.v1.TWAPPhase.
+ */
+export declare const TWAPPhaseSchema: GenEnum<TWAPPhase>;
 
 /**
  * @generated from service saga.v1.SagaService

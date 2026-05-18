@@ -29,6 +29,7 @@ import (
 	"github.com/ianunruh/xray/internal/portfolio"
 	"github.com/ianunruh/xray/internal/reconciler"
 	"github.com/ianunruh/xray/internal/sagasvc"
+	"github.com/ianunruh/xray/internal/twapsaga"
 	"github.com/ianunruh/xray/pkg/es"
 	"github.com/ianunruh/xray/pkg/es/natsstore"
 	"github.com/ianunruh/xray/pkg/es/pgstore"
@@ -88,6 +89,7 @@ func main() {
 	portfolio.RegisterEvents(registry)
 	ordersaga.RegisterEvents(registry)
 	ocosaga.RegisterEvents(registry)
+	twapsaga.RegisterEvents(registry)
 
 	// Connect to NATS.
 	nc, err := nats.Connect(natsURL)
@@ -136,6 +138,10 @@ func main() {
 		return ocosaga.NewOCOSaga(id)
 	}, log).WithPublisher(publisher)
 
+	twapHandler := es.NewHandler(store, registry, func(id string) *twapsaga.TWAPSaga {
+		return twapsaga.NewTWAPSaga(id)
+	}, log).WithPublisher(publisher)
+
 	// Create projections.
 	tradeProjection := orderbook.NewPgTradeProjection(pool)
 	orderProjection := orderbook.NewPgOrderProjection(pool)
@@ -157,6 +163,7 @@ func main() {
 	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, ocoSagaHandler, obHandler, log)
 	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, markProjection, log)
 	ocoSagaReactor := ocosaga.NewReactor(ocoSagaHandler, portfolioHandler, obHandler, log)
+	twapReactor := twapsaga.NewReactor(twapHandler, orderSagaHandler, log)
 	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shortsProjection, longsProjection, activeUserSagasProjection, markProjection,
 		margincall.Config{Grace: 30 * time.Second}, log)
 
@@ -194,6 +201,8 @@ func main() {
 			WithPersistent(store, bracketReactor),
 		natsstore.NewProjectionConsumer(js, registry, log, "oco-reactor").
 			WithPersistent(store, ocoSagaReactor),
+		natsstore.NewProjectionConsumer(js, registry, log, "twap-reactor").
+			WithPersistent(store, twapReactor),
 		natsstore.NewProjectionConsumer(js, registry, log, "saga-projection").
 			WithPersistent(store, sagaProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "daily-close-projection").
@@ -219,7 +228,7 @@ func main() {
 	broker.SetReady()
 	portfolioBroker.SetReady()
 
-	rec := reconciler.New(30*time.Second, sagaProjection, tradeProjection, portfolioHandler, orderSagaReactor, bracketReactor, ocoSagaReactor, marginReactor, activeCallsProjection, log)
+	rec := reconciler.New(30*time.Second, sagaProjection, tradeProjection, portfolioHandler, orderSagaReactor, bracketReactor, ocoSagaReactor, twapReactor, marginReactor, activeCallsProjection, log)
 	go rec.Run(ctx)
 
 	accruer := feesaccruer.NewAccruer(portfolioHandler, accruableAccounts, markProjection, time.Now,
@@ -228,7 +237,7 @@ func main() {
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, dailyCloseProjection, broker)
 	portfolioSrv := portfolio.NewServer(portfolioHandler, obHandler, portfolioProjection, pnlProjection, markProjection, marginCallsProjection, portfolioBroker, log)
-	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, ocoSagaHandler, obHandler, portfolioHandler, markProjection, sagaProjection, log)
+	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, ocoSagaHandler, twapHandler, obHandler, portfolioHandler, twapReactor, markProjection, sagaProjection, log)
 	diagnosticsSrv := diagnostics.NewServer(store, registry, log)
 
 	mux := http.NewServeMux()

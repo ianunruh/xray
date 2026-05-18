@@ -29,6 +29,7 @@ import (
 	"github.com/ianunruh/xray/internal/ordersaga"
 	"github.com/ianunruh/xray/internal/portfolio"
 	"github.com/ianunruh/xray/internal/sagasvc"
+	"github.com/ianunruh/xray/internal/twapsaga"
 	"github.com/ianunruh/xray/pkg/es"
 )
 
@@ -52,6 +53,7 @@ type Reconciler struct {
 	orderSagaReactor *ordersaga.Reactor
 	bracketReactor   *bracket.Reactor
 	ocoSagaReactor   *ocosaga.Reactor
+	twapReactor      *twapsaga.Reactor
 	marginReactor    *margincall.Reactor
 	activeCalls      portfolio.ActiveMarginCallsTracker
 	now              func() time.Time
@@ -66,6 +68,7 @@ func New(
 	orderSagaReactor *ordersaga.Reactor,
 	bracketReactor *bracket.Reactor,
 	ocoSagaReactor *ocosaga.Reactor,
+	twapReactor *twapsaga.Reactor,
 	marginReactor *margincall.Reactor,
 	activeCalls portfolio.ActiveMarginCallsTracker,
 	log *slog.Logger,
@@ -78,6 +81,7 @@ func New(
 		orderSagaReactor: orderSagaReactor,
 		bracketReactor:   bracketReactor,
 		ocoSagaReactor:   ocoSagaReactor,
+		twapReactor:      twapReactor,
 		marginReactor:    marginReactor,
 		activeCalls:      activeCalls,
 		now:              time.Now,
@@ -155,8 +159,19 @@ func (r *Reconciler) reconcileSaga(ctx context.Context, s *sagasvc.SagaRow) erro
 		return r.reconcileBracket(ctx, s)
 	case sagav1.SagaKind_SAGA_KIND_OCO:
 		return r.reconcileOCO(ctx, s)
+	case sagav1.SagaKind_SAGA_KIND_TWAP:
+		return r.reconcileTWAP(ctx, s)
 	}
 	return nil
+}
+
+func (r *Reconciler) reconcileTWAP(ctx context.Context, s *sagasvc.SagaRow) error {
+	// TWAP slice scheduling is the primary purpose of the reconciler
+	// tick for this kind: if a slice was due during a window when no
+	// child event fired (e.g., process restart), this catches it up.
+	// Children settle their own trades via the per-slice ordersaga
+	// reactor, so no L2 trade replay is needed at this layer.
+	return r.twapReactor.Reconcile(ctx, s.SagaID)
 }
 
 func (r *Reconciler) reconcileOCO(ctx context.Context, s *sagasvc.SagaRow) error {

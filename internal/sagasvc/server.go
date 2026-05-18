@@ -17,6 +17,7 @@ import (
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
 	"github.com/ianunruh/xray/internal/portfolio"
+	"github.com/ianunruh/xray/internal/twapsaga"
 	"github.com/ianunruh/xray/pkg/es"
 )
 
@@ -29,8 +30,10 @@ type Server struct {
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga]
 	bracketHandler   *es.Handler[*bracket.BracketSaga]
 	ocoSagaHandler   *es.Handler[*ocosaga.OCOSaga]
+	twapHandler      *es.Handler[*twapsaga.TWAPSaga]
 	orderbookHandler *es.Handler[*orderbook.OrderBook]
 	portfolioHandler *es.Handler[*portfolio.Portfolio]
+	twapReactor      *twapsaga.Reactor
 	marker           portfolio.Marker
 	projection       *PgProjection
 	log              *slog.Logger
@@ -40,8 +43,10 @@ func NewServer(
 	orderSagaHandler *es.Handler[*ordersaga.OrderSaga],
 	bracketHandler *es.Handler[*bracket.BracketSaga],
 	ocoSagaHandler *es.Handler[*ocosaga.OCOSaga],
+	twapHandler *es.Handler[*twapsaga.TWAPSaga],
 	orderbookHandler *es.Handler[*orderbook.OrderBook],
 	portfolioHandler *es.Handler[*portfolio.Portfolio],
+	twapReactor *twapsaga.Reactor,
 	marker portfolio.Marker,
 	projection *PgProjection,
 	log *slog.Logger,
@@ -50,8 +55,10 @@ func NewServer(
 		orderSagaHandler: orderSagaHandler,
 		bracketHandler:   bracketHandler,
 		ocoSagaHandler:   ocoSagaHandler,
+		twapHandler:      twapHandler,
 		orderbookHandler: orderbookHandler,
 		portfolioHandler: portfolioHandler,
+		twapReactor:      twapReactor,
 		marker:           marker,
 		projection:       projection,
 		log:              log,
@@ -86,9 +93,67 @@ func (s *Server) Place(ctx context.Context, req *connect.Request[sagav1.PlaceSag
 			return nil, err
 		}
 		return connect.NewResponse(&sagav1.PlaceSagaResponse{SagaId: sagaID}), nil
+	case *sagav1.PlaceSagaRequest_Twap:
+		sagaID, err := s.placeTWAP(ctx, msg.AccountId, plan.Twap)
+		if err != nil {
+			return nil, err
+		}
+		return connect.NewResponse(&sagav1.PlaceSagaResponse{SagaId: sagaID}), nil
 	default:
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("plan required"))
 	}
+}
+
+func (s *Server) placeTWAP(ctx context.Context, accountID string, plan *sagav1.TWAPPlan) (string, error) {
+	if plan.TotalQuantity <= 0 {
+		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("total_quantity must be positive"))
+	}
+	if plan.SliceCount <= 0 {
+		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("slice_count must be positive"))
+	}
+	if plan.LimitPrice <= 0 {
+		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("limit_price must be positive"))
+	}
+	if int64(plan.SliceCount) > plan.TotalQuantity {
+		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("slice_count cannot exceed total_quantity"))
+	}
+	if err := s.guardMarginCall(ctx, accountID, plan.Side, plan.PositionSide); err != nil {
+		return "", err
+	}
+	// Buying-power guard: check against the worst case (entire TWAP at
+	// limit_price as one limit order). If the user can't afford the full
+	// notional, fail at submit instead of mid-flight.
+	if err := s.guardBuyingPower(ctx, accountID, portfolio.OrderPlan{
+		Symbol:       plan.Symbol,
+		Side:         plan.Side,
+		PositionSide: plan.PositionSide,
+		OrderType:    orderbookv1.OrderType_ORDER_TYPE_LIMIT,
+		Price:        plan.LimitPrice,
+		Quantity:     plan.TotalQuantity,
+	}); err != nil {
+		return "", err
+	}
+
+	sagaID := twapsaga.NewSagaID()
+	cmd := twapsaga.StartTWAPSaga{
+		SagaID:          sagaID,
+		AccountID:       accountID,
+		Symbol:          plan.Symbol,
+		Side:            plan.Side,
+		PositionSide:    plan.PositionSide,
+		TotalQuantity:   plan.TotalQuantity,
+		SliceCount:      plan.SliceCount,
+		SliceIntervalMs: plan.SliceIntervalMs,
+		LimitPrice:      plan.LimitPrice,
+		Initiator:       sagav1.Initiator_INITIATOR_USER,
+	}
+	if err := s.twapHandler.Handle(ctx, cmd, func(saga *twapsaga.TWAPSaga) ([]es.Event, error) {
+		return twapsaga.ExecuteStartTWAPSaga(saga, cmd)
+	}); err != nil {
+		s.log.Error("Place(twap) saga creation failed", "saga_id", sagaID, "error", err)
+		return "", connect.NewError(connect.CodeInternal, err)
+	}
+	return sagaID, nil
 }
 
 func (s *Server) placeOCO(ctx context.Context, accountID string, plan *sagav1.OCOPlan) (string, error) {
@@ -315,10 +380,41 @@ func (s *Server) Cancel(ctx context.Context, req *connect.Request[sagav1.CancelS
 		if err := s.cancelOCO(ctx, row); err != nil {
 			return nil, err
 		}
+	case sagav1.SagaKind_SAGA_KIND_TWAP:
+		if err := s.cancelTWAP(ctx, row); err != nil {
+			return nil, err
+		}
 	default:
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("unknown saga kind: %d", row.Kind))
 	}
 	return connect.NewResponse(&sagav1.CancelSagaResponse{}), nil
+}
+
+// cancelTWAP marks the parent TWAP as failed (which suppresses future
+// slice launches) and cancels any in-flight child slice's orderbook
+// order. Already-completed slices stay settled — that's the point of
+// incremental execution.
+func (s *Server) cancelTWAP(ctx context.Context, row *SagaRow) error {
+	t, err := s.twapHandler.Load(ctx, twapsaga.AggregateID(row.SagaID))
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("load twap: %w", err))
+	}
+	// Mark parent failed first so subsequent reconciler ticks won't
+	// schedule new slices, even if the child cancellation below races.
+	if err := s.twapReactor.MarkFailed(ctx, row.SagaID, "cancelled by user"); err != nil {
+		return connect.NewError(connect.CodeInternal, err)
+	}
+	// Best-effort cancel of the current in-flight child slice. IOC slices
+	// usually complete in one reactor cycle, so the active-child case is
+	// the exception; idempotent on already-gone.
+	if cur := t.CurrentSlice(); cur != nil && !cur.Completed {
+		childOrderID := ordersaga.OrderID(cur.ChildSagaID)
+		if err := s.cancelOrderbookOrder(ctx, row.Symbol, childOrderID); err != nil {
+			s.log.Warn("cancelTWAP: child order cancel failed",
+				"saga_id", row.SagaID, "child", cur.ChildSagaID, "error", err)
+		}
+	}
+	return nil
 }
 
 func (s *Server) cancelSingleOrder(ctx context.Context, row *SagaRow) error {
@@ -443,8 +539,66 @@ func (s *Server) buildGetResponse(ctx context.Context, row *SagaRow) (*sagav1.Ge
 			return nil, err
 		}
 		resp.Details = &sagav1.GetSagaResponse_Oco{Oco: details}
+	case sagav1.SagaKind_SAGA_KIND_TWAP:
+		details, err := s.twapDetails(ctx, row.SagaID)
+		if err != nil {
+			return nil, err
+		}
+		resp.Details = &sagav1.GetSagaResponse_Twap{Twap: details}
 	}
 	return resp, nil
+}
+
+func (s *Server) twapDetails(ctx context.Context, sagaID string) (*sagav1.TWAPDetails, error) {
+	t, err := s.twapHandler.Load(ctx, twapsaga.AggregateID(sagaID))
+	if err != nil {
+		return nil, fmt.Errorf("load twap saga: %w", err)
+	}
+	slices := make([]*sagav1.TWAPSliceDetails, 0, len(t.Slices))
+	for i := range t.Slices {
+		sl := &t.Slices[i]
+		d := &sagav1.TWAPSliceDetails{
+			SliceIndex:       sl.Index,
+			ChildSagaId:      sl.ChildSagaID,
+			LaunchedQuantity: sl.LaunchedQuantity,
+			FilledQuantity:   sl.FilledQuantity,
+			CashSettled:      sl.CashSettled,
+			Completed:        sl.Completed,
+		}
+		if !sl.LaunchedAt.IsZero() {
+			d.LaunchedAt = timestamppb.New(sl.LaunchedAt)
+		}
+		if !sl.CompletedAt.IsZero() {
+			d.CompletedAt = timestamppb.New(sl.CompletedAt)
+		}
+		slices = append(slices, d)
+	}
+	return &sagav1.TWAPDetails{
+		Phase:               twapPhase(t.Status),
+		Side:                orderbook.SideToProto(t.Side),
+		PositionSide:        t.PositionSide,
+		TotalQuantity:       t.TotalQuantity,
+		SliceCount:          t.SliceCount,
+		SliceIntervalMs:     t.SliceIntervalMs,
+		LimitPrice:          t.LimitPrice,
+		SlicesLaunched:      t.SlicesLaunched(),
+		TotalFilledQuantity: t.TotalFilled,
+		TotalCashSettled:    t.TotalSettled,
+		StartedAt:           timestamppb.New(t.StartedAt),
+		Slices:              slices,
+		Initiator:           t.Initiator,
+	}, nil
+}
+
+func twapPhase(s twapsaga.Status) sagav1.TWAPPhase {
+	switch s {
+	case twapsaga.Active:
+		return sagav1.TWAPPhase_TWAP_PHASE_ACTIVE
+	case twapsaga.Completed:
+		return sagav1.TWAPPhase_TWAP_PHASE_COMPLETED
+	default:
+		return sagav1.TWAPPhase_TWAP_PHASE_UNSPECIFIED
+	}
 }
 
 func (s *Server) ocoDetails(ctx context.Context, sagaID string) (*sagav1.OCODetails, error) {

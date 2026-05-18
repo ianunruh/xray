@@ -171,7 +171,7 @@ func TestReconciler_L2_ReplaysMissedTrade(t *testing.T) {
 	}}}
 
 	rec := reconciler.New(time.Hour, sagaLookup, tradeLookup,
-		e.portfolioHandler, e.orderSagaReactor, e.bracketReactor, e.ocoSagaReactor, nil, nil, slog.Default())
+		e.portfolioHandler, e.orderSagaReactor, e.bracketReactor, e.ocoSagaReactor, nil, nil, nil, slog.Default())
 	require.NoError(t, rec.ReconcileOnce(e.ctx))
 	e.flush()
 
@@ -230,7 +230,7 @@ func TestReconciler_L2_SkipsAlreadySettledTrades(t *testing.T) {
 	tradeLookup := &stubTradeLookup{} // empty; nothing to replay
 	sagaLookup := &stubSagaLookup{rows: []*sagasvc.SagaRow{}}
 	rec := reconciler.New(time.Hour, sagaLookup, tradeLookup,
-		e.portfolioHandler, e.orderSagaReactor, e.bracketReactor, e.ocoSagaReactor, nil, nil, slog.Default())
+		e.portfolioHandler, e.orderSagaReactor, e.bracketReactor, e.ocoSagaReactor, nil, nil, nil, slog.Default())
 	require.NoError(t, rec.ReconcileOnce(e.ctx))
 
 	// Nothing changed — saga still Completed, portfolio unchanged.
@@ -281,7 +281,7 @@ func TestReconciler_L1_DrivesStuckSagaForward(t *testing.T) {
 	}}}
 	tradeLookup := &stubTradeLookup{}
 	rec := reconciler.New(time.Hour, sagaLookup, tradeLookup,
-		e.portfolioHandler, e.orderSagaReactor, e.bracketReactor, e.ocoSagaReactor, nil, nil, slog.Default())
+		e.portfolioHandler, e.orderSagaReactor, e.bracketReactor, e.ocoSagaReactor, nil, nil, nil, slog.Default())
 	require.NoError(t, rec.ReconcileOnce(e.ctx))
 
 	s, err = e.orderSagaHandler.Load(e.ctx, ordersaga.AggregateID("saga-1"))

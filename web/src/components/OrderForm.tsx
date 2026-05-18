@@ -50,7 +50,7 @@ const MARKET_TIF_OPTIONS = [
   { label: "MOC (At Close)", value: "AT_CLOSE" },
 ];
 
-type Mode = "SINGLE" | "BRACKET" | "OCO";
+type Mode = "SINGLE" | "BRACKET" | "OCO" | "TWAP";
 
 // Action is the broker-standard 4-way label for single orders.
 // Maps unambiguously to a (side, position_side) pair — no orthogonal
@@ -160,6 +160,8 @@ export function OrderForm({
   const [tif, setTif] = useState<string>("IOC");
   const [takeProfit, setTakeProfit] = useState<number | string>("");
   const [stopLoss, setStopLoss] = useState<number | string>("");
+  const [sliceCount, setSliceCount] = useState<number | string>(5);
+  const [sliceIntervalSec, setSliceIntervalSec] = useState<number | string>(10);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
 
@@ -195,14 +197,15 @@ export function OrderForm({
   const isSingle = mode === "SINGLE";
   const isBracket = mode === "BRACKET";
   const isOCO = mode === "OCO";
+  const isTwap = mode === "TWAP";
   const isMarket = orderType === "MARKET";
 
   // Derive (side, position_side) from the user-friendly controls.
-  // SINGLE uses the 4-way action; BRACKET/OCO use the 2-way direction
-  // (entry side for bracket, exit side for OCO).
+  // SINGLE and TWAP use the 4-way action; BRACKET/OCO use the 2-way
+  // direction (entry side for bracket, exit side for OCO).
   let side: Side;
   let positionSide: PositionSide;
-  if (isSingle) {
+  if (isSingle || isTwap) {
     const m = ACTION_MAP[action];
     side = m.side;
     positionSide = m.positionSide;
@@ -229,6 +232,8 @@ export function OrderForm({
   // Server-side preview of the order's hold + margin impact. OCO
   // mode doesn't request a preview — exits don't take cash, and the
   // preview's side/position_side don't map cleanly onto an OCO plan.
+  // TWAP previews against the worst case (full notional at limit price),
+  // matching the server's submit-time buying-power guard.
   const qtyNum = Number(quantity);
   const prcNum = Number(price);
   const previewParams =
@@ -238,8 +243,10 @@ export function OrderForm({
           symbol,
           side,
           positionSide: ps,
-          orderType: ORDER_TYPES[orderType] ?? OrderType.MARKET,
-          price: isMarket ? 0n : moneyToPrice(prcNum),
+          orderType: isTwap
+            ? OrderType.LIMIT
+            : (ORDER_TYPES[orderType] ?? OrderType.MARKET),
+          price: isMarket && !isTwap ? 0n : moneyToPrice(prcNum),
           quantity: BigInt(qtyNum),
         }
       : null;
@@ -264,6 +271,64 @@ export function OrderForm({
     const qty = typeof quantity === "number" ? quantity : parseInt(quantity, 10);
     if (!qty || qty <= 0) {
       notifications.show({ message: "Enter a valid quantity", color: "red" });
+      return;
+    }
+
+    if (isTwap) {
+      const prc = typeof price === "number" ? price : parseFloat(price);
+      if (!prc || prc <= 0) {
+        notifications.show({ message: "Enter a valid limit price", color: "red" });
+        return;
+      }
+      const slc = typeof sliceCount === "number" ? sliceCount : parseInt(sliceCount, 10);
+      if (!slc || slc <= 0) {
+        notifications.show({ message: "Enter a valid slice count", color: "red" });
+        return;
+      }
+      if (slc > qty) {
+        notifications.show({
+          message: "Slice count cannot exceed total quantity",
+          color: "red",
+        });
+        return;
+      }
+      const intervalSec =
+        typeof sliceIntervalSec === "number"
+          ? sliceIntervalSec
+          : parseFloat(sliceIntervalSec);
+      if (intervalSec < 0) {
+        notifications.show({ message: "Slice interval cannot be negative", color: "red" });
+        return;
+      }
+      const verb = ACTION_MAP[action].verb;
+      setPending({
+        request: {
+          accountId,
+          plan: {
+            case: "twap",
+            value: {
+              symbol,
+              side,
+              positionSide: ps,
+              totalQuantity: BigInt(qty),
+              sliceCount: slc,
+              sliceIntervalMs: BigInt(Math.round(intervalSec * 1000)),
+              limitPrice: moneyToPrice(prc),
+            },
+          },
+        },
+        heading: `${verb} TWAP ${qty} ${symbol}`,
+        color: ACTION_MAP[action].color,
+        rows: [
+          { label: "Limit", value: `$${prc.toFixed(4)}` },
+          { label: "Slices", value: `${slc} × ${Math.round(qty / slc)} (last ${qty - Math.round(qty / slc) * (slc - 1)})` },
+          { label: "Interval", value: `${intervalSec}s` },
+          { label: "Window", value: `~${(intervalSec * slc).toFixed(0)}s total` },
+        ],
+        successTitle: "TWAP placed",
+        successMessage: `${verb} TWAP ${qty} ${symbol} over ${slc} slices`,
+        failureTitle: "TWAP failed",
+      });
       return;
     }
 
@@ -498,9 +563,10 @@ export function OrderForm({
             { label: "Single", value: "SINGLE" },
             { label: "Bracket", value: "BRACKET" },
             { label: "OCO", value: "OCO" },
+            { label: "TWAP", value: "TWAP" },
           ]}
         />
-        {isSingle ? (
+        {isSingle || isTwap ? (
           <SegmentedControl
             fullWidth
             value={action}
@@ -548,10 +614,10 @@ export function OrderForm({
             />
           </Group>
         )}
-        {((isSingle && !isMarket) || isBracket) && (
+        {((isSingle && !isMarket) || isBracket || isTwap) && (
           <Stack gap={4}>
             <NumberInput
-              label={isBracket ? "Entry Price" : "Price"}
+              label={isBracket ? "Entry Price" : isTwap ? "Limit Price" : "Price"}
               size="xs"
               placeholder="0.00"
               min={0}
@@ -599,7 +665,7 @@ export function OrderForm({
           </Stack>
         )}
         <NumberInput
-          label="Quantity"
+          label={isTwap ? "Total Quantity" : "Quantity"}
           size="xs"
           placeholder="0"
           min={1}
@@ -607,7 +673,29 @@ export function OrderForm({
           value={quantity}
           onChange={setQuantity}
         />
-        {!isSingle && (
+        {isTwap && (
+          <Group grow>
+            <NumberInput
+              label="Slices"
+              size="xs"
+              placeholder="5"
+              min={1}
+              allowDecimal={false}
+              value={sliceCount}
+              onChange={setSliceCount}
+            />
+            <NumberInput
+              label="Interval (s)"
+              size="xs"
+              placeholder="10"
+              min={0}
+              decimalScale={1}
+              value={sliceIntervalSec}
+              onChange={setSliceIntervalSec}
+            />
+          </Group>
+        )}
+        {(isBracket || isOCO) && (
           <Group grow>
             <NumberInput
               label="Take Profit"
@@ -633,7 +721,7 @@ export function OrderForm({
         <Button
           fullWidth
           color={
-            isSingle
+            isSingle || isTwap
               ? ACTION_MAP[action].color
               : direction === "SHORT"
                 ? "red"
@@ -645,6 +733,7 @@ export function OrderForm({
           {isSingle && `${ACTION_MAP[action].verb} ${symbol}`}
           {isBracket && `${direction === "SHORT" ? "Short" : "Long"} bracket ${symbol}`}
           {isOCO && `${direction === "SHORT" ? "Cover" : "Sell"} OCO ${symbol}`}
+          {isTwap && `${ACTION_MAP[action].verb} TWAP ${symbol}`}
         </Button>
       </Stack>
 

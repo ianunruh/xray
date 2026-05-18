@@ -105,6 +105,31 @@ func (p *PgProjection) HandleEvents(ctx context.Context, events []es.Event) erro
 				int32(sagaStatusForFailure(data.Reason)),
 				data.Reason, data.FailedAt.AsTime(), data.SagaId,
 			)
+
+		// TWAP saga lifecycle.
+		case *sagav1.TWAPSagaStarted:
+			batch.Queue(
+				`INSERT INTO projection_sagas (saga_id, kind, status, account_id, symbol, started_at)
+				VALUES ($1, $2, $3, $4, $5, $6)
+				ON CONFLICT (saga_id) DO NOTHING`,
+				data.SagaId,
+				int32(sagav1.SagaKind_SAGA_KIND_TWAP),
+				int32(sagav1.SagaStatus_SAGA_STATUS_ACTIVE),
+				data.AccountId, data.Symbol,
+				data.StartedAt.AsTime(),
+			)
+		case *sagav1.TWAPSagaCompleted:
+			batch.Queue(
+				`UPDATE projection_sagas SET status = $1, ended_at = $2 WHERE saga_id = $3`,
+				int32(sagav1.SagaStatus_SAGA_STATUS_COMPLETED),
+				data.CompletedAt.AsTime(), data.SagaId,
+			)
+		case *sagav1.TWAPSagaFailed:
+			batch.Queue(
+				`UPDATE projection_sagas SET status = $1, fail_reason = $2, ended_at = $3 WHERE saga_id = $4`,
+				int32(sagaStatusForFailure(data.Reason)),
+				data.Reason, data.FailedAt.AsTime(), data.SagaId,
+			)
 		}
 	}
 
@@ -172,9 +197,10 @@ func sagaStatusForFailure(reason string) sagav1.SagaStatus {
 // treated as "match any."
 // childSagaPrefixes hides sagas whose IDs were synthesized by a parent
 // saga (entry ordersagas owned by a bracket, exit OCO sagas owned by a
-// bracket). These are implementation details — the parent is what
-// callers see in List responses.
-var childSagaPrefixes = []string{"bracket-entry:", "bracket-oco:"}
+// bracket, per-slice ordersagas owned by a TWAP). These are
+// implementation details — the parent is what callers see in List
+// responses.
+var childSagaPrefixes = []string{"bracket-entry:", "bracket-oco:", "twap-slice:"}
 
 func (p *PgProjection) List(ctx context.Context, accountID, symbol string, kind sagav1.SagaKind, status sagav1.SagaStatus) ([]*SagaRow, error) {
 	q := `SELECT saga_id, kind, status, account_id, symbol, started_at, ended_at, fail_reason

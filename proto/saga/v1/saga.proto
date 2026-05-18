@@ -20,6 +20,7 @@ enum SagaKind {
   SAGA_KIND_SINGLE_ORDER = 1;
   SAGA_KIND_BRACKET = 2;
   SAGA_KIND_OCO = 3;
+  SAGA_KIND_TWAP = 4;
 }
 
 // SagaStatus is the top-level lifecycle marker shared by all kinds.
@@ -54,6 +55,7 @@ message PlaceSagaRequest {
     SingleOrderPlan single_order = 2;
     BracketPlan bracket = 3;
     OCOPlan oco = 4;
+    TWAPPlan twap = 5;
   }
 }
 
@@ -102,6 +104,24 @@ message OCOPlan {
   orderbook.v1.PositionSide position_side = 6;
 }
 
+// TWAPPlan slices a parent order into `slice_count` child orders spaced
+// `slice_interval_ms` apart. Each slice is a marketable limit IOC at
+// `limit_price` — the saga never crosses past this price. Underfilled
+// quantity rolls into the next slice. The aggregate is just an
+// orchestrator; cash holds, share holds, and settlement all live in the
+// per-slice child OrderSagas.
+message TWAPPlan {
+  string symbol = 1;
+  orderbook.v1.Side side = 2;
+  orderbook.v1.PositionSide position_side = 3;
+  int64 total_quantity = 4;
+  int32 slice_count = 5;
+  int64 slice_interval_ms = 6;
+  // limit_price caps the worst price any slice will accept. Each child
+  // OrderSaga places an IOC at this price; unfilled qty rolls forward.
+  int64 limit_price = 7;
+}
+
 message PlaceSagaResponse {
   string saga_id = 1;
 }
@@ -123,6 +143,7 @@ message GetSagaResponse {
     SingleOrderDetails single_order = 9;
     BracketDetails bracket = 10;
     OCODetails oco = 11;
+    TWAPDetails twap = 12;
   }
 }
 
@@ -215,4 +236,42 @@ message ListSagasRequest {
 
 message ListSagasResponse {
   repeated GetSagaResponse sagas = 1;
+}
+
+// TWAPPhase is the granular state for SAGA_KIND_TWAP. Coarse-grained
+// since the per-slice timeline lives in TWAPDetails.slices.
+enum TWAPPhase {
+  TWAP_PHASE_UNSPECIFIED = 0;
+  TWAP_PHASE_ACTIVE = 1;
+  TWAP_PHASE_COMPLETED = 2;
+}
+
+message TWAPDetails {
+  TWAPPhase phase = 1;
+  orderbook.v1.Side side = 2;
+  orderbook.v1.PositionSide position_side = 3;
+  int64 total_quantity = 4;
+  int32 slice_count = 5;
+  int64 slice_interval_ms = 6;
+  int64 limit_price = 7;
+  int32 slices_launched = 8;
+  int64 total_filled_quantity = 9;
+  // total_cash_settled is the gross notional moved across all completed
+  // slices. The UI derives weighted-avg fill price as
+  // total_cash_settled / total_filled_quantity.
+  int64 total_cash_settled = 10;
+  google.protobuf.Timestamp started_at = 11;
+  repeated TWAPSliceDetails slices = 12;
+  Initiator initiator = 13;
+}
+
+message TWAPSliceDetails {
+  int32 slice_index = 1;
+  string child_saga_id = 2;
+  int64 launched_quantity = 3;
+  int64 filled_quantity = 4;
+  int64 cash_settled = 5;
+  google.protobuf.Timestamp launched_at = 6;
+  google.protobuf.Timestamp completed_at = 7;
+  bool completed = 8;
 }

@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package saga.v1;
+
+option go_package = "github.com/ianunruh/xray/gen/saga/v1;sagav1";
+
+import "google/protobuf/timestamp.proto";
+import "orderbook/v1/events.proto";
+import "saga/v1/saga.proto";
+
+// TWAPSaga aggregate events — stored under "twap-saga:{uuid}". A TWAP
+// saga is a thin orchestrator that slices a parent order into N child
+// OrderSagas spaced over a time window. All portfolio interaction (cash
+// holds, share holds, settle) lives inside the child OrderSagas; the
+// parent saga only records per-slice launches and fills.
+
+message TWAPSagaStarted {
+  string saga_id = 1;
+  string account_id = 2;
+  string symbol = 3;
+  orderbook.v1.Side side = 4;
+  orderbook.v1.PositionSide position_side = 5;
+  int64 total_quantity = 6;
+  int32 slice_count = 7;
+  int64 slice_interval_ms = 8;
+  int64 limit_price = 9;
+  google.protobuf.Timestamp started_at = 10;
+  Initiator initiator = 11;
+}
+
+// TWAPSliceLaunched is emitted by the reactor when it spawns the child
+// OrderSaga for slice N. slice_quantity is the size of THIS slice
+// including any rollover from prior underfills.
+message TWAPSliceLaunched {
+  string saga_id = 1;
+  int32 slice_index = 2;
+  string child_saga_id = 3;
+  int64 slice_quantity = 4;
+  google.protobuf.Timestamp launched_at = 5;
+}
+
+// TWAPSliceCompleted is emitted when the child OrderSaga for a slice
+// reaches a terminal state (Completed or Failed). filled_quantity is
+// whatever the IOC actually got — may be 0. cash_settled lets the
+// projection / UI compute a running weighted-avg fill price.
+message TWAPSliceCompleted {
+  string saga_id = 1;
+  int32 slice_index = 2;
+  string child_saga_id = 3;
+  int64 filled_quantity = 4;
+  int64 cash_settled = 5;
+  google.protobuf.Timestamp completed_at = 6;
+}
+
+message TWAPSagaCompleted {
+  string saga_id = 1;
+  google.protobuf.Timestamp completed_at = 2;
+}
+
+message TWAPSagaFailed {
+  string saga_id = 1;
+  string reason = 2;
+  google.protobuf.Timestamp failed_at = 3;
+}
+
+message TWAPSagaActionFailed {
+  string saga_id = 1;
+  string action = 2;
+  int32 attempts = 3;
+  google.protobuf.Timestamp failed_at = 4;
+}
