@@ -33,6 +33,17 @@ export declare type OrderBookSnapshot = Message<"orderbook.v1.OrderBookSnapshot"
    * @generated from field: orderbook.v1.MarketPhase phase = 3;
    */
   phase: MarketPhase;
+
+  /**
+   * Cumulative traded quantity for the current session; reset on the
+   * session's OfficialCloseSet event. Defaults to 0 for snapshots taken
+   * before session-volume tracking existed — the counter then resumes
+   * from zero, which mis-counts only events between the snapshot and
+   * the next close.
+   *
+   * @generated from field: int64 session_volume = 4;
+   */
+  sessionVolume: bigint;
 };
 
 /**

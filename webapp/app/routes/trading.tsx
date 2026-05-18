@@ -95,6 +95,8 @@ async function loadSymbolData(symbol: string) {
     phaseR.value.phase !== MarketPhase.UNSPECIFIED
       ? phaseR.value.phase
       : MarketPhase.CONTINUOUS;
+  const sessionVolume =
+    phaseR.status === "fulfilled" ? phaseR.value.sessionVolume : 0n;
 
   let officialClose: GetOfficialCloseResponse | null = null;
   if (closeR.status === "fulfilled") {
@@ -130,7 +132,7 @@ async function loadSymbolData(symbol: string) {
     }
   }
 
-  return { phase, officialClose, replayBounds };
+  return { phase, sessionVolume, officialClose, replayBounds };
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -145,6 +147,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       ? loadSymbolData(symbol)
       : Promise.resolve({
           phase: MarketPhase.CONTINUOUS,
+          sessionVolume: 0n,
           officialClose: null as GetOfficialCloseResponse | null,
           replayBounds: null as ReplayBounds | null,
         }),
@@ -413,6 +416,7 @@ export default function Trading({ loaderData }: Route.ComponentProps) {
     twaps,
     closingPnl,
     phase,
+    sessionVolume,
     replayBounds,
   } = loaderData;
   // RR's loader serialization deeply-readonly-flattens proto message
@@ -555,6 +559,7 @@ export default function Trading({ loaderData }: Route.ComponentProps) {
             twaps={twaps}
             closingPnl={closingPnl}
             phase={phase}
+            sessionVolume={sessionVolume}
             officialClose={officialClose}
             replayBounds={replayBounds}
             onRefreshReplay={() => revalidator.revalidate()}
@@ -607,6 +612,7 @@ function TradingBody({
   twaps,
   closingPnl,
   phase,
+  sessionVolume,
   officialClose,
   replayBounds,
   onRefreshReplay,
@@ -623,6 +629,7 @@ function TradingBody({
   twaps: TwapRow[];
   closingPnl: RealizedPnlRow[];
   phase: MarketPhase;
+  sessionVolume: bigint;
   officialClose: GetOfficialCloseResponse | null;
   replayBounds: ReplayBounds | null;
   onRefreshReplay: () => void;
@@ -653,6 +660,7 @@ function TradingBody({
                   <MarketPanel
                     symbol={symbol}
                     phase={phase}
+                    sessionVolume={sessionVolume}
                     officialClose={officialClose}
                     replayBounds={replayBounds}
                     onRefreshReplay={onRefreshReplay}

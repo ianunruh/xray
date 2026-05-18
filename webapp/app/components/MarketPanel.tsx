@@ -36,12 +36,14 @@ type Mode = "live" | "replay";
 export function MarketPanel({
   symbol,
   phase,
+  sessionVolume,
   officialClose,
   replayBounds,
   onRefreshReplay,
 }: {
   symbol: string;
   phase: MarketPhase;
+  sessionVolume: bigint;
   officialClose: GetOfficialCloseResponse | null;
   replayBounds: ReplayBounds | null;
   onRefreshReplay: () => void;
@@ -76,7 +78,11 @@ export function MarketPanel({
         </Group>
 
         {mode === "live" ? (
-          <LiveBody symbol={symbol} officialClose={officialClose} />
+          <LiveBody
+            symbol={symbol}
+            sessionVolume={sessionVolume}
+            officialClose={officialClose}
+          />
         ) : (
           <ReplayBody
             symbol={symbol}
@@ -106,11 +112,13 @@ function MarketTicker({
   bid,
   ask,
   lastTrade,
+  sessionVolume,
   officialClose,
 }: {
   bid: PriceLevel | undefined;
   ask: PriceLevel | undefined;
   lastTrade: Trade | undefined;
+  sessionVolume?: bigint;
   officialClose: GetOfficialCloseResponse | null;
 }) {
   const spread =
@@ -145,6 +153,16 @@ function MarketTicker({
         quantity={lastTrade?.quantity}
       />
       <ChangeCell lastPrice={lastTrade?.price} officialClose={officialClose} />
+      {sessionVolume !== undefined && (
+        <div style={{ minWidth: 120 }} title="Cumulative shares traded this session; resets on close.">
+          <Text size="xs" c="dimmed">
+            Session Volume
+          </Text>
+          <Text fw={700} ff="monospace">
+            {sessionVolume > 0n ? formatQuantity(sessionVolume) : "—"}
+          </Text>
+        </div>
+      )}
     </Group>
   );
 }
@@ -261,9 +279,11 @@ function useLiveTrades(symbol: string): Trade[] {
 
 function LiveBody({
   symbol,
+  sessionVolume,
   officialClose,
 }: {
   symbol: string;
+  sessionVolume: bigint;
   officialClose: GetOfficialCloseResponse | null;
 }) {
   const { bids, asks, maxQuantity } = useSharedMarketDepth();
@@ -274,6 +294,7 @@ function LiveBody({
         bid={bids[0]}
         ask={asks[0]}
         lastTrade={trades[0]}
+        sessionVolume={sessionVolume}
         officialClose={officialClose}
       />
       <CandleChart symbol={symbol} />

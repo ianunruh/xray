@@ -529,6 +529,14 @@ export declare type GetOrderBookResponse = Message<"orderbook.v1.GetOrderBookRes
    * @generated from field: int64 last_trade_price = 5;
    */
   lastTradePrice: bigint;
+
+  /**
+   * Cumulative traded quantity for the current session; resets to 0
+   * when the closing uncross emits OfficialCloseSet.
+   *
+   * @generated from field: int64 session_volume = 6;
+   */
+  sessionVolume: bigint;
 };
 
 /**
