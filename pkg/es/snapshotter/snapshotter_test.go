@@ -395,6 +395,46 @@ func TestSnapshotter_SaveFailureRetriesNextBoundary(t *testing.T) {
 	assert.Equal(t, 6, persisted.Version)
 }
 
+func TestSnapshotter_CatchUpCoalescesSaves(t *testing.T) {
+	// A single HandleEvents batch that crosses many boundaries for one
+	// aggregate should produce exactly one save per aggregate per
+	// invocation, not one per boundary. Mirrors the catch-up path that
+	// runs after the snapshotter restarts and drains a long backlog.
+	registry := newRegistry()
+	store := memstore.New()
+	counting := &saveCountingStore{Store: store}
+
+	snap := snapshotter.New(store, counting, registry, slog.Default())
+	snap.Register("orderbook", func(id string) es.Aggregate {
+		return newSnapshotAggregate(id, 100)
+	})
+
+	const events = 10_000
+
+	for v := 1; v <= events; v++ {
+		appendEvent(t, store, registry, "orderbook:AAPL", v)
+	}
+
+	// Dispatch v1..events as one batch. lastSavedVersion=0, version goes
+	// 0 → events, crosses events/100 boundaries — but should save once.
+	require.NoError(t, snap.HandleEvents(context.Background(), dispatch("orderbook:AAPL", 1, events)))
+	assert.Equal(t, int64(1), counting.saves.Load(), "one save per aggregate per batch")
+
+	persisted, err := counting.LoadSnapshot(context.Background(), "orderbook:AAPL")
+	require.NoError(t, err)
+	assert.Equal(t, events, persisted.Version)
+
+	// Two aggregates in one batch → exactly two saves.
+	for v := 1; v <= 500; v++ {
+		appendEvent(t, store, registry, "orderbook:GOOG", v)
+		appendEvent(t, store, registry, "orderbook:MSFT", v)
+	}
+	counting.saves.Store(0)
+	batch := append(dispatch("orderbook:GOOG", 1, 500), dispatch("orderbook:MSFT", 1, 500)...)
+	require.NoError(t, snap.HandleEvents(context.Background(), batch))
+	assert.Equal(t, int64(2), counting.saves.Load(), "two aggregates → two saves")
+}
+
 func TestSnapshotter_MalformedIDIgnored(t *testing.T) {
 	registry := newRegistry()
 	store := memstore.New()

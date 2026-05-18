@@ -65,7 +65,14 @@ func (s *Snapshotter) Register(prefix string, factory Factory) {
 // snapshot when the version crosses an interval boundary since the last
 // save. Events for unregistered prefixes or non-Snapshotable aggregates are
 // ignored.
+//
+// During catch-up a single batch may carry many events for one aggregate
+// crossing many boundaries; the save is deferred until after the batch so
+// only one save per aggregate fires regardless of how many boundaries were
+// crossed.
 func (s *Snapshotter) HandleEvents(ctx context.Context, events []es.Event) error {
+	pending := make(map[string]*entry)
+
 	for _, evt := range events {
 		e, err := s.ensureAggregate(ctx, evt.AggregateID)
 		if err != nil {
@@ -92,11 +99,15 @@ func (s *Snapshotter) HandleEvents(ctx context.Context, events []es.Event) error
 		e.version = evt.Version
 
 		if e.version/e.interval > e.lastSavedVersion/e.interval {
-			if err := s.save(ctx, evt.AggregateID, e); err != nil {
-				s.log.Error("snapshotter save failed",
-					"aggregate_id", evt.AggregateID, "version", e.version, "error", err)
-				// Don't advance lastSavedVersion; next boundary retries.
-			}
+			pending[evt.AggregateID] = e
+		}
+	}
+
+	for id, e := range pending {
+		if err := s.save(ctx, id, e); err != nil {
+			s.log.Error("snapshotter save failed",
+				"aggregate_id", id, "version", e.version, "error", err)
+			// Don't advance lastSavedVersion; next boundary retries.
 		}
 	}
 	return nil
