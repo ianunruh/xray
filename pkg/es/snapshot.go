@@ -22,7 +22,10 @@ type SnapshotStore interface {
 	SaveSnapshot(ctx context.Context, snap Snapshot) error
 }
 
-// Snapshotable is implemented by aggregates that support periodic snapshotting.
+// Snapshotable is implemented by aggregates whose state can be captured as a
+// proto message and rehydrated from one. The async snapshotter in
+// pkg/es/snapshotter writes a snapshot every SnapshotInterval events; the
+// read-side Load and LoadAt paths consume them for fast hydration.
 type Snapshotable interface {
 	Snapshot() (proto.Message, error)
 	RestoreSnapshot(proto.Message) error

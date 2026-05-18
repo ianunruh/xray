@@ -143,64 +143,22 @@ func TestHandler_Integration(t *testing.T) {
 	}
 }
 
-func TestHandler_WithSnapshots(t *testing.T) {
-	registry := newTestRegistry()
-	store := memstore.New()
-
-	handler := es.NewHandler(store, registry, func(id string) *snapshotAggregate {
-		a := &snapshotAggregate{}
-		a.SetID(id)
-		return a
-	}, slog.Default()).WithSnapshots(store)
-
-	ctx := context.Background()
-	now := time.Now()
-	cmd := testCommand{aggregateID: "orderbook:AAPL"}
-
-	makeEvent := func(orderID string) es.Event {
-		return es.Event{
-			AggregateID: "orderbook:AAPL",
-			Type:        "OrderPlaced",
-			Timestamp:   now,
-			Data: &orderbookv1.OrderPlaced{
-				OrderId:  orderID,
-				Symbol:   "AAPL",
-				Side:     orderbookv1.Side_SIDE_BUY,
-				Price:    1500000,
-				Quantity: 50,
-				PlacedAt: timestamppb.New(now),
-			},
-		}
-	}
-
-	// Send 3 commands (SnapshotInterval = 3).
-	// Snapshot is captured after the 3rd append (version reaches 3).
-	for i := 1; i <= 3; i++ {
-		err := handler.Handle(ctx, cmd, func(agg *snapshotAggregate) ([]es.Event, error) {
-			evt := makeEvent(fmt.Sprintf("order-%d", i))
-			require.NoError(t, agg.Apply(evt))
-			return []es.Event{evt}, nil
-		})
-		require.NoError(t, err)
-	}
-
-	// Snapshot was saved after the 3rd handle at version 3.
-	snap, err := store.LoadSnapshot(ctx, "orderbook:AAPL")
+// seedSnapshot stores a snapshot directly in the snapshot store, mimicking
+// what the async snapshotter (pkg/es/snapshotter) would persist. Used by
+// LoadAt tests that need a snapshot to exist without depending on the
+// snapshotter's projection plumbing.
+func seedSnapshot(t *testing.T, store es.SnapshotStore, id string, version, orderCount int) {
+	t.Helper()
+	agg := &snapshotAggregate{orderCount: orderCount}
+	msg, err := agg.Snapshot()
 	require.NoError(t, err)
-	require.NotNil(t, snap, "snapshot should exist after 3rd handle")
-	assert.Equal(t, 3, snap.Version)
-
-	// Verify 3 events in store.
-	raw, err := store.Load(ctx, "orderbook:AAPL")
+	data, err := proto.Marshal(msg)
 	require.NoError(t, err)
-	assert.Len(t, raw, 3)
-
-	// 4th handle: uses cached aggregate (version 3, orderCount 3).
-	err = handler.Handle(ctx, cmd, func(agg *snapshotAggregate) ([]es.Event, error) {
-		assert.Equal(t, 3, agg.orderCount, "cached aggregate with 3 events applied")
-		return nil, nil
-	})
-	require.NoError(t, err)
+	require.NoError(t, store.SaveSnapshot(context.Background(), es.Snapshot{
+		AggregateID: id,
+		Version:     version,
+		Data:        data,
+	}))
 }
 
 // loadCountingStore wraps a Store and counts Load calls.
@@ -395,9 +353,10 @@ func TestHandler_LoadAt_NoSnapshot(t *testing.T) {
 }
 
 func TestHandler_LoadAt_SnapshotBeforeTarget(t *testing.T) {
-	// snapshotAggregate has SnapshotInterval=3, so a snapshot is saved at
-	// version 3. LoadAt(5) should restore from the snapshot and apply
-	// events 4-5.
+	// With a snapshot persisted at v3, LoadAt(5) should restore from the
+	// snapshot and apply events 4-5. Snapshot writes are async and
+	// driven externally (the snapshotter projection); this test seeds
+	// the snapshot directly so it exercises only the load path.
 	registry := newTestRegistry()
 	store := memstore.New()
 
@@ -431,10 +390,7 @@ func TestHandler_LoadAt_SnapshotBeforeTarget(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	snap, err := store.LoadSnapshot(ctx, "orderbook:AAPL")
-	require.NoError(t, err)
-	require.NotNil(t, snap)
-	require.Equal(t, 3, snap.Version)
+	seedSnapshot(t, store, "orderbook:AAPL", 3, 3)
 
 	agg, err := handler.LoadAt(ctx, "orderbook:AAPL", 5)
 	require.NoError(t, err)
@@ -486,11 +442,8 @@ func TestHandler_LoadAt_SnapshotAfterTarget(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Snapshots fire at versions 3 and 6; latest snapshot is at v6.
-	snap, err := store.LoadSnapshot(ctx, "orderbook:AAPL")
-	require.NoError(t, err)
-	require.NotNil(t, snap)
-	require.Equal(t, 6, snap.Version)
+	// Latest snapshot is at v6.
+	seedSnapshot(t, store, "orderbook:AAPL", 6, 6)
 
 	// Asking for v2 must NOT use the v6 snapshot.
 	agg, err := handler.LoadAt(ctx, "orderbook:AAPL", 2)

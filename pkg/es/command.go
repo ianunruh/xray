@@ -53,9 +53,8 @@ type aggregateCache[A Aggregate] struct {
 }
 
 type cachedEntry[A Aggregate] struct {
-	agg             A
-	version         int
-	snapshotVersion int
+	agg     A
+	version int
 }
 
 func newAggregateCache[A Aggregate]() *aggregateCache[A] {
@@ -74,10 +73,10 @@ func (c *aggregateCache[A]) Take(id string) (cachedEntry[A], bool) {
 }
 
 // Put stores an aggregate in the cache.
-func (c *aggregateCache[A]) Put(id string, agg A, version, snapshotVersion int) {
+func (c *aggregateCache[A]) Put(id string, agg A, version int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.items[id] = cachedEntry[A]{agg: agg, version: version, snapshotVersion: snapshotVersion}
+	c.items[id] = cachedEntry[A]{agg: agg, version: version}
 }
 
 // Command represents a domain command targeting a specific aggregate.
@@ -124,11 +123,6 @@ func (h *Handler[A]) WithPublisher(p EventPublisher) *Handler[A] {
 	return &cp
 }
 
-// loadResult holds the outcome of loading an aggregate from events/snapshots.
-type loadResult struct {
-	expectedVersion int // total events in the store for this aggregate
-	snapshotVersion int // version of the snapshot used (0 if none)
-}
 
 // Load creates and hydrates an aggregate from the event store (and snapshots
 // if configured). It is intended for read-only queries where no new events
@@ -233,13 +227,6 @@ func (h *Handler[A]) LoadEvents(ctx context.Context, aggregateID string, fromVer
 	return events, nil
 }
 
-// pendingSnapshot holds snapshot data captured under the lock so that the
-// expensive proto.Marshal + SaveSnapshot can happen outside the lock.
-type pendingSnapshot struct {
-	msg     proto.Message
-	version int
-}
-
 // stampCausation mints a fresh ID for every event and stamps causation +
 // correlation derived from ctx. All events in the batch share the same
 // causation (the command is the unit of causation; multi-event splits are a
@@ -268,65 +255,39 @@ func (h *Handler[A]) Handle(ctx context.Context, cmd Command, execute func(A) ([
 	aggregateID := cmd.AggregateID()
 
 	h.locks.Lock(aggregateID)
-	newEvents, snap, err := h.handleLocked(ctx, aggregateID, execute)
+	newEvents, err := h.handleLocked(ctx, aggregateID, execute)
 	h.locks.Unlock(aggregateID)
 
 	if err != nil {
 		return err
 	}
 
-	// Both happen outside the per-aggregate lock:
-	h.saveSnapshot(ctx, aggregateID, snap)
+	// Snapshotting is an async projection (pkg/es/snapshotter); the write
+	// path is responsible for events only.
 	h.publishEvents(ctx, aggregateID, newEvents)
 	return nil
 }
 
 // handleLocked runs the retry loop while holding the per-aggregate lock.
-func (h *Handler[A]) handleLocked(ctx context.Context, aggregateID string, execute func(A) ([]Event, error)) ([]Event, *pendingSnapshot, error) {
+func (h *Handler[A]) handleLocked(ctx context.Context, aggregateID string, execute func(A) ([]Event, error)) ([]Event, error) {
 	for attempt := range maxRetries {
 		if attempt > 0 {
 			h.log.Info("retrying command", "aggregate_id", aggregateID, "attempt", attempt+1)
 		}
 
-		newEvents, snap, err := h.tryHandle(ctx, aggregateID, execute)
+		newEvents, err := h.tryHandle(ctx, aggregateID, execute)
 		if errors.Is(err, ErrOptimisticConcurrency) {
 			h.log.Warn("optimistic concurrency conflict, will retry", "aggregate_id", aggregateID, "attempt", attempt+1)
 			continue
 		}
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
-		return newEvents, snap, nil
+		return newEvents, nil
 	}
 
-	return nil, nil, fmt.Errorf("append events: %w", ErrOptimisticConcurrency)
-}
-
-// saveSnapshot marshals and persists a pending snapshot if one was captured.
-func (h *Handler[A]) saveSnapshot(ctx context.Context, aggregateID string, snap *pendingSnapshot) {
-	if snap == nil {
-		return
-	}
-
-	data, err := proto.Marshal(snap.msg)
-	if err != nil {
-		h.log.Error("failed to marshal snapshot", "aggregate_id", aggregateID, "error", err)
-		return
-	}
-
-	s := Snapshot{
-		AggregateID: aggregateID,
-		Version:     snap.version,
-		Data:        data,
-	}
-
-	if err := h.snapshots.SaveSnapshot(ctx, s); err != nil {
-		h.log.Error("failed to save snapshot", "aggregate_id", aggregateID, "error", err)
-		return
-	}
-
-	h.log.Info("snapshot saved", "aggregate_id", aggregateID, "version", snap.version)
+	return nil, fmt.Errorf("append events: %w", ErrOptimisticConcurrency)
 }
 
 // publishEvents publishes new events if a publisher is configured.
@@ -339,39 +300,36 @@ func (h *Handler[A]) publishEvents(ctx context.Context, aggregateID string, newE
 }
 
 // tryHandle performs a single load→execute→append attempt.
-func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute func(A) ([]Event, error)) ([]Event, *pendingSnapshot, error) {
+func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute func(A) ([]Event, error)) ([]Event, error) {
 	h.log.Debug("handling command", "aggregate_id", aggregateID)
 
 	var agg A
 	var expectedVersion int
-	var snapshotVersion int
 
 	if cached, ok := h.cache.Take(aggregateID); ok {
 		agg = cached.agg
 		expectedVersion = cached.version
-		snapshotVersion = cached.snapshotVersion
 		h.log.Debug("using cached aggregate", "aggregate_id", aggregateID, "version", expectedVersion)
 	} else {
 		agg = h.factory(aggregateID)
 
-		lr, err := h.loadAggregate(ctx, agg, aggregateID)
+		v, err := h.loadAggregate(ctx, agg, aggregateID)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		expectedVersion = lr.expectedVersion
-		snapshotVersion = lr.snapshotVersion
+		expectedVersion = v
 	}
 
 	newEvents, err := execute(agg)
 	if err != nil {
 		h.log.Warn("command execution failed", "aggregate_id", aggregateID, "error", err)
-		return nil, nil, fmt.Errorf("execute command: %w", err)
+		return nil, fmt.Errorf("execute command: %w", err)
 	}
 
 	if len(newEvents) == 0 {
 		// No mutation occurred, safe to put back unchanged.
-		h.cache.Put(aggregateID, agg, expectedVersion, snapshotVersion)
-		return nil, nil, nil
+		h.cache.Put(aggregateID, agg, expectedVersion)
+		return nil, nil
 	}
 
 	stampCausation(ctx, newEvents)
@@ -380,14 +338,14 @@ func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute 
 	for i, evt := range newEvents {
 		raw, err := h.registry.Serialize(evt)
 		if err != nil {
-			return nil, nil, fmt.Errorf("serialize event: %w", err)
+			return nil, fmt.Errorf("serialize event: %w", err)
 		}
 		rawNew[i] = raw
 	}
 
 	if err := h.store.Append(ctx, aggregateID, expectedVersion, rawNew); err != nil {
 		// Append failed — don't cache, aggregate may be partially mutated.
-		return nil, nil, err
+		return nil, err
 	}
 
 	newVersion := expectedVersion + len(newEvents)
@@ -398,37 +356,31 @@ func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute 
 
 	h.log.Debug("events appended", "aggregate_id", aggregateID, "new_event_count", len(newEvents), "new_version", newVersion)
 
-	// Capture snapshot under the lock (cheap — just creates proto objects).
-	// The expensive marshal + save happens outside the lock in Handle().
-	snap := h.maybeCaptureSnapshot(agg, aggregateID, newVersion, snapshotVersion)
-	if snap != nil {
-		snapshotVersion = snap.version
-	}
-
 	// Cache the aggregate at its new version for the next command.
-	h.cache.Put(aggregateID, agg, newVersion, snapshotVersion)
+	h.cache.Put(aggregateID, agg, newVersion)
 
-	return newEvents, snap, nil
+	return newEvents, nil
 }
 
 // loadAggregate restores the aggregate from a snapshot (if available) plus
-// remaining events, or from the full event stream.
-func (h *Handler[A]) loadAggregate(ctx context.Context, agg A, aggregateID string) (loadResult, error) {
+// remaining events, or from the full event stream. Returns the resulting
+// stream version.
+func (h *Handler[A]) loadAggregate(ctx context.Context, agg A, aggregateID string) (int, error) {
 	if h.snapshots != nil {
 		snap, err := h.snapshots.LoadSnapshot(ctx, aggregateID)
 		if err != nil {
 			h.log.Error("failed to load snapshot", "aggregate_id", aggregateID, "error", err)
-			return loadResult{}, fmt.Errorf("load snapshot: %w", err)
+			return 0,fmt.Errorf("load snapshot: %w", err)
 		}
 
 		if snap != nil {
 			if sa, ok := Aggregate(agg).(Snapshotable); ok {
 				msg, err := h.deserializeSnapshot(sa, snap.Data)
 				if err != nil {
-					return loadResult{}, fmt.Errorf("deserialize snapshot: %w", err)
+					return 0,fmt.Errorf("deserialize snapshot: %w", err)
 				}
 				if err := sa.RestoreSnapshot(msg); err != nil {
-					return loadResult{}, fmt.Errorf("restore snapshot: %w", err)
+					return 0,fmt.Errorf("restore snapshot: %w", err)
 				}
 
 				// Set the version to match the snapshot so Apply increments correctly.
@@ -440,24 +392,21 @@ func (h *Handler[A]) loadAggregate(ctx context.Context, agg A, aggregateID strin
 				rawEvents, err := h.store.LoadFrom(ctx, aggregateID, snap.Version+1)
 				if err != nil {
 					h.log.Error("failed to load events from version", "aggregate_id", aggregateID, "from_version", snap.Version+1, "error", err)
-					return loadResult{}, fmt.Errorf("load events from: %w", err)
+					return 0,fmt.Errorf("load events from: %w", err)
 				}
 
 				for _, raw := range rawEvents {
 					evt, err := h.registry.Deserialize(raw)
 					if err != nil {
-						return loadResult{}, fmt.Errorf("deserialize event: %w", err)
+						return 0,fmt.Errorf("deserialize event: %w", err)
 					}
 					if err := agg.Apply(evt); err != nil {
-						return loadResult{}, fmt.Errorf("apply event: %w", err)
+						return 0,fmt.Errorf("apply event: %w", err)
 					}
 				}
 
 				h.log.Info("aggregate restored from snapshot", "aggregate_id", aggregateID, "snapshot_version", snap.Version, "events_replayed", len(rawEvents))
-				return loadResult{
-					expectedVersion: snap.Version + len(rawEvents),
-					snapshotVersion: snap.Version,
-				}, nil
+				return snap.Version + len(rawEvents), nil
 			}
 		}
 	}
@@ -466,20 +415,20 @@ func (h *Handler[A]) loadAggregate(ctx context.Context, agg A, aggregateID strin
 	rawEvents, err := h.store.Load(ctx, aggregateID)
 	if err != nil {
 		h.log.Error("failed to load events", "aggregate_id", aggregateID, "error", err)
-		return loadResult{}, fmt.Errorf("load events: %w", err)
+		return 0,fmt.Errorf("load events: %w", err)
 	}
 
 	for _, raw := range rawEvents {
 		evt, err := h.registry.Deserialize(raw)
 		if err != nil {
-			return loadResult{}, fmt.Errorf("deserialize event: %w", err)
+			return 0,fmt.Errorf("deserialize event: %w", err)
 		}
 		if err := agg.Apply(evt); err != nil {
-			return loadResult{}, fmt.Errorf("apply event: %w", err)
+			return 0,fmt.Errorf("apply event: %w", err)
 		}
 	}
 
-	return loadResult{expectedVersion: len(rawEvents)}, nil
+	return len(rawEvents), nil
 }
 
 func (h *Handler[A]) deserializeSnapshot(sa Snapshotable, data []byte) (proto.Message, error) {
@@ -497,38 +446,3 @@ func (h *Handler[A]) deserializeSnapshot(sa Snapshotable, data []byte) (proto.Me
 	return msg, nil
 }
 
-// maybeCaptureSnapshot captures snapshot data if the aggregate supports it and
-// the current version has crossed a snapshot interval threshold since the last
-// snapshot. It returns a pendingSnapshot (cheap — just proto objects, no
-// serialization) or nil if no snapshot is needed.
-func (h *Handler[A]) maybeCaptureSnapshot(agg A, aggregateID string, currentVersion, snapshotVersion int) *pendingSnapshot {
-	if h.snapshots == nil {
-		return nil
-	}
-
-	sa, ok := Aggregate(agg).(Snapshotable)
-	if !ok {
-		return nil
-	}
-
-	interval := sa.SnapshotInterval()
-	if interval <= 0 {
-		return nil
-	}
-
-	// Capture a snapshot if we've crossed a threshold boundary since the last snapshot.
-	if currentVersion/interval <= snapshotVersion/interval {
-		return nil
-	}
-
-	msg, err := sa.Snapshot()
-	if err != nil {
-		h.log.Error("failed to create snapshot", "aggregate_id", aggregateID, "error", err)
-		return nil
-	}
-
-	return &pendingSnapshot{
-		msg:     msg,
-		version: currentVersion,
-	}
-}
