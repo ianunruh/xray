@@ -45,6 +45,7 @@ type Server struct {
 	pnlReader         PnLReader
 	marker            Marker
 	marginCallsReader MarginCallsReader
+	feesReader        FeesReader
 	broker            *PortfolioBroker
 	log               *slog.Logger
 }
@@ -56,6 +57,7 @@ func NewServer(
 	pnlReader PnLReader,
 	marker Marker,
 	marginCallsReader MarginCallsReader,
+	feesReader FeesReader,
 	broker *PortfolioBroker,
 	log *slog.Logger,
 ) *Server {
@@ -66,6 +68,7 @@ func NewServer(
 		pnlReader:         pnlReader,
 		marker:            marker,
 		marginCallsReader: marginCallsReader,
+		feesReader:        feesReader,
 		broker:            broker,
 		log:               log,
 	}
@@ -221,6 +224,18 @@ func (s *Server) ListMarginCalls(ctx context.Context, req *connect.Request[portf
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&portfoliov1.ListMarginCallsResponse{Calls: calls}), nil
+}
+
+func (s *Server) ListFeeHistory(ctx context.Context, req *connect.Request[portfoliov1.ListFeeHistoryRequest]) (*connect.Response[portfoliov1.ListFeeHistoryResponse], error) {
+	if s.feesReader == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("fees reader not configured"))
+	}
+	records, err := s.feesReader.ListFeeHistory(ctx, req.Msg.AccountId, req.Msg.Limit)
+	if err != nil {
+		s.log.Error("ListFeeHistory failed", "account_id", req.Msg.AccountId, "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&portfoliov1.ListFeeHistoryResponse{Records: records}), nil
 }
 
 func (s *Server) PreviewOrderImpact(ctx context.Context, req *connect.Request[portfoliov1.PreviewOrderImpactRequest]) (*connect.Response[portfoliov1.PreviewOrderImpactResponse], error) {

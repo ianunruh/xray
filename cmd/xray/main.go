@@ -162,6 +162,7 @@ func main() {
 	activeUserSagasProjection := portfolio.NewPgActiveUserSagasProjection(pool)
 	activeCallsProjection := portfolio.NewInMemoryActiveMarginCalls()
 	marginCallsProjection := portfolio.NewPgMarginCallsProjection(pool)
+	feesProjection := portfolio.NewPgFeesProjection(pool)
 	accruableAccounts := portfolio.NewInMemoryAccruableAccounts()
 	broker := orderbook.NewBroker()
 	portfolioBroker := portfolio.NewPortfolioBroker()
@@ -219,6 +220,8 @@ func main() {
 			WithPersistent(store, sagaProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "daily-close-projection").
 			WithPersistent(store, dailyCloseProjection),
+		natsstore.NewProjectionConsumer(js, registry, log, "fees-history").
+			WithPersistent(store, feesProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "snapshotter").
 			WithPersistent(store, snap),
 	}
@@ -276,7 +279,7 @@ func main() {
 	traderMgr := tradermgr.NewManager(traderStore, priceSrc, traderServerURL(listenAddr), log)
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, dailyCloseProjection, broker)
-	portfolioSrv := portfolio.NewServer(portfolioHandler, obHandler, portfolioProjection, pnlProjection, markProjection, marginCallsProjection, portfolioBroker, log)
+	portfolioSrv := portfolio.NewServer(portfolioHandler, obHandler, portfolioProjection, pnlProjection, markProjection, marginCallsProjection, feesProjection, portfolioBroker, log)
 	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, ocoSagaHandler, twapHandler, obHandler, portfolioHandler, twapReactor, markProjection, sagaProjection, log)
 	diagnosticsSrv := diagnostics.NewServer(store, registry, projectionManager, log)
 	traderSrv := tradermgr.NewServer(traderMgr)
