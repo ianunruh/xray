@@ -29,6 +29,7 @@ import { MarketPanel } from "./components/MarketPanel";
 import { OrderForm, type OrderPrefill } from "./components/OrderForm";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { ChainPanel } from "./components/ChainPanel";
+import { ProjectionsPanel } from "./components/ProjectionsPanel";
 import { orderBookClient, portfolioClient } from "./client";
 import { moneyToPrice } from "./format";
 import { AccountDataProvider } from "./hooks/accountData";
@@ -50,7 +51,7 @@ function setParam(key: string, value: string) {
   history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
 }
 
-type View = "trading" | "diagnostics" | "chain";
+type View = "trading" | "diagnostics" | "chain" | "projections";
 type Tab = "trade" | "orders" | "positions";
 
 // OrderStatusNotifier mounts the order-status notification hook for
@@ -66,6 +67,7 @@ function getViewParam(): View {
   const v = getParam("view");
   if (v === "diagnostics") return "diagnostics";
   if (v === "chain") return "chain";
+  if (v === "projections") return "projections";
   return "trading";
 }
 
@@ -247,6 +249,8 @@ export function App() {
           setParam("view", "chain");
         }}
       />
+    ) : view === "projections" ? (
+      <ProjectionsPanel />
     ) : (
       renderTradingBody()
     );
@@ -268,6 +272,7 @@ export function App() {
               { label: "Trading", value: "trading" },
               { label: "Diagnostics", value: "diagnostics" },
               { label: "Chain", value: "chain" },
+              { label: "Projections", value: "projections" },
             ]}
           />
           {view === "trading" && (

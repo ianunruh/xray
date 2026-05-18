@@ -447,3 +447,8 @@ func (s *memCheckpointStore) SaveCheckpoint(_ context.Context, name string, seq 
 	s.seqs[name] = seq
 	return nil
 }
+
+func (s *memCheckpointStore) DeleteCheckpoint(_ context.Context, name string) error {
+	delete(s.seqs, name)
+	return nil
+}

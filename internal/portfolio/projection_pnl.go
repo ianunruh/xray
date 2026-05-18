@@ -26,6 +26,15 @@ func NewPgPnLProjection(pool *pgxpool.Pool) *PgPnLProjection {
 	return &PgPnLProjection{pool: pool}
 }
 
+func (p *PgPnLProjection) Reset(ctx context.Context) error {
+	if _, err := p.pool.Exec(ctx,
+		`TRUNCATE projection_pnl, projection_pnl_positions`,
+	); err != nil {
+		return fmt.Errorf("truncate pnl tables: %w", err)
+	}
+	return nil
+}
+
 func (p *PgPnLProjection) HandleEvents(ctx context.Context, events []es.Event) error {
 	batch := &pgx.Batch{}
 

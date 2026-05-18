@@ -22,6 +22,61 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type ProjectionPhase int32
+
+const (
+	ProjectionPhase_PROJECTION_PHASE_UNSPECIFIED ProjectionPhase = 0
+	ProjectionPhase_PROJECTION_PHASE_RUNNING     ProjectionPhase = 1
+	ProjectionPhase_PROJECTION_PHASE_REBUILDING  ProjectionPhase = 2
+	ProjectionPhase_PROJECTION_PHASE_STOPPED     ProjectionPhase = 3
+	ProjectionPhase_PROJECTION_PHASE_FAILED      ProjectionPhase = 4
+)
+
+// Enum value maps for ProjectionPhase.
+var (
+	ProjectionPhase_name = map[int32]string{
+		0: "PROJECTION_PHASE_UNSPECIFIED",
+		1: "PROJECTION_PHASE_RUNNING",
+		2: "PROJECTION_PHASE_REBUILDING",
+		3: "PROJECTION_PHASE_STOPPED",
+		4: "PROJECTION_PHASE_FAILED",
+	}
+	ProjectionPhase_value = map[string]int32{
+		"PROJECTION_PHASE_UNSPECIFIED": 0,
+		"PROJECTION_PHASE_RUNNING":     1,
+		"PROJECTION_PHASE_REBUILDING":  2,
+		"PROJECTION_PHASE_STOPPED":     3,
+		"PROJECTION_PHASE_FAILED":      4,
+	}
+)
+
+func (x ProjectionPhase) Enum() *ProjectionPhase {
+	p := new(ProjectionPhase)
+	*p = x
+	return p
+}
+
+func (x ProjectionPhase) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ProjectionPhase) Descriptor() protoreflect.EnumDescriptor {
+	return file_diagnostics_v1_service_proto_enumTypes[0].Descriptor()
+}
+
+func (ProjectionPhase) Type() protoreflect.EnumType {
+	return &file_diagnostics_v1_service_proto_enumTypes[0]
+}
+
+func (x ProjectionPhase) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ProjectionPhase.Descriptor instead.
+func (ProjectionPhase) EnumDescriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{0}
+}
+
 type ListAggregatesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Optional filter on aggregate ID (substring match, case-insensitive).
@@ -476,6 +531,445 @@ func (x *GetEventChainResponse) GetEvents() []*DiagnosticEvent {
 	return nil
 }
 
+type ListProjectionsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListProjectionsRequest) Reset() {
+	*x = ListProjectionsRequest{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListProjectionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListProjectionsRequest) ProtoMessage() {}
+
+func (x *ListProjectionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListProjectionsRequest.ProtoReflect.Descriptor instead.
+func (*ListProjectionsRequest) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{8}
+}
+
+type ProjectionStatus struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Name         string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Phase        ProjectionPhase        `protobuf:"varint,2,opt,name=phase,proto3,enum=diagnostics.v1.ProjectionPhase" json:"phase,omitempty"`
+	Checkpoint   uint64                 `protobuf:"varint,3,opt,name=checkpoint,proto3" json:"checkpoint,omitempty"`
+	HeadSequence uint64                 `protobuf:"varint,4,opt,name=head_sequence,json=headSequence,proto3" json:"head_sequence,omitempty"`
+	Lag          uint64                 `protobuf:"varint,5,opt,name=lag,proto3" json:"lag,omitempty"`
+	Rebuildable  bool                   `protobuf:"varint,6,opt,name=rebuildable,proto3" json:"rebuildable,omitempty"`
+	// Empty when rebuildable=true; otherwise a human-readable reason
+	// (e.g. "consumer hosts a reactor").
+	ReasonNotRebuildable string                 `protobuf:"bytes,7,opt,name=reason_not_rebuildable,json=reasonNotRebuildable,proto3" json:"reason_not_rebuildable,omitempty"`
+	RebuildStartedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=rebuild_started_at,json=rebuildStartedAt,proto3" json:"rebuild_started_at,omitempty"`
+	RebuildLastError     string                 `protobuf:"bytes,9,opt,name=rebuild_last_error,json=rebuildLastError,proto3" json:"rebuild_last_error,omitempty"`
+	ProjectionCount      int32                  `protobuf:"varint,10,opt,name=projection_count,json=projectionCount,proto3" json:"projection_count,omitempty"`
+	ResettableCount      int32                  `protobuf:"varint,11,opt,name=resettable_count,json=resettableCount,proto3" json:"resettable_count,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *ProjectionStatus) Reset() {
+	*x = ProjectionStatus{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProjectionStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProjectionStatus) ProtoMessage() {}
+
+func (x *ProjectionStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProjectionStatus.ProtoReflect.Descriptor instead.
+func (*ProjectionStatus) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ProjectionStatus) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ProjectionStatus) GetPhase() ProjectionPhase {
+	if x != nil {
+		return x.Phase
+	}
+	return ProjectionPhase_PROJECTION_PHASE_UNSPECIFIED
+}
+
+func (x *ProjectionStatus) GetCheckpoint() uint64 {
+	if x != nil {
+		return x.Checkpoint
+	}
+	return 0
+}
+
+func (x *ProjectionStatus) GetHeadSequence() uint64 {
+	if x != nil {
+		return x.HeadSequence
+	}
+	return 0
+}
+
+func (x *ProjectionStatus) GetLag() uint64 {
+	if x != nil {
+		return x.Lag
+	}
+	return 0
+}
+
+func (x *ProjectionStatus) GetRebuildable() bool {
+	if x != nil {
+		return x.Rebuildable
+	}
+	return false
+}
+
+func (x *ProjectionStatus) GetReasonNotRebuildable() string {
+	if x != nil {
+		return x.ReasonNotRebuildable
+	}
+	return ""
+}
+
+func (x *ProjectionStatus) GetRebuildStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RebuildStartedAt
+	}
+	return nil
+}
+
+func (x *ProjectionStatus) GetRebuildLastError() string {
+	if x != nil {
+		return x.RebuildLastError
+	}
+	return ""
+}
+
+func (x *ProjectionStatus) GetProjectionCount() int32 {
+	if x != nil {
+		return x.ProjectionCount
+	}
+	return 0
+}
+
+func (x *ProjectionStatus) GetResettableCount() int32 {
+	if x != nil {
+		return x.ResettableCount
+	}
+	return 0
+}
+
+type ListProjectionsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Projections   []*ProjectionStatus    `protobuf:"bytes,1,rep,name=projections,proto3" json:"projections,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListProjectionsResponse) Reset() {
+	*x = ListProjectionsResponse{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListProjectionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListProjectionsResponse) ProtoMessage() {}
+
+func (x *ListProjectionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListProjectionsResponse.ProtoReflect.Descriptor instead.
+func (*ListProjectionsResponse) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ListProjectionsResponse) GetProjections() []*ProjectionStatus {
+	if x != nil {
+		return x.Projections
+	}
+	return nil
+}
+
+type RebuildProjectionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RebuildProjectionRequest) Reset() {
+	*x = RebuildProjectionRequest{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RebuildProjectionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RebuildProjectionRequest) ProtoMessage() {}
+
+func (x *RebuildProjectionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RebuildProjectionRequest.ProtoReflect.Descriptor instead.
+func (*RebuildProjectionRequest) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *RebuildProjectionRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type RebuildProjectionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RebuildProjectionResponse) Reset() {
+	*x = RebuildProjectionResponse{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RebuildProjectionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RebuildProjectionResponse) ProtoMessage() {}
+
+func (x *RebuildProjectionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RebuildProjectionResponse.ProtoReflect.Descriptor instead.
+func (*RebuildProjectionResponse) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{12}
+}
+
+type StreamProjectionProgressRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamProjectionProgressRequest) Reset() {
+	*x = StreamProjectionProgressRequest{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamProjectionProgressRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamProjectionProgressRequest) ProtoMessage() {}
+
+func (x *StreamProjectionProgressRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamProjectionProgressRequest.ProtoReflect.Descriptor instead.
+func (*StreamProjectionProgressRequest) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *StreamProjectionProgressRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type ProjectionProgress struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Name         string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Phase        ProjectionPhase        `protobuf:"varint,2,opt,name=phase,proto3,enum=diagnostics.v1.ProjectionPhase" json:"phase,omitempty"`
+	Position     uint64                 `protobuf:"varint,3,opt,name=position,proto3" json:"position,omitempty"`
+	HeadSequence uint64                 `protobuf:"varint,4,opt,name=head_sequence,json=headSequence,proto3" json:"head_sequence,omitempty"`
+	EventsPerSec float64                `protobuf:"fixed64,5,opt,name=events_per_sec,json=eventsPerSec,proto3" json:"events_per_sec,omitempty"`
+	EtaSeconds   int64                  `protobuf:"varint,6,opt,name=eta_seconds,json=etaSeconds,proto3" json:"eta_seconds,omitempty"`
+	BatchSize    int32                  `protobuf:"varint,7,opt,name=batch_size,json=batchSize,proto3" json:"batch_size,omitempty"`
+	// Non-empty when phase=FAILED.
+	Error         string                 `protobuf:"bytes,8,opt,name=error,proto3" json:"error,omitempty"`
+	At            *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=at,proto3" json:"at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProjectionProgress) Reset() {
+	*x = ProjectionProgress{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProjectionProgress) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProjectionProgress) ProtoMessage() {}
+
+func (x *ProjectionProgress) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProjectionProgress.ProtoReflect.Descriptor instead.
+func (*ProjectionProgress) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ProjectionProgress) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ProjectionProgress) GetPhase() ProjectionPhase {
+	if x != nil {
+		return x.Phase
+	}
+	return ProjectionPhase_PROJECTION_PHASE_UNSPECIFIED
+}
+
+func (x *ProjectionProgress) GetPosition() uint64 {
+	if x != nil {
+		return x.Position
+	}
+	return 0
+}
+
+func (x *ProjectionProgress) GetHeadSequence() uint64 {
+	if x != nil {
+		return x.HeadSequence
+	}
+	return 0
+}
+
+func (x *ProjectionProgress) GetEventsPerSec() float64 {
+	if x != nil {
+		return x.EventsPerSec
+	}
+	return 0
+}
+
+func (x *ProjectionProgress) GetEtaSeconds() int64 {
+	if x != nil {
+		return x.EtaSeconds
+	}
+	return 0
+}
+
+func (x *ProjectionProgress) GetBatchSize() int32 {
+	if x != nil {
+		return x.BatchSize
+	}
+	return 0
+}
+
+func (x *ProjectionProgress) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *ProjectionProgress) GetAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.At
+	}
+	return nil
+}
+
 var File_diagnostics_v1_service_proto protoreflect.FileDescriptor
 
 const file_diagnostics_v1_service_proto_rawDesc = "" +
@@ -511,11 +1005,55 @@ const file_diagnostics_v1_service_proto_rawDesc = "" +
 	"\x14GetEventChainRequest\x12%\n" +
 	"\x0ecorrelation_id\x18\x01 \x01(\tR\rcorrelationId\"P\n" +
 	"\x15GetEventChainResponse\x127\n" +
-	"\x06events\x18\x01 \x03(\v2\x1f.diagnostics.v1.DiagnosticEventR\x06events2\xc0\x02\n" +
+	"\x06events\x18\x01 \x03(\v2\x1f.diagnostics.v1.DiagnosticEventR\x06events\"\x18\n" +
+	"\x16ListProjectionsRequest\"\xda\x03\n" +
+	"\x10ProjectionStatus\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x125\n" +
+	"\x05phase\x18\x02 \x01(\x0e2\x1f.diagnostics.v1.ProjectionPhaseR\x05phase\x12\x1e\n" +
+	"\n" +
+	"checkpoint\x18\x03 \x01(\x04R\n" +
+	"checkpoint\x12#\n" +
+	"\rhead_sequence\x18\x04 \x01(\x04R\fheadSequence\x12\x10\n" +
+	"\x03lag\x18\x05 \x01(\x04R\x03lag\x12 \n" +
+	"\vrebuildable\x18\x06 \x01(\bR\vrebuildable\x124\n" +
+	"\x16reason_not_rebuildable\x18\a \x01(\tR\x14reasonNotRebuildable\x12H\n" +
+	"\x12rebuild_started_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\x10rebuildStartedAt\x12,\n" +
+	"\x12rebuild_last_error\x18\t \x01(\tR\x10rebuildLastError\x12)\n" +
+	"\x10projection_count\x18\n" +
+	" \x01(\x05R\x0fprojectionCount\x12)\n" +
+	"\x10resettable_count\x18\v \x01(\x05R\x0fresettableCount\"]\n" +
+	"\x17ListProjectionsResponse\x12B\n" +
+	"\vprojections\x18\x01 \x03(\v2 .diagnostics.v1.ProjectionStatusR\vprojections\".\n" +
+	"\x18RebuildProjectionRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x1b\n" +
+	"\x19RebuildProjectionResponse\"5\n" +
+	"\x1fStreamProjectionProgressRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xc8\x02\n" +
+	"\x12ProjectionProgress\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x125\n" +
+	"\x05phase\x18\x02 \x01(\x0e2\x1f.diagnostics.v1.ProjectionPhaseR\x05phase\x12\x1a\n" +
+	"\bposition\x18\x03 \x01(\x04R\bposition\x12#\n" +
+	"\rhead_sequence\x18\x04 \x01(\x04R\fheadSequence\x12$\n" +
+	"\x0eevents_per_sec\x18\x05 \x01(\x01R\feventsPerSec\x12\x1f\n" +
+	"\veta_seconds\x18\x06 \x01(\x03R\n" +
+	"etaSeconds\x12\x1d\n" +
+	"\n" +
+	"batch_size\x18\a \x01(\x05R\tbatchSize\x12\x14\n" +
+	"\x05error\x18\b \x01(\tR\x05error\x12*\n" +
+	"\x02at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\x02at*\xad\x01\n" +
+	"\x0fProjectionPhase\x12 \n" +
+	"\x1cPROJECTION_PHASE_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18PROJECTION_PHASE_RUNNING\x10\x01\x12\x1f\n" +
+	"\x1bPROJECTION_PHASE_REBUILDING\x10\x02\x12\x1c\n" +
+	"\x18PROJECTION_PHASE_STOPPED\x10\x03\x12\x1b\n" +
+	"\x17PROJECTION_PHASE_FAILED\x10\x042\x81\x05\n" +
 	"\x12DiagnosticsService\x12_\n" +
 	"\x0eListAggregates\x12%.diagnostics.v1.ListAggregatesRequest\x1a&.diagnostics.v1.ListAggregatesResponse\x12k\n" +
 	"\x12GetAggregateEvents\x12).diagnostics.v1.GetAggregateEventsRequest\x1a*.diagnostics.v1.GetAggregateEventsResponse\x12\\\n" +
-	"\rGetEventChain\x12$.diagnostics.v1.GetEventChainRequest\x1a%.diagnostics.v1.GetEventChainResponseB;Z9github.com/ianunruh/xray/gen/diagnostics/v1;diagnosticsv1b\x06proto3"
+	"\rGetEventChain\x12$.diagnostics.v1.GetEventChainRequest\x1a%.diagnostics.v1.GetEventChainResponse\x12b\n" +
+	"\x0fListProjections\x12&.diagnostics.v1.ListProjectionsRequest\x1a'.diagnostics.v1.ListProjectionsResponse\x12h\n" +
+	"\x11RebuildProjection\x12(.diagnostics.v1.RebuildProjectionRequest\x1a).diagnostics.v1.RebuildProjectionResponse\x12q\n" +
+	"\x18StreamProjectionProgress\x12/.diagnostics.v1.StreamProjectionProgressRequest\x1a\".diagnostics.v1.ProjectionProgress0\x01B;Z9github.com/ianunruh/xray/gen/diagnostics/v1;diagnosticsv1b\x06proto3"
 
 var (
 	file_diagnostics_v1_service_proto_rawDescOnce sync.Once
@@ -529,36 +1067,56 @@ func file_diagnostics_v1_service_proto_rawDescGZIP() []byte {
 	return file_diagnostics_v1_service_proto_rawDescData
 }
 
-var file_diagnostics_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_diagnostics_v1_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_diagnostics_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_diagnostics_v1_service_proto_goTypes = []any{
-	(*ListAggregatesRequest)(nil),      // 0: diagnostics.v1.ListAggregatesRequest
-	(*AggregateSummary)(nil),           // 1: diagnostics.v1.AggregateSummary
-	(*ListAggregatesResponse)(nil),     // 2: diagnostics.v1.ListAggregatesResponse
-	(*GetAggregateEventsRequest)(nil),  // 3: diagnostics.v1.GetAggregateEventsRequest
-	(*DiagnosticEvent)(nil),            // 4: diagnostics.v1.DiagnosticEvent
-	(*GetAggregateEventsResponse)(nil), // 5: diagnostics.v1.GetAggregateEventsResponse
-	(*GetEventChainRequest)(nil),       // 6: diagnostics.v1.GetEventChainRequest
-	(*GetEventChainResponse)(nil),      // 7: diagnostics.v1.GetEventChainResponse
-	(*timestamppb.Timestamp)(nil),      // 8: google.protobuf.Timestamp
+	(ProjectionPhase)(0),                    // 0: diagnostics.v1.ProjectionPhase
+	(*ListAggregatesRequest)(nil),           // 1: diagnostics.v1.ListAggregatesRequest
+	(*AggregateSummary)(nil),                // 2: diagnostics.v1.AggregateSummary
+	(*ListAggregatesResponse)(nil),          // 3: diagnostics.v1.ListAggregatesResponse
+	(*GetAggregateEventsRequest)(nil),       // 4: diagnostics.v1.GetAggregateEventsRequest
+	(*DiagnosticEvent)(nil),                 // 5: diagnostics.v1.DiagnosticEvent
+	(*GetAggregateEventsResponse)(nil),      // 6: diagnostics.v1.GetAggregateEventsResponse
+	(*GetEventChainRequest)(nil),            // 7: diagnostics.v1.GetEventChainRequest
+	(*GetEventChainResponse)(nil),           // 8: diagnostics.v1.GetEventChainResponse
+	(*ListProjectionsRequest)(nil),          // 9: diagnostics.v1.ListProjectionsRequest
+	(*ProjectionStatus)(nil),                // 10: diagnostics.v1.ProjectionStatus
+	(*ListProjectionsResponse)(nil),         // 11: diagnostics.v1.ListProjectionsResponse
+	(*RebuildProjectionRequest)(nil),        // 12: diagnostics.v1.RebuildProjectionRequest
+	(*RebuildProjectionResponse)(nil),       // 13: diagnostics.v1.RebuildProjectionResponse
+	(*StreamProjectionProgressRequest)(nil), // 14: diagnostics.v1.StreamProjectionProgressRequest
+	(*ProjectionProgress)(nil),              // 15: diagnostics.v1.ProjectionProgress
+	(*timestamppb.Timestamp)(nil),           // 16: google.protobuf.Timestamp
 }
 var file_diagnostics_v1_service_proto_depIdxs = []int32{
-	8, // 0: diagnostics.v1.AggregateSummary.first_event_at:type_name -> google.protobuf.Timestamp
-	8, // 1: diagnostics.v1.AggregateSummary.last_event_at:type_name -> google.protobuf.Timestamp
-	1, // 2: diagnostics.v1.ListAggregatesResponse.aggregates:type_name -> diagnostics.v1.AggregateSummary
-	8, // 3: diagnostics.v1.DiagnosticEvent.timestamp:type_name -> google.protobuf.Timestamp
-	4, // 4: diagnostics.v1.GetAggregateEventsResponse.events:type_name -> diagnostics.v1.DiagnosticEvent
-	4, // 5: diagnostics.v1.GetEventChainResponse.events:type_name -> diagnostics.v1.DiagnosticEvent
-	0, // 6: diagnostics.v1.DiagnosticsService.ListAggregates:input_type -> diagnostics.v1.ListAggregatesRequest
-	3, // 7: diagnostics.v1.DiagnosticsService.GetAggregateEvents:input_type -> diagnostics.v1.GetAggregateEventsRequest
-	6, // 8: diagnostics.v1.DiagnosticsService.GetEventChain:input_type -> diagnostics.v1.GetEventChainRequest
-	2, // 9: diagnostics.v1.DiagnosticsService.ListAggregates:output_type -> diagnostics.v1.ListAggregatesResponse
-	5, // 10: diagnostics.v1.DiagnosticsService.GetAggregateEvents:output_type -> diagnostics.v1.GetAggregateEventsResponse
-	7, // 11: diagnostics.v1.DiagnosticsService.GetEventChain:output_type -> diagnostics.v1.GetEventChainResponse
-	9, // [9:12] is the sub-list for method output_type
-	6, // [6:9] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	16, // 0: diagnostics.v1.AggregateSummary.first_event_at:type_name -> google.protobuf.Timestamp
+	16, // 1: diagnostics.v1.AggregateSummary.last_event_at:type_name -> google.protobuf.Timestamp
+	2,  // 2: diagnostics.v1.ListAggregatesResponse.aggregates:type_name -> diagnostics.v1.AggregateSummary
+	16, // 3: diagnostics.v1.DiagnosticEvent.timestamp:type_name -> google.protobuf.Timestamp
+	5,  // 4: diagnostics.v1.GetAggregateEventsResponse.events:type_name -> diagnostics.v1.DiagnosticEvent
+	5,  // 5: diagnostics.v1.GetEventChainResponse.events:type_name -> diagnostics.v1.DiagnosticEvent
+	0,  // 6: diagnostics.v1.ProjectionStatus.phase:type_name -> diagnostics.v1.ProjectionPhase
+	16, // 7: diagnostics.v1.ProjectionStatus.rebuild_started_at:type_name -> google.protobuf.Timestamp
+	10, // 8: diagnostics.v1.ListProjectionsResponse.projections:type_name -> diagnostics.v1.ProjectionStatus
+	0,  // 9: diagnostics.v1.ProjectionProgress.phase:type_name -> diagnostics.v1.ProjectionPhase
+	16, // 10: diagnostics.v1.ProjectionProgress.at:type_name -> google.protobuf.Timestamp
+	1,  // 11: diagnostics.v1.DiagnosticsService.ListAggregates:input_type -> diagnostics.v1.ListAggregatesRequest
+	4,  // 12: diagnostics.v1.DiagnosticsService.GetAggregateEvents:input_type -> diagnostics.v1.GetAggregateEventsRequest
+	7,  // 13: diagnostics.v1.DiagnosticsService.GetEventChain:input_type -> diagnostics.v1.GetEventChainRequest
+	9,  // 14: diagnostics.v1.DiagnosticsService.ListProjections:input_type -> diagnostics.v1.ListProjectionsRequest
+	12, // 15: diagnostics.v1.DiagnosticsService.RebuildProjection:input_type -> diagnostics.v1.RebuildProjectionRequest
+	14, // 16: diagnostics.v1.DiagnosticsService.StreamProjectionProgress:input_type -> diagnostics.v1.StreamProjectionProgressRequest
+	3,  // 17: diagnostics.v1.DiagnosticsService.ListAggregates:output_type -> diagnostics.v1.ListAggregatesResponse
+	6,  // 18: diagnostics.v1.DiagnosticsService.GetAggregateEvents:output_type -> diagnostics.v1.GetAggregateEventsResponse
+	8,  // 19: diagnostics.v1.DiagnosticsService.GetEventChain:output_type -> diagnostics.v1.GetEventChainResponse
+	11, // 20: diagnostics.v1.DiagnosticsService.ListProjections:output_type -> diagnostics.v1.ListProjectionsResponse
+	13, // 21: diagnostics.v1.DiagnosticsService.RebuildProjection:output_type -> diagnostics.v1.RebuildProjectionResponse
+	15, // 22: diagnostics.v1.DiagnosticsService.StreamProjectionProgress:output_type -> diagnostics.v1.ProjectionProgress
+	17, // [17:23] is the sub-list for method output_type
+	11, // [11:17] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_diagnostics_v1_service_proto_init() }
@@ -571,13 +1129,14 @@ func file_diagnostics_v1_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_diagnostics_v1_service_proto_rawDesc), len(file_diagnostics_v1_service_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   8,
+			NumEnums:      1,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_diagnostics_v1_service_proto_goTypes,
 		DependencyIndexes: file_diagnostics_v1_service_proto_depIdxs,
+		EnumInfos:         file_diagnostics_v1_service_proto_enumTypes,
 		MessageInfos:      file_diagnostics_v1_service_proto_msgTypes,
 	}.Build()
 	File_diagnostics_v1_service_proto = out.File

@@ -38,6 +38,13 @@ func NewPgDailyCloseProjection(pool *pgxpool.Pool) *PgDailyCloseProjection {
 	return &PgDailyCloseProjection{pool: pool}
 }
 
+func (p *PgDailyCloseProjection) Reset(ctx context.Context) error {
+	if _, err := p.pool.Exec(ctx, `TRUNCATE projection_daily_close`); err != nil {
+		return fmt.Errorf("truncate projection_daily_close: %w", err)
+	}
+	return nil
+}
+
 func (p *PgDailyCloseProjection) HandleEvents(ctx context.Context, events []es.Event) error {
 	batch := &pgx.Batch{}
 

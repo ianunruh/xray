@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
@@ -17,6 +18,11 @@ const (
 	fetchTimeout     = 100 * time.Millisecond
 )
 
+// ProgressHook is invoked after each successful batch dispatch with the
+// number of events processed and the new checkpoint sequence. Used by the
+// ProjectionManager to stream rebuild progress; nil disables it.
+type ProgressHook func(batchSize int, newCheckpoint uint64)
+
 type ProjectionConsumer struct {
 	js        jetstream.JetStream
 	registry  *es.Registry
@@ -27,6 +33,24 @@ type ProjectionConsumer struct {
 	ephemeral  []es.Projection
 	persistent []es.Projection
 	checkpoint es.CheckpointStore
+
+	// reactor is true when this consumer hosts at least one component
+	// that issues commands in response to events (a saga reactor,
+	// margin-call reactor, etc.). Rebuilding such a consumer would
+	// double-execute those commands, so the ProjectionManager hides
+	// reactor consumers from the rebuild UI.
+	reactor bool
+
+	// hookMu guards progressHook so the manager can install and remove
+	// it during a rebuild without racing the dispatch goroutine.
+	hookMu       sync.RWMutex
+	progressHook ProgressHook
+
+	// runMu serializes Start/Stop so callers can drive the lifecycle
+	// without coordinating themselves.
+	runMu  sync.Mutex
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 // NewProjectionConsumer creates a JetStream consumer named `name`. The same
@@ -54,7 +78,60 @@ func (c *ProjectionConsumer) WithPersistent(checkpoint es.CheckpointStore, proje
 	return c
 }
 
+// WithReactor marks this consumer as hosting a reactor (or any component
+// that issues commands). Reactor consumers cannot be rebuilt — replaying
+// past events through them would re-execute their command side effects.
+func (c *ProjectionConsumer) WithReactor() *ProjectionConsumer {
+	c.reactor = true
+	return c
+}
+
+// Name returns the consumer's durable / checkpoint name.
+func (c *ProjectionConsumer) Name() string { return c.name }
+
+// IsReactor reports whether the consumer was marked as hosting a reactor.
+func (c *ProjectionConsumer) IsReactor() bool { return c.reactor }
+
+// Projections returns the consumer's full projection set (persistent + ephemeral)
+// in the order they receive events. The manager uses this to call Reset on
+// resettable projections during a rebuild.
+func (c *ProjectionConsumer) Projections() []es.Projection {
+	out := make([]es.Projection, 0, len(c.persistent)+len(c.ephemeral))
+	out = append(out, c.persistent...)
+	out = append(out, c.ephemeral...)
+	return out
+}
+
+// CheckpointStore returns the checkpoint store, or nil for ephemeral
+// consumers.
+func (c *ProjectionConsumer) CheckpointStore() es.CheckpointStore { return c.checkpoint }
+
+// SetProgressHook installs (or clears) a callback fired after each successful
+// batch dispatch. The hook receives the batch size and the new max sequence
+// processed by this consumer. Safe to call while the consumer is running.
+func (c *ProjectionConsumer) SetProgressHook(h ProgressHook) {
+	c.hookMu.Lock()
+	defer c.hookMu.Unlock()
+	c.progressHook = h
+}
+
+func (c *ProjectionConsumer) fireProgress(batchSize int, newCheckpoint uint64) {
+	c.hookMu.RLock()
+	hook := c.progressHook
+	c.hookMu.RUnlock()
+	if hook != nil {
+		hook(batchSize, newCheckpoint)
+	}
+}
+
 func (c *ProjectionConsumer) Start(ctx context.Context) error {
+	c.runMu.Lock()
+	defer c.runMu.Unlock()
+
+	if c.cancel != nil {
+		return fmt.Errorf("consumer %s already started", c.name)
+	}
+
 	consumer, err := c.ensureConsumer(ctx)
 	if err != nil {
 		return fmt.Errorf("ensure consumer: %w", err)
@@ -73,8 +150,37 @@ func (c *ProjectionConsumer) Start(ctx context.Context) error {
 		return fmt.Errorf("projection catch-up: %w", err)
 	}
 
-	go c.run(ctx, consumer, checkpointSeq)
+	// Derive the run context from the caller's so the consumer still
+	// stops when the parent ctx is cancelled, but Stop() can cancel it
+	// independently for in-place rebuilds.
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	c.cancel = cancel
+	c.done = done
+
+	go func() {
+		defer close(done)
+		c.run(runCtx, consumer, checkpointSeq)
+	}()
 	return nil
+}
+
+// Stop cancels the run goroutine and waits for it to exit. Safe to call
+// multiple times. After Stop returns, the consumer may be Start-ed again
+// (the manager does this during a rebuild).
+func (c *ProjectionConsumer) Stop() {
+	c.runMu.Lock()
+	cancel := c.cancel
+	done := c.done
+	c.cancel = nil
+	c.done = nil
+	c.runMu.Unlock()
+
+	if cancel == nil {
+		return
+	}
+	cancel()
+	<-done
 }
 
 func (c *ProjectionConsumer) ensureConsumer(ctx context.Context) (jetstream.Consumer, error) {
@@ -204,6 +310,8 @@ func (c *ProjectionConsumer) fetchAndDispatch(ctx context.Context, consumer jets
 	for _, msg := range fetched {
 		msg.Ack()
 	}
+
+	c.fireProgress(len(events), maxSeq)
 
 	return len(events), maxSeq, nil
 }

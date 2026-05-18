@@ -2,6 +2,7 @@ package diagnostics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	diagnosticsv1 "github.com/ianunruh/xray/gen/diagnostics/v1"
 	"github.com/ianunruh/xray/gen/diagnostics/v1/diagnosticsv1connect"
 	"github.com/ianunruh/xray/pkg/es"
+	"github.com/ianunruh/xray/pkg/es/natsstore"
 	"github.com/ianunruh/xray/pkg/es/pgstore"
 )
 
@@ -27,18 +29,22 @@ const (
 type Server struct {
 	diagnosticsv1connect.UnimplementedDiagnosticsServiceHandler
 
-	store    *pgstore.Store
-	registry *es.Registry
-	marshal  protojson.MarshalOptions
-	log      *slog.Logger
+	store      *pgstore.Store
+	registry   *es.Registry
+	projection *natsstore.ProjectionManager
+	marshal    protojson.MarshalOptions
+	log        *slog.Logger
 }
 
-// NewServer constructs a diagnostics server backed by the given event store
-// and event-type registry.
-func NewServer(store *pgstore.Store, registry *es.Registry, log *slog.Logger) *Server {
+// NewServer constructs a diagnostics server backed by the given event store,
+// event-type registry, and (optionally) a projection manager. When the
+// manager is nil the Projection RPCs return Unimplemented; pass a non-nil
+// manager in production.
+func NewServer(store *pgstore.Store, registry *es.Registry, projection *natsstore.ProjectionManager, log *slog.Logger) *Server {
 	return &Server{
-		store:    store,
-		registry: registry,
+		store:      store,
+		registry:   registry,
+		projection: projection,
 		marshal: protojson.MarshalOptions{
 			EmitUnpopulated: true,
 			Indent:          "  ",
@@ -149,4 +155,171 @@ func aggregateType(aggregateID string) string {
 		return prefix
 	}
 	return aggregateID
+}
+
+// --- ProjectionManager-backed RPCs -----------------------------------------
+
+func (s *Server) ListProjections(ctx context.Context, _ *connect.Request[diagnosticsv1.ListProjectionsRequest]) (*connect.Response[diagnosticsv1.ListProjectionsResponse], error) {
+	if s.projection == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("projection manager not configured"))
+	}
+	statuses, err := s.projection.List(ctx)
+	if err != nil {
+		s.log.Warn("ListProjections failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	resp := &diagnosticsv1.ListProjectionsResponse{
+		Projections: make([]*diagnosticsv1.ProjectionStatus, 0, len(statuses)),
+	}
+	for _, st := range statuses {
+		resp.Projections = append(resp.Projections, projectionStatusToProto(st))
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *Server) RebuildProjection(_ context.Context, req *connect.Request[diagnosticsv1.RebuildProjectionRequest]) (*connect.Response[diagnosticsv1.RebuildProjectionResponse], error) {
+	if s.projection == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("projection manager not configured"))
+	}
+	name := strings.TrimSpace(req.Msg.Name)
+	if name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
+	}
+
+	// Validate up front so the client gets a sync error for bad requests.
+	// AlreadyRebuilding is also detected here to avoid spawning a goroutine
+	// just to discard the result.
+	st, err := s.projection.Status(context.Background(), name)
+	if err != nil {
+		if errors.Is(err, natsstore.ErrUnknownConsumer) {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	if !st.Rebuildable {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("not rebuildable: %s", st.ReasonNotRebuildable))
+	}
+	if st.Phase == natsstore.PhaseRebuilding {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, natsstore.ErrAlreadyRebuilding)
+	}
+
+	// Rebuild runs in the background so the RPC returns immediately. Use
+	// a detached context so the rebuild survives this request's cancel;
+	// the manager itself has no long-running ops past the consumer
+	// restart's catch-up phase.
+	go func() {
+		if err := s.projection.Rebuild(context.Background(), name); err != nil {
+			s.log.Error("rebuild failed", "name", name, "error", err)
+		}
+	}()
+	return connect.NewResponse(&diagnosticsv1.RebuildProjectionResponse{}), nil
+}
+
+func (s *Server) StreamProjectionProgress(ctx context.Context, req *connect.Request[diagnosticsv1.StreamProjectionProgressRequest], stream *connect.ServerStream[diagnosticsv1.ProjectionProgress]) error {
+	if s.projection == nil {
+		return connect.NewError(connect.CodeUnimplemented, fmt.Errorf("projection manager not configured"))
+	}
+	name := strings.TrimSpace(req.Msg.Name)
+	if name == "" {
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
+	}
+
+	ch, cancel, err := s.projection.Subscribe(name)
+	if err != nil {
+		if errors.Is(err, natsstore.ErrUnknownConsumer) {
+			return connect.NewError(connect.CodeNotFound, err)
+		}
+		return connect.NewError(connect.CodeInternal, err)
+	}
+	defer cancel()
+
+	// Emit one initial status so a late subscriber gets the current
+	// phase immediately rather than waiting for the next batch tick.
+	if st, err := s.projection.Status(ctx, name); err == nil {
+		if err := stream.Send(initialProgress(st)); err != nil {
+			return err
+		}
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case evt, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			if err := stream.Send(progressToProto(evt)); err != nil {
+				return err
+			}
+			// Terminal phases close the stream so the client knows
+			// the rebuild ended.
+			if evt.Phase == natsstore.PhaseRunning || evt.Phase == natsstore.PhaseFailed {
+				return nil
+			}
+		}
+	}
+}
+
+func projectionStatusToProto(st natsstore.ProjectionStatus) *diagnosticsv1.ProjectionStatus {
+	out := &diagnosticsv1.ProjectionStatus{
+		Name:                 st.Name,
+		Phase:                phaseToProto(st.Phase),
+		Checkpoint:           st.Checkpoint,
+		HeadSequence:         st.HeadSequence,
+		Lag:                  st.Lag,
+		Rebuildable:          st.Rebuildable,
+		ReasonNotRebuildable: st.ReasonNotRebuildable,
+		RebuildLastError:     st.RebuildLastError,
+		ProjectionCount:      int32(st.ProjectionCount),
+		ResettableCount:      int32(st.ResettableCount),
+	}
+	if !st.RebuildStartedAt.IsZero() {
+		out.RebuildStartedAt = timestamppb.New(st.RebuildStartedAt)
+	}
+	return out
+}
+
+func initialProgress(st natsstore.ProjectionStatus) *diagnosticsv1.ProjectionProgress {
+	return &diagnosticsv1.ProjectionProgress{
+		Name:         st.Name,
+		Phase:        phaseToProto(st.Phase),
+		Position:     st.Checkpoint,
+		HeadSequence: st.HeadSequence,
+		Error:        st.RebuildLastError,
+		At:           timestamppb.Now(),
+	}
+}
+
+func progressToProto(evt natsstore.ProgressEvent) *diagnosticsv1.ProjectionProgress {
+	out := &diagnosticsv1.ProjectionProgress{
+		Name:         evt.Name,
+		Phase:        phaseToProto(evt.Phase),
+		Position:     evt.Position,
+		HeadSequence: evt.HeadSequence,
+		EventsPerSec: evt.EventsPerSec,
+		EtaSeconds:   evt.ETASeconds,
+		BatchSize:    int32(evt.BatchSize),
+		Error:        evt.Err,
+	}
+	if !evt.At.IsZero() {
+		out.At = timestamppb.New(evt.At)
+	}
+	return out
+}
+
+func phaseToProto(p natsstore.ProjectionPhase) diagnosticsv1.ProjectionPhase {
+	switch p {
+	case natsstore.PhaseRunning:
+		return diagnosticsv1.ProjectionPhase_PROJECTION_PHASE_RUNNING
+	case natsstore.PhaseRebuilding:
+		return diagnosticsv1.ProjectionPhase_PROJECTION_PHASE_REBUILDING
+	case natsstore.PhaseStopped:
+		return diagnosticsv1.ProjectionPhase_PROJECTION_PHASE_STOPPED
+	case natsstore.PhaseFailed:
+		return diagnosticsv1.ProjectionPhase_PROJECTION_PHASE_FAILED
+	default:
+		return diagnosticsv1.ProjectionPhase_PROJECTION_PHASE_UNSPECIFIED
+	}
 }

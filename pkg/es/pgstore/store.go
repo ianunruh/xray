@@ -81,6 +81,8 @@ const (
 		VALUES ($1, $2)
 		ON CONFLICT (name) DO UPDATE SET sequence = $2`
 
+	queryDeleteCheckpoint = `DELETE FROM projection_checkpoints WHERE name = $1`
+
 	queryListAggregates = `SELECT aggregate_id, count(*), min(timestamp), max(timestamp)
 		FROM events
 		WHERE ($1 = '' OR aggregate_id ILIKE '%' || $1 || '%')
@@ -318,6 +320,15 @@ func (s *Store) SaveCheckpoint(ctx context.Context, name string, sequence uint64
 	_, err := s.pool.Exec(ctx, querySaveCheckpoint, name, sequence)
 	if err != nil {
 		return fmt.Errorf("save checkpoint: %w", err)
+	}
+	return nil
+}
+
+// DeleteCheckpoint removes the named cursor row, forcing the next
+// LoadCheckpoint to return 0.
+func (s *Store) DeleteCheckpoint(ctx context.Context, name string) error {
+	if _, err := s.pool.Exec(ctx, queryDeleteCheckpoint, name); err != nil {
+		return fmt.Errorf("delete checkpoint: %w", err)
 	}
 	return nil
 }

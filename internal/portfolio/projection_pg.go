@@ -22,6 +22,15 @@ func NewPgPortfolioProjection(pool *pgxpool.Pool) *PgPortfolioProjection {
 	return &PgPortfolioProjection{pool: pool}
 }
 
+func (p *PgPortfolioProjection) Reset(ctx context.Context) error {
+	if _, err := p.pool.Exec(ctx,
+		`TRUNCATE projection_portfolios, projection_holdings, projection_pending_orders`,
+	); err != nil {
+		return fmt.Errorf("truncate portfolio tables: %w", err)
+	}
+	return nil
+}
+
 func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Event) error {
 	batch := &pgx.Batch{}
 

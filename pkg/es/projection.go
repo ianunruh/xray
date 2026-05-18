@@ -13,6 +13,13 @@ type Projection interface {
 	HandleEvents(ctx context.Context, events []Event) error
 }
 
+// Resettable is implemented by projections whose read-side storage can be
+// wiped to its initial empty state. The ProjectionManager calls Reset before
+// replaying a consumer's event stream from sequence 1.
+type Resettable interface {
+	Reset(ctx context.Context) error
+}
+
 // FanOutPublisher dispatches events asynchronously to all registered projections.
 // A buffered channel absorbs bursts; under extreme load, Publish blocks to apply
 // back-pressure. Events are never dropped.

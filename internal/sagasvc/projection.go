@@ -25,6 +25,13 @@ func NewPgProjection(pool *pgxpool.Pool) *PgProjection {
 	return &PgProjection{pool: pool}
 }
 
+func (p *PgProjection) Reset(ctx context.Context) error {
+	if _, err := p.pool.Exec(ctx, `TRUNCATE projection_sagas`); err != nil {
+		return fmt.Errorf("truncate projection_sagas: %w", err)
+	}
+	return nil
+}
+
 func (p *PgProjection) HandleEvents(ctx context.Context, events []es.Event) error {
 	batch := &pgx.Batch{}
 

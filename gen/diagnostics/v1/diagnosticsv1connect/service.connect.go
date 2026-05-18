@@ -42,6 +42,15 @@ const (
 	// DiagnosticsServiceGetEventChainProcedure is the fully-qualified name of the DiagnosticsService's
 	// GetEventChain RPC.
 	DiagnosticsServiceGetEventChainProcedure = "/diagnostics.v1.DiagnosticsService/GetEventChain"
+	// DiagnosticsServiceListProjectionsProcedure is the fully-qualified name of the
+	// DiagnosticsService's ListProjections RPC.
+	DiagnosticsServiceListProjectionsProcedure = "/diagnostics.v1.DiagnosticsService/ListProjections"
+	// DiagnosticsServiceRebuildProjectionProcedure is the fully-qualified name of the
+	// DiagnosticsService's RebuildProjection RPC.
+	DiagnosticsServiceRebuildProjectionProcedure = "/diagnostics.v1.DiagnosticsService/RebuildProjection"
+	// DiagnosticsServiceStreamProjectionProgressProcedure is the fully-qualified name of the
+	// DiagnosticsService's StreamProjectionProgress RPC.
+	DiagnosticsServiceStreamProjectionProgressProcedure = "/diagnostics.v1.DiagnosticsService/StreamProjectionProgress"
 )
 
 // DiagnosticsServiceClient is a client for the diagnostics.v1.DiagnosticsService service.
@@ -52,6 +61,17 @@ type DiagnosticsServiceClient interface {
 	// ordered by timestamp. The reactor's ctx-propagation guarantees that a
 	// single user action and all its downstream effects share one correlation.
 	GetEventChain(context.Context, *connect.Request[v1.GetEventChainRequest]) (*connect.Response[v1.GetEventChainResponse], error)
+	// ListProjections returns a snapshot of every registered projection
+	// consumer: its current checkpoint, the stream head, and whether
+	// it's eligible for rebuild.
+	ListProjections(context.Context, *connect.Request[v1.ListProjectionsRequest]) (*connect.Response[v1.ListProjectionsResponse], error)
+	// RebuildProjection kicks off an in-place rebuild of the named consumer.
+	// Returns immediately; subscribe to StreamProjectionProgress for ticks.
+	RebuildProjection(context.Context, *connect.Request[v1.RebuildProjectionRequest]) (*connect.Response[v1.RebuildProjectionResponse], error)
+	// StreamProjectionProgress emits a tick per dispatched batch during a
+	// rebuild, plus a terminal tick when the consumer returns to RUNNING
+	// or FAILED. The stream closes when the rebuild terminates.
+	StreamProjectionProgress(context.Context, *connect.Request[v1.StreamProjectionProgressRequest]) (*connect.ServerStreamForClient[v1.ProjectionProgress], error)
 }
 
 // NewDiagnosticsServiceClient constructs a client for the diagnostics.v1.DiagnosticsService
@@ -83,14 +103,35 @@ func NewDiagnosticsServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(diagnosticsServiceMethods.ByName("GetEventChain")),
 			connect.WithClientOptions(opts...),
 		),
+		listProjections: connect.NewClient[v1.ListProjectionsRequest, v1.ListProjectionsResponse](
+			httpClient,
+			baseURL+DiagnosticsServiceListProjectionsProcedure,
+			connect.WithSchema(diagnosticsServiceMethods.ByName("ListProjections")),
+			connect.WithClientOptions(opts...),
+		),
+		rebuildProjection: connect.NewClient[v1.RebuildProjectionRequest, v1.RebuildProjectionResponse](
+			httpClient,
+			baseURL+DiagnosticsServiceRebuildProjectionProcedure,
+			connect.WithSchema(diagnosticsServiceMethods.ByName("RebuildProjection")),
+			connect.WithClientOptions(opts...),
+		),
+		streamProjectionProgress: connect.NewClient[v1.StreamProjectionProgressRequest, v1.ProjectionProgress](
+			httpClient,
+			baseURL+DiagnosticsServiceStreamProjectionProgressProcedure,
+			connect.WithSchema(diagnosticsServiceMethods.ByName("StreamProjectionProgress")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // diagnosticsServiceClient implements DiagnosticsServiceClient.
 type diagnosticsServiceClient struct {
-	listAggregates     *connect.Client[v1.ListAggregatesRequest, v1.ListAggregatesResponse]
-	getAggregateEvents *connect.Client[v1.GetAggregateEventsRequest, v1.GetAggregateEventsResponse]
-	getEventChain      *connect.Client[v1.GetEventChainRequest, v1.GetEventChainResponse]
+	listAggregates           *connect.Client[v1.ListAggregatesRequest, v1.ListAggregatesResponse]
+	getAggregateEvents       *connect.Client[v1.GetAggregateEventsRequest, v1.GetAggregateEventsResponse]
+	getEventChain            *connect.Client[v1.GetEventChainRequest, v1.GetEventChainResponse]
+	listProjections          *connect.Client[v1.ListProjectionsRequest, v1.ListProjectionsResponse]
+	rebuildProjection        *connect.Client[v1.RebuildProjectionRequest, v1.RebuildProjectionResponse]
+	streamProjectionProgress *connect.Client[v1.StreamProjectionProgressRequest, v1.ProjectionProgress]
 }
 
 // ListAggregates calls diagnostics.v1.DiagnosticsService.ListAggregates.
@@ -108,6 +149,21 @@ func (c *diagnosticsServiceClient) GetEventChain(ctx context.Context, req *conne
 	return c.getEventChain.CallUnary(ctx, req)
 }
 
+// ListProjections calls diagnostics.v1.DiagnosticsService.ListProjections.
+func (c *diagnosticsServiceClient) ListProjections(ctx context.Context, req *connect.Request[v1.ListProjectionsRequest]) (*connect.Response[v1.ListProjectionsResponse], error) {
+	return c.listProjections.CallUnary(ctx, req)
+}
+
+// RebuildProjection calls diagnostics.v1.DiagnosticsService.RebuildProjection.
+func (c *diagnosticsServiceClient) RebuildProjection(ctx context.Context, req *connect.Request[v1.RebuildProjectionRequest]) (*connect.Response[v1.RebuildProjectionResponse], error) {
+	return c.rebuildProjection.CallUnary(ctx, req)
+}
+
+// StreamProjectionProgress calls diagnostics.v1.DiagnosticsService.StreamProjectionProgress.
+func (c *diagnosticsServiceClient) StreamProjectionProgress(ctx context.Context, req *connect.Request[v1.StreamProjectionProgressRequest]) (*connect.ServerStreamForClient[v1.ProjectionProgress], error) {
+	return c.streamProjectionProgress.CallServerStream(ctx, req)
+}
+
 // DiagnosticsServiceHandler is an implementation of the diagnostics.v1.DiagnosticsService service.
 type DiagnosticsServiceHandler interface {
 	ListAggregates(context.Context, *connect.Request[v1.ListAggregatesRequest]) (*connect.Response[v1.ListAggregatesResponse], error)
@@ -116,6 +172,17 @@ type DiagnosticsServiceHandler interface {
 	// ordered by timestamp. The reactor's ctx-propagation guarantees that a
 	// single user action and all its downstream effects share one correlation.
 	GetEventChain(context.Context, *connect.Request[v1.GetEventChainRequest]) (*connect.Response[v1.GetEventChainResponse], error)
+	// ListProjections returns a snapshot of every registered projection
+	// consumer: its current checkpoint, the stream head, and whether
+	// it's eligible for rebuild.
+	ListProjections(context.Context, *connect.Request[v1.ListProjectionsRequest]) (*connect.Response[v1.ListProjectionsResponse], error)
+	// RebuildProjection kicks off an in-place rebuild of the named consumer.
+	// Returns immediately; subscribe to StreamProjectionProgress for ticks.
+	RebuildProjection(context.Context, *connect.Request[v1.RebuildProjectionRequest]) (*connect.Response[v1.RebuildProjectionResponse], error)
+	// StreamProjectionProgress emits a tick per dispatched batch during a
+	// rebuild, plus a terminal tick when the consumer returns to RUNNING
+	// or FAILED. The stream closes when the rebuild terminates.
+	StreamProjectionProgress(context.Context, *connect.Request[v1.StreamProjectionProgressRequest], *connect.ServerStream[v1.ProjectionProgress]) error
 }
 
 // NewDiagnosticsServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -143,6 +210,24 @@ func NewDiagnosticsServiceHandler(svc DiagnosticsServiceHandler, opts ...connect
 		connect.WithSchema(diagnosticsServiceMethods.ByName("GetEventChain")),
 		connect.WithHandlerOptions(opts...),
 	)
+	diagnosticsServiceListProjectionsHandler := connect.NewUnaryHandler(
+		DiagnosticsServiceListProjectionsProcedure,
+		svc.ListProjections,
+		connect.WithSchema(diagnosticsServiceMethods.ByName("ListProjections")),
+		connect.WithHandlerOptions(opts...),
+	)
+	diagnosticsServiceRebuildProjectionHandler := connect.NewUnaryHandler(
+		DiagnosticsServiceRebuildProjectionProcedure,
+		svc.RebuildProjection,
+		connect.WithSchema(diagnosticsServiceMethods.ByName("RebuildProjection")),
+		connect.WithHandlerOptions(opts...),
+	)
+	diagnosticsServiceStreamProjectionProgressHandler := connect.NewServerStreamHandler(
+		DiagnosticsServiceStreamProjectionProgressProcedure,
+		svc.StreamProjectionProgress,
+		connect.WithSchema(diagnosticsServiceMethods.ByName("StreamProjectionProgress")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/diagnostics.v1.DiagnosticsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DiagnosticsServiceListAggregatesProcedure:
@@ -151,6 +236,12 @@ func NewDiagnosticsServiceHandler(svc DiagnosticsServiceHandler, opts ...connect
 			diagnosticsServiceGetAggregateEventsHandler.ServeHTTP(w, r)
 		case DiagnosticsServiceGetEventChainProcedure:
 			diagnosticsServiceGetEventChainHandler.ServeHTTP(w, r)
+		case DiagnosticsServiceListProjectionsProcedure:
+			diagnosticsServiceListProjectionsHandler.ServeHTTP(w, r)
+		case DiagnosticsServiceRebuildProjectionProcedure:
+			diagnosticsServiceRebuildProjectionHandler.ServeHTTP(w, r)
+		case DiagnosticsServiceStreamProjectionProgressProcedure:
+			diagnosticsServiceStreamProjectionProgressHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -170,4 +261,16 @@ func (UnimplementedDiagnosticsServiceHandler) GetAggregateEvents(context.Context
 
 func (UnimplementedDiagnosticsServiceHandler) GetEventChain(context.Context, *connect.Request[v1.GetEventChainRequest]) (*connect.Response[v1.GetEventChainResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("diagnostics.v1.DiagnosticsService.GetEventChain is not implemented"))
+}
+
+func (UnimplementedDiagnosticsServiceHandler) ListProjections(context.Context, *connect.Request[v1.ListProjectionsRequest]) (*connect.Response[v1.ListProjectionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("diagnostics.v1.DiagnosticsService.ListProjections is not implemented"))
+}
+
+func (UnimplementedDiagnosticsServiceHandler) RebuildProjection(context.Context, *connect.Request[v1.RebuildProjectionRequest]) (*connect.Response[v1.RebuildProjectionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("diagnostics.v1.DiagnosticsService.RebuildProjection is not implemented"))
+}
+
+func (UnimplementedDiagnosticsServiceHandler) StreamProjectionProgress(context.Context, *connect.Request[v1.StreamProjectionProgressRequest], *connect.ServerStream[v1.ProjectionProgress]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("diagnostics.v1.DiagnosticsService.StreamProjectionProgress is not implemented"))
 }

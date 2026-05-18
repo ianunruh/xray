@@ -25,6 +25,13 @@ func NewPgOrderProjection(pool *pgxpool.Pool) *PgOrderProjection {
 	return &PgOrderProjection{pool: pool}
 }
 
+func (p *PgOrderProjection) Reset(ctx context.Context) error {
+	if _, err := p.pool.Exec(ctx, `TRUNCATE projection_orders`); err != nil {
+		return fmt.Errorf("truncate projection_orders: %w", err)
+	}
+	return nil
+}
+
 func (p *PgOrderProjection) HandleEvents(ctx context.Context, events []es.Event) error {
 	batch := &pgx.Batch{}
 

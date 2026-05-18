@@ -181,7 +181,8 @@ func main() {
 		// never reaches the reactor before its prior ShortOpened has
 		// been committed to PG.
 		natsstore.NewProjectionConsumer(js, registry, log, "margin-call").
-			WithPersistent(store, shortsProjection, longsProjection, activeUserSagasProjection, marginCallsProjection, marginReactor),
+			WithPersistent(store, shortsProjection, longsProjection, activeUserSagasProjection, marginCallsProjection, marginReactor).
+			WithReactor(),
 		natsstore.NewProjectionConsumer(js, registry, log, "trade-projection").
 			WithPersistent(store, tradeProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "order-projection").
@@ -196,13 +197,17 @@ func main() {
 		natsstore.NewProjectionConsumer(js, registry, log, "pnl-projection").
 			WithPersistent(store, pnlProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "saga-reactor").
-			WithPersistent(store, orderSagaReactor),
+			WithPersistent(store, orderSagaReactor).
+			WithReactor(),
 		natsstore.NewProjectionConsumer(js, registry, log, "bracket-reactor").
-			WithPersistent(store, bracketReactor),
+			WithPersistent(store, bracketReactor).
+			WithReactor(),
 		natsstore.NewProjectionConsumer(js, registry, log, "oco-reactor").
-			WithPersistent(store, ocoSagaReactor),
+			WithPersistent(store, ocoSagaReactor).
+			WithReactor(),
 		natsstore.NewProjectionConsumer(js, registry, log, "twap-reactor").
-			WithPersistent(store, twapReactor),
+			WithPersistent(store, twapReactor).
+			WithReactor(),
 		natsstore.NewProjectionConsumer(js, registry, log, "saga-projection").
 			WithPersistent(store, sagaProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "daily-close-projection").
@@ -228,6 +233,13 @@ func main() {
 	broker.SetReady()
 	portfolioBroker.SetReady()
 
+	// ProjectionManager mediates projection introspection and rebuilds.
+	// Hosted by the diagnostics service so the web UI can drive it.
+	projectionManager := natsstore.NewProjectionManager(js, log)
+	for _, c := range consumers {
+		projectionManager.Add(c)
+	}
+
 	rec := reconciler.New(30*time.Second, sagaProjection, tradeProjection, portfolioHandler, orderSagaReactor, bracketReactor, ocoSagaReactor, twapReactor, marginReactor, activeCallsProjection, log)
 	go rec.Run(ctx)
 
@@ -238,7 +250,7 @@ func main() {
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, dailyCloseProjection, broker)
 	portfolioSrv := portfolio.NewServer(portfolioHandler, obHandler, portfolioProjection, pnlProjection, markProjection, marginCallsProjection, portfolioBroker, log)
 	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, ocoSagaHandler, twapHandler, obHandler, portfolioHandler, twapReactor, markProjection, sagaProjection, log)
-	diagnosticsSrv := diagnostics.NewServer(store, registry, log)
+	diagnosticsSrv := diagnostics.NewServer(store, registry, projectionManager, log)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)

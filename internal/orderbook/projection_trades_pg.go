@@ -24,6 +24,13 @@ func NewPgTradeProjection(pool *pgxpool.Pool) *PgTradeProjection {
 	return &PgTradeProjection{pool: pool}
 }
 
+func (p *PgTradeProjection) Reset(ctx context.Context) error {
+	if _, err := p.pool.Exec(ctx, `TRUNCATE projection_trades`); err != nil {
+		return fmt.Errorf("truncate projection_trades: %w", err)
+	}
+	return nil
+}
+
 func (p *PgTradeProjection) HandleEvents(ctx context.Context, events []es.Event) error {
 	batch := &pgx.Batch{}
 

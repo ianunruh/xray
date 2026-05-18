@@ -26,4 +26,7 @@ type GlobalEventPoller interface {
 type CheckpointStore interface {
 	LoadCheckpoint(ctx context.Context, name string) (uint64, error)
 	SaveCheckpoint(ctx context.Context, name string, sequence uint64) error
+	// DeleteCheckpoint removes the row for the named cursor, forcing the
+	// next LoadCheckpoint to return 0. Used during projection rebuilds.
+	DeleteCheckpoint(ctx context.Context, name string) error
 }

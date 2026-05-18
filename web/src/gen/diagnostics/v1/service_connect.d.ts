@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { GetAggregateEventsRequest, GetAggregateEventsResponse, GetEventChainRequest, GetEventChainResponse, ListAggregatesRequest, ListAggregatesResponse } from "./service_pb.js";
+import { GetAggregateEventsRequest, GetAggregateEventsResponse, GetEventChainRequest, GetEventChainResponse, ListAggregatesRequest, ListAggregatesResponse, ListProjectionsRequest, ListProjectionsResponse, ProjectionProgress, RebuildProjectionRequest, RebuildProjectionResponse, StreamProjectionProgressRequest } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -42,6 +42,44 @@ export declare const DiagnosticsService: {
       readonly I: typeof GetEventChainRequest,
       readonly O: typeof GetEventChainResponse,
       readonly kind: MethodKind.Unary,
+    },
+    /**
+     * ListProjections returns a snapshot of every registered projection
+     * consumer: its current checkpoint, the stream head, and whether
+     * it's eligible for rebuild.
+     *
+     * @generated from rpc diagnostics.v1.DiagnosticsService.ListProjections
+     */
+    readonly listProjections: {
+      readonly name: "ListProjections",
+      readonly I: typeof ListProjectionsRequest,
+      readonly O: typeof ListProjectionsResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * RebuildProjection kicks off an in-place rebuild of the named consumer.
+     * Returns immediately; subscribe to StreamProjectionProgress for ticks.
+     *
+     * @generated from rpc diagnostics.v1.DiagnosticsService.RebuildProjection
+     */
+    readonly rebuildProjection: {
+      readonly name: "RebuildProjection",
+      readonly I: typeof RebuildProjectionRequest,
+      readonly O: typeof RebuildProjectionResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * StreamProjectionProgress emits a tick per dispatched batch during a
+     * rebuild, plus a terminal tick when the consumer returns to RUNNING
+     * or FAILED. The stream closes when the rebuild terminates.
+     *
+     * @generated from rpc diagnostics.v1.DiagnosticsService.StreamProjectionProgress
+     */
+    readonly streamProjectionProgress: {
+      readonly name: "StreamProjectionProgress",
+      readonly I: typeof StreamProjectionProgressRequest,
+      readonly O: typeof ProjectionProgress,
+      readonly kind: MethodKind.ServerStreaming,
     },
   }
 };

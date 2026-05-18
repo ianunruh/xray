@@ -2,7 +2,7 @@
 // @generated from file diagnostics/v1/service.proto (package diagnostics.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
@@ -210,6 +210,240 @@ export declare type GetEventChainResponse = Message<"diagnostics.v1.GetEventChai
 export declare const GetEventChainResponseSchema: GenMessage<GetEventChainResponse>;
 
 /**
+ * @generated from message diagnostics.v1.ListProjectionsRequest
+ */
+export declare type ListProjectionsRequest = Message<"diagnostics.v1.ListProjectionsRequest"> & {
+};
+
+/**
+ * Describes the message diagnostics.v1.ListProjectionsRequest.
+ * Use `create(ListProjectionsRequestSchema)` to create a new message.
+ */
+export declare const ListProjectionsRequestSchema: GenMessage<ListProjectionsRequest>;
+
+/**
+ * @generated from message diagnostics.v1.ProjectionStatus
+ */
+export declare type ProjectionStatus = Message<"diagnostics.v1.ProjectionStatus"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: diagnostics.v1.ProjectionPhase phase = 2;
+   */
+  phase: ProjectionPhase;
+
+  /**
+   * @generated from field: uint64 checkpoint = 3;
+   */
+  checkpoint: bigint;
+
+  /**
+   * @generated from field: uint64 head_sequence = 4;
+   */
+  headSequence: bigint;
+
+  /**
+   * @generated from field: uint64 lag = 5;
+   */
+  lag: bigint;
+
+  /**
+   * @generated from field: bool rebuildable = 6;
+   */
+  rebuildable: boolean;
+
+  /**
+   * Empty when rebuildable=true; otherwise a human-readable reason
+   * (e.g. "consumer hosts a reactor").
+   *
+   * @generated from field: string reason_not_rebuildable = 7;
+   */
+  reasonNotRebuildable: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp rebuild_started_at = 8;
+   */
+  rebuildStartedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: string rebuild_last_error = 9;
+   */
+  rebuildLastError: string;
+
+  /**
+   * @generated from field: int32 projection_count = 10;
+   */
+  projectionCount: number;
+
+  /**
+   * @generated from field: int32 resettable_count = 11;
+   */
+  resettableCount: number;
+};
+
+/**
+ * Describes the message diagnostics.v1.ProjectionStatus.
+ * Use `create(ProjectionStatusSchema)` to create a new message.
+ */
+export declare const ProjectionStatusSchema: GenMessage<ProjectionStatus>;
+
+/**
+ * @generated from message diagnostics.v1.ListProjectionsResponse
+ */
+export declare type ListProjectionsResponse = Message<"diagnostics.v1.ListProjectionsResponse"> & {
+  /**
+   * @generated from field: repeated diagnostics.v1.ProjectionStatus projections = 1;
+   */
+  projections: ProjectionStatus[];
+};
+
+/**
+ * Describes the message diagnostics.v1.ListProjectionsResponse.
+ * Use `create(ListProjectionsResponseSchema)` to create a new message.
+ */
+export declare const ListProjectionsResponseSchema: GenMessage<ListProjectionsResponse>;
+
+/**
+ * @generated from message diagnostics.v1.RebuildProjectionRequest
+ */
+export declare type RebuildProjectionRequest = Message<"diagnostics.v1.RebuildProjectionRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message diagnostics.v1.RebuildProjectionRequest.
+ * Use `create(RebuildProjectionRequestSchema)` to create a new message.
+ */
+export declare const RebuildProjectionRequestSchema: GenMessage<RebuildProjectionRequest>;
+
+/**
+ * @generated from message diagnostics.v1.RebuildProjectionResponse
+ */
+export declare type RebuildProjectionResponse = Message<"diagnostics.v1.RebuildProjectionResponse"> & {
+};
+
+/**
+ * Describes the message diagnostics.v1.RebuildProjectionResponse.
+ * Use `create(RebuildProjectionResponseSchema)` to create a new message.
+ */
+export declare const RebuildProjectionResponseSchema: GenMessage<RebuildProjectionResponse>;
+
+/**
+ * @generated from message diagnostics.v1.StreamProjectionProgressRequest
+ */
+export declare type StreamProjectionProgressRequest = Message<"diagnostics.v1.StreamProjectionProgressRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message diagnostics.v1.StreamProjectionProgressRequest.
+ * Use `create(StreamProjectionProgressRequestSchema)` to create a new message.
+ */
+export declare const StreamProjectionProgressRequestSchema: GenMessage<StreamProjectionProgressRequest>;
+
+/**
+ * @generated from message diagnostics.v1.ProjectionProgress
+ */
+export declare type ProjectionProgress = Message<"diagnostics.v1.ProjectionProgress"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: diagnostics.v1.ProjectionPhase phase = 2;
+   */
+  phase: ProjectionPhase;
+
+  /**
+   * @generated from field: uint64 position = 3;
+   */
+  position: bigint;
+
+  /**
+   * @generated from field: uint64 head_sequence = 4;
+   */
+  headSequence: bigint;
+
+  /**
+   * @generated from field: double events_per_sec = 5;
+   */
+  eventsPerSec: number;
+
+  /**
+   * @generated from field: int64 eta_seconds = 6;
+   */
+  etaSeconds: bigint;
+
+  /**
+   * @generated from field: int32 batch_size = 7;
+   */
+  batchSize: number;
+
+  /**
+   * Non-empty when phase=FAILED.
+   *
+   * @generated from field: string error = 8;
+   */
+  error: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp at = 9;
+   */
+  at?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message diagnostics.v1.ProjectionProgress.
+ * Use `create(ProjectionProgressSchema)` to create a new message.
+ */
+export declare const ProjectionProgressSchema: GenMessage<ProjectionProgress>;
+
+/**
+ * @generated from enum diagnostics.v1.ProjectionPhase
+ */
+export enum ProjectionPhase {
+  /**
+   * @generated from enum value: PROJECTION_PHASE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: PROJECTION_PHASE_RUNNING = 1;
+   */
+  RUNNING = 1,
+
+  /**
+   * @generated from enum value: PROJECTION_PHASE_REBUILDING = 2;
+   */
+  REBUILDING = 2,
+
+  /**
+   * @generated from enum value: PROJECTION_PHASE_STOPPED = 3;
+   */
+  STOPPED = 3,
+
+  /**
+   * @generated from enum value: PROJECTION_PHASE_FAILED = 4;
+   */
+  FAILED = 4,
+}
+
+/**
+ * Describes the enum diagnostics.v1.ProjectionPhase.
+ */
+export declare const ProjectionPhaseSchema: GenEnum<ProjectionPhase>;
+
+/**
  * @generated from service diagnostics.v1.DiagnosticsService
  */
 export declare const DiagnosticsService: GenService<{
@@ -240,6 +474,41 @@ export declare const DiagnosticsService: GenService<{
     methodKind: "unary";
     input: typeof GetEventChainRequestSchema;
     output: typeof GetEventChainResponseSchema;
+  },
+  /**
+   * ListProjections returns a snapshot of every registered projection
+   * consumer: its current checkpoint, the stream head, and whether
+   * it's eligible for rebuild.
+   *
+   * @generated from rpc diagnostics.v1.DiagnosticsService.ListProjections
+   */
+  listProjections: {
+    methodKind: "unary";
+    input: typeof ListProjectionsRequestSchema;
+    output: typeof ListProjectionsResponseSchema;
+  },
+  /**
+   * RebuildProjection kicks off an in-place rebuild of the named consumer.
+   * Returns immediately; subscribe to StreamProjectionProgress for ticks.
+   *
+   * @generated from rpc diagnostics.v1.DiagnosticsService.RebuildProjection
+   */
+  rebuildProjection: {
+    methodKind: "unary";
+    input: typeof RebuildProjectionRequestSchema;
+    output: typeof RebuildProjectionResponseSchema;
+  },
+  /**
+   * StreamProjectionProgress emits a tick per dispatched batch during a
+   * rebuild, plus a terminal tick when the consumer returns to RUNNING
+   * or FAILED. The stream closes when the rebuild terminates.
+   *
+   * @generated from rpc diagnostics.v1.DiagnosticsService.StreamProjectionProgress
+   */
+  streamProjectionProgress: {
+    methodKind: "server_streaming";
+    input: typeof StreamProjectionProgressRequestSchema;
+    output: typeof ProjectionProgressSchema;
   },
 }>;
 

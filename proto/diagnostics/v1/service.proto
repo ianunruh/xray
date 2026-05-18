@@ -13,6 +13,18 @@ service DiagnosticsService {
   // ordered by timestamp. The reactor's ctx-propagation guarantees that a
   // single user action and all its downstream effects share one correlation.
   rpc GetEventChain(GetEventChainRequest) returns (GetEventChainResponse);
+
+  // ListProjections returns a snapshot of every registered projection
+  // consumer: its current checkpoint, the stream head, and whether
+  // it's eligible for rebuild.
+  rpc ListProjections(ListProjectionsRequest) returns (ListProjectionsResponse);
+  // RebuildProjection kicks off an in-place rebuild of the named consumer.
+  // Returns immediately; subscribe to StreamProjectionProgress for ticks.
+  rpc RebuildProjection(RebuildProjectionRequest) returns (RebuildProjectionResponse);
+  // StreamProjectionProgress emits a tick per dispatched batch during a
+  // rebuild, plus a terminal tick when the consumer returns to RUNNING
+  // or FAILED. The stream closes when the rebuild terminates.
+  rpc StreamProjectionProgress(StreamProjectionProgressRequest) returns (stream ProjectionProgress);
 }
 
 message ListAggregatesRequest {
@@ -63,4 +75,57 @@ message GetEventChainRequest {
 
 message GetEventChainResponse {
   repeated DiagnosticEvent events = 1;
+}
+
+enum ProjectionPhase {
+  PROJECTION_PHASE_UNSPECIFIED = 0;
+  PROJECTION_PHASE_RUNNING = 1;
+  PROJECTION_PHASE_REBUILDING = 2;
+  PROJECTION_PHASE_STOPPED = 3;
+  PROJECTION_PHASE_FAILED = 4;
+}
+
+message ListProjectionsRequest {}
+
+message ProjectionStatus {
+  string name = 1;
+  ProjectionPhase phase = 2;
+  uint64 checkpoint = 3;
+  uint64 head_sequence = 4;
+  uint64 lag = 5;
+  bool rebuildable = 6;
+  // Empty when rebuildable=true; otherwise a human-readable reason
+  // (e.g. "consumer hosts a reactor").
+  string reason_not_rebuildable = 7;
+  google.protobuf.Timestamp rebuild_started_at = 8;
+  string rebuild_last_error = 9;
+  int32 projection_count = 10;
+  int32 resettable_count = 11;
+}
+
+message ListProjectionsResponse {
+  repeated ProjectionStatus projections = 1;
+}
+
+message RebuildProjectionRequest {
+  string name = 1;
+}
+
+message RebuildProjectionResponse {}
+
+message StreamProjectionProgressRequest {
+  string name = 1;
+}
+
+message ProjectionProgress {
+  string name = 1;
+  ProjectionPhase phase = 2;
+  uint64 position = 3;
+  uint64 head_sequence = 4;
+  double events_per_sec = 5;
+  int64 eta_seconds = 6;
+  int32 batch_size = 7;
+  // Non-empty when phase=FAILED.
+  string error = 8;
+  google.protobuf.Timestamp at = 9;
 }
