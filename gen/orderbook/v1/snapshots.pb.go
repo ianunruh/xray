@@ -28,7 +28,13 @@ type OrderBookSnapshot struct {
 	Orders []*OrderSnapshot       `protobuf:"bytes,2,rep,name=orders,proto3" json:"orders,omitempty"`
 	// Default 0 (UNSPECIFIED) restores as CONTINUOUS so historical
 	// snapshots taken before phase tracking existed remain valid.
-	Phase         MarketPhase `protobuf:"varint,3,opt,name=phase,proto3,enum=orderbook.v1.MarketPhase" json:"phase,omitempty"`
+	Phase MarketPhase `protobuf:"varint,3,opt,name=phase,proto3,enum=orderbook.v1.MarketPhase" json:"phase,omitempty"`
+	// Cumulative traded quantity for the current session; reset on the
+	// session's OfficialCloseSet event. Defaults to 0 for snapshots taken
+	// before session-volume tracking existed — the counter then resumes
+	// from zero, which mis-counts only events between the snapshot and
+	// the next close.
+	SessionVolume int64 `protobuf:"varint,4,opt,name=session_volume,json=sessionVolume,proto3" json:"session_volume,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -82,6 +88,13 @@ func (x *OrderBookSnapshot) GetPhase() MarketPhase {
 		return x.Phase
 	}
 	return MarketPhase_MARKET_PHASE_UNSPECIFIED
+}
+
+func (x *OrderBookSnapshot) GetSessionVolume() int64 {
+	if x != nil {
+		return x.SessionVolume
+	}
+	return 0
 }
 
 type OrderSnapshot struct {
@@ -250,11 +263,12 @@ var File_orderbook_v1_snapshots_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_snapshots_proto_rawDesc = "" +
 	"\n" +
-	"\x1corderbook/v1/snapshots.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"\x91\x01\n" +
+	"\x1corderbook/v1/snapshots.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"\xb8\x01\n" +
 	"\x11OrderBookSnapshot\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x123\n" +
 	"\x06orders\x18\x02 \x03(\v2\x1b.orderbook.v1.OrderSnapshotR\x06orders\x12/\n" +
-	"\x05phase\x18\x03 \x01(\x0e2\x19.orderbook.v1.MarketPhaseR\x05phase\"\xed\x04\n" +
+	"\x05phase\x18\x03 \x01(\x0e2\x19.orderbook.v1.MarketPhaseR\x05phase\x12%\n" +
+	"\x0esession_volume\x18\x04 \x01(\x03R\rsessionVolume\"\xed\x04\n" +
 	"\rOrderSnapshot\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +

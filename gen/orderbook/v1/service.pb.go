@@ -1252,8 +1252,11 @@ type GetOrderBookResponse struct {
 	Phase  MarketPhase            `protobuf:"varint,4,opt,name=phase,proto3,enum=orderbook.v1.MarketPhase" json:"phase,omitempty"`
 	// Most recent continuous-trade print; 0 if no trade has executed yet.
 	LastTradePrice int64 `protobuf:"varint,5,opt,name=last_trade_price,json=lastTradePrice,proto3" json:"last_trade_price,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Cumulative traded quantity for the current session; resets to 0
+	// when the closing uncross emits OfficialCloseSet.
+	SessionVolume int64 `protobuf:"varint,6,opt,name=session_volume,json=sessionVolume,proto3" json:"session_volume,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetOrderBookResponse) Reset() {
@@ -1317,6 +1320,13 @@ func (x *GetOrderBookResponse) GetPhase() MarketPhase {
 func (x *GetOrderBookResponse) GetLastTradePrice() int64 {
 	if x != nil {
 		return x.LastTradePrice
+	}
+	return 0
+}
+
+func (x *GetOrderBookResponse) GetSessionVolume() int64 {
+	if x != nil {
+		return x.SessionVolume
 	}
 	return 0
 }
@@ -3082,13 +3092,14 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\x1aListOfficialClosesResponse\x12>\n" +
 	"\x06closes\x18\x01 \x03(\v2&.orderbook.v1.GetOfficialCloseResponseR\x06closes\"-\n" +
 	"\x13GetOrderBookRequest\x12\x16\n" +
-	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"\xed\x01\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"\x94\x02\n" +
 	"\x14GetOrderBookResponse\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x120\n" +
 	"\x04bids\x18\x02 \x03(\v2\x1c.orderbook.v1.OrderBookLevelR\x04bids\x120\n" +
 	"\x04asks\x18\x03 \x03(\v2\x1c.orderbook.v1.OrderBookLevelR\x04asks\x12/\n" +
 	"\x05phase\x18\x04 \x01(\x0e2\x19.orderbook.v1.MarketPhaseR\x05phase\x12(\n" +
-	"\x10last_trade_price\x18\x05 \x01(\x03R\x0elastTradePrice\"\xc5\x01\n" +
+	"\x10last_trade_price\x18\x05 \x01(\x03R\x0elastTradePrice\x12%\n" +
+	"\x0esession_volume\x18\x06 \x01(\x03R\rsessionVolume\"\xc5\x01\n" +
 	"\x0eOrderBookLevel\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x14\n" +
 	"\x05price\x18\x02 \x01(\x03R\x05price\x12\x1a\n" +

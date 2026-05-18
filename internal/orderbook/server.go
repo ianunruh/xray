@@ -323,6 +323,7 @@ func (s *Server) GetOrderBook(ctx context.Context, req *connect.Request[orderboo
 		Symbol:         req.Msg.Symbol,
 		Phase:          MarketPhaseToProto(book.Phase),
 		LastTradePrice: book.LastTradePrice,
+		SessionVolume:  book.SessionVolume,
 	}
 
 	for bid := range book.Bids.All() {

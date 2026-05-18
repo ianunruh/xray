@@ -13,6 +13,12 @@ message OrderBookSnapshot {
   // Default 0 (UNSPECIFIED) restores as CONTINUOUS so historical
   // snapshots taken before phase tracking existed remain valid.
   MarketPhase phase = 3;
+  // Cumulative traded quantity for the current session; reset on the
+  // session's OfficialCloseSet event. Defaults to 0 for snapshots taken
+  // before session-volume tracking existed — the counter then resumes
+  // from zero, which mis-counts only events between the snapshot and
+  // the next close.
+  int64 session_volume = 4;
 }
 
 message OrderSnapshot {

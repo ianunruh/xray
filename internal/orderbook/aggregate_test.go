@@ -2,11 +2,15 @@ package orderbook_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/internal/orderbook"
+	"github.com/ianunruh/xray/pkg/es"
 )
 
 func placeAsk(t *testing.T, book *orderbook.OrderBook, price, quantity int64) {
@@ -81,4 +85,33 @@ func TestEstimateMarketBuyCost_PartialFillsAtLevel(t *testing.T) {
 	cost, ok := book.EstimateMarketBuyCost(150)
 	require.True(t, ok)
 	assert.Equal(t, int64(225500000), cost)
+}
+
+func TestSessionVolume_AccumulatesAndResetsOnOfficialClose(t *testing.T) {
+	book := orderbook.NewOrderBook(orderbook.AggregateID("AAPL"))
+	book.Symbol = "AAPL"
+	assert.Equal(t, int64(0), book.SessionVolume)
+
+	now := time.Now()
+	trade := func(qty int64) es.Event {
+		return es.Event{Type: "TradeExecuted", Data: &orderbookv1.TradeExecuted{
+			Symbol: "AAPL", Price: 1500000, Quantity: qty, ExecutedAt: timestamppb.New(now),
+		}}
+	}
+	require.NoError(t, book.Apply(trade(40)))
+	require.NoError(t, book.Apply(trade(60)))
+	assert.Equal(t, int64(100), book.SessionVolume)
+
+	require.NoError(t, book.Apply(es.Event{
+		Type: "OfficialCloseSet",
+		Data: &orderbookv1.OfficialCloseSet{
+			Symbol: "AAPL", SessionDate: "2026-05-18",
+			ClosePrice: 1500000, CloseVolume: 100,
+			At: timestamppb.New(now),
+		},
+	}))
+	assert.Equal(t, int64(0), book.SessionVolume, "session volume resets on OfficialCloseSet")
+
+	require.NoError(t, book.Apply(trade(15)))
+	assert.Equal(t, int64(15), book.SessionVolume, "next session accumulates from zero")
 }

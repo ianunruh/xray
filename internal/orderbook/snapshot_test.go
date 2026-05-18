@@ -87,6 +87,7 @@ func TestOrderBook_Snapshot_RoundTrip(t *testing.T) {
 	// Verify state matches.
 	assert.Equal(t, "AAPL", restored.Symbol)
 	assert.Len(t, restored.Orders, 3)
+	assert.Equal(t, int64(50), restored.SessionVolume, "session volume survives snapshot round-trip")
 
 	// Check buy-1: original qty 100, traded 50, remaining 50.
 	buy1 := restored.Orders["buy-1"]

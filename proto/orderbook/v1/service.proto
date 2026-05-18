@@ -161,6 +161,9 @@ message GetOrderBookResponse {
   MarketPhase phase = 4;
   // Most recent continuous-trade print; 0 if no trade has executed yet.
   int64 last_trade_price = 5;
+  // Cumulative traded quantity for the current session; resets to 0
+  // when the closing uncross emits OfficialCloseSet.
+  int64 session_volume = 6;
 }
 
 message OrderBookLevel {

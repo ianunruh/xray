@@ -41,6 +41,10 @@ type OrderBook struct {
 	// uncross algorithm uses it as the tie-break reference when the
 	// matched range is balanced and brackets the prior print.
 	LastTradePrice int64
+	// SessionVolume is the cumulative traded quantity for the current
+	// session — sums every TradeExecuted (continuous + auction crosses)
+	// and resets to zero on OfficialCloseSet.
+	SessionVolume int64
 }
 
 // NewOrderBook creates a new OrderBook aggregate with the given ID.
@@ -140,8 +144,10 @@ func (ob *OrderBook) Apply(evt es.Event) error {
 		// TradeExecuted events that follow it, plus the subsequent
 		// MarketPhaseChanged. No aggregate state to mutate here.
 	case *orderbookv1.OfficialCloseSet:
-		// Pure projection event — the daily_close projection consumes
-		// it. The aggregate has no state to maintain for closes.
+		// Reset the session volume counter; the closing-cross quantity
+		// is preserved on the event itself (CloseVolume) for consumers
+		// that care about end-of-session totals.
+		ob.SessionVolume = 0
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}
@@ -237,6 +243,7 @@ func (ob *OrderBook) applyTradeExecuted(data *orderbookv1.TradeExecuted) {
 	}
 
 	ob.LastTradePrice = data.Price
+	ob.SessionVolume += data.Quantity
 }
 
 func (ob *OrderBook) applyIcebergSliceReplenished(data *orderbookv1.IcebergSliceReplenished) {
