@@ -1,0 +1,36 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "react-router dev",
+    "build": "react-router build",
+    "start": "react-router-serve ./build/server/index.js",
+    "typecheck": "react-router typegen && tsc",
+    "generate": "npx buf generate"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2",
+    "@connectrpc/connect": "^2",
+    "@connectrpc/connect-web": "^2",
+    "@mantine/core": "^7",
+    "@mantine/hooks": "^7",
+    "@mantine/notifications": "^7.17.8",
+    "@react-router/node": "^7",
+    "@react-router/serve": "^7",
+    "isbot": "^5",
+    "lightweight-charts": "^4",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-router": "^7"
+  },
+  "devDependencies": {
+    "@react-router/dev": "^7",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "postcss": "^8",
+    "postcss-preset-mantine": "^1",
+    "typescript": "^5",
+    "vite": "^6"
+  }
+}
