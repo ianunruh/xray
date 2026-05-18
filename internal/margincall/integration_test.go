@@ -92,7 +92,7 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 	// Grace=0 for the integration test — we want to assert the
 	// immediate-liquidation path end-to-end without driving a clock.
 	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler,
-		shorts, longs, sagaLookup, marks, margincall.Config{Grace: 0}, log)
+		shorts, longs, sagaLookup, marks, activeCalls, margincall.Config{Grace: 0}, log)
 
 	return &integrationEnv{
 		ctx:              ctx,

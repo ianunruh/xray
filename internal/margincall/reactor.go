@@ -60,6 +60,7 @@ type Reactor struct {
 	longs            portfolio.LongsTracker
 	sagas            SagaLookup
 	marker           portfolio.Marker
+	activeCalls      portfolio.ActiveMarginCallsTracker
 	log              *slog.Logger
 	// grace is the delay between MarginCallIssued and the first
 	// liquidation. The reconciler picks up expired calls and runs
@@ -67,6 +68,14 @@ type Reactor struct {
 	// on call issue regardless of grace — the grace is only for the
 	// auto-liquidation step.
 	grace time.Duration
+}
+
+// Status is a point-in-time snapshot of the margin reactor for
+// diagnostics. The reactor is event-driven (no tick loop), so the
+// status is its static config plus a live count of open calls.
+type Status struct {
+	Grace           time.Duration
+	ActiveCallCount int
 }
 
 // Config bundles tunables for the margin-call reactor.
@@ -85,6 +94,7 @@ func NewReactor(
 	longs portfolio.LongsTracker,
 	sagas SagaLookup,
 	marker portfolio.Marker,
+	activeCalls portfolio.ActiveMarginCallsTracker,
 	cfg Config,
 	log *slog.Logger,
 ) *Reactor {
@@ -96,8 +106,23 @@ func NewReactor(
 		longs:            longs,
 		sagas:            sagas,
 		marker:           marker,
+		activeCalls:      activeCalls,
 		log:              log,
 		grace:            cfg.Grace,
+	}
+}
+
+// Status returns the reactor's static config plus the live count of
+// open margin calls (via the activeCalls tracker). Safe to call from
+// any goroutine.
+func (r *Reactor) Status(ctx context.Context) Status {
+	count := 0
+	if r.activeCalls != nil {
+		count = len(r.activeCalls.ListOpenCalls(ctx))
+	}
+	return Status{
+		Grace:           r.grace,
+		ActiveCallCount: count,
 	}
 }
 

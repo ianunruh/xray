@@ -68,6 +68,7 @@ type env struct {
 	longs            *portfolio.InMemoryLongsBySymbol
 	sagas            *stubSagaLookup
 	marker           *fakeMarker
+	activeCalls      *portfolio.InMemoryActiveMarginCalls
 	reactor          *margincall.Reactor
 }
 
@@ -97,7 +98,8 @@ func newEnv(t *testing.T) *env {
 	longs := portfolio.NewInMemoryLongsBySymbol()
 	marker := &fakeMarker{prices: make(map[string]int64)}
 	sagas := &stubSagaLookup{}
-	reactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shorts, longs, sagas, marker,
+	activeCalls := portfolio.NewInMemoryActiveMarginCalls()
+	reactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shorts, longs, sagas, marker, activeCalls,
 		margincall.Config{Grace: 0}, log)
 
 	return &env{
@@ -109,6 +111,7 @@ func newEnv(t *testing.T) *env {
 		longs:            longs,
 		sagas:            sagas,
 		marker:           marker,
+		activeCalls:      activeCalls,
 		reactor:          reactor,
 	}
 }
@@ -468,7 +471,7 @@ func newEnvWithGrace(t *testing.T, grace time.Duration) *env {
 	t.Helper()
 	e := newEnv(t)
 	e.reactor = margincall.NewReactor(e.portfolioHandler, e.orderSagaHandler, e.obHandler,
-		e.shorts, e.longs, e.sagas, e.marker, margincall.Config{Grace: grace}, slog.Default())
+		e.shorts, e.longs, e.sagas, e.marker, e.activeCalls, margincall.Config{Grace: grace}, slog.Default())
 	return e
 }
 

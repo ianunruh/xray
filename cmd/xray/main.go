@@ -170,7 +170,7 @@ func main() {
 	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, markProjection, log)
 	ocoSagaReactor := ocosaga.NewReactor(ocoSagaHandler, portfolioHandler, obHandler, log)
 	twapReactor := twapsaga.NewReactor(twapHandler, orderSagaHandler, log)
-	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shortsProjection, longsProjection, activeUserSagasProjection, markProjection,
+	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shortsProjection, longsProjection, activeUserSagasProjection, markProjection, activeCallsProjection,
 		margincall.Config{Grace: 30 * time.Second}, log)
 
 	snap := newSnapshotter(store, registry, log).WithMaxIdle(30 * time.Minute)
