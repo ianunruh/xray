@@ -90,14 +90,19 @@ export function CandleChart({ symbol }: { symbol: string }) {
       wickDownColor: DOWN_COLOR,
     });
 
-    // Volume on an overlay scale pinned to the bottom 25% of the pane so
-    // the bars don't compete with the price grid.
+    // Split the pane into two visually distinct bands: candles in the top
+    // ~75%, volume in the bottom ~20%, with a small gap between them so
+    // the wicks don't crash into the histogram bars.
+    chart.priceScale("right").applyOptions({
+      scaleMargins: { top: 0.05, bottom: 0.35 },
+    });
+
     const volumeSeries = chart.addHistogramSeries({
       priceFormat: { type: "volume" },
       priceScaleId: "volume",
     });
     chart.priceScale("volume").applyOptions({
-      scaleMargins: { top: 0.75, bottom: 0 },
+      scaleMargins: { top: 0.85, bottom: 0 },
     });
 
     chartRef.current = chart;
