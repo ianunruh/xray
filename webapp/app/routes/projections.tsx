@@ -21,6 +21,7 @@ import { diagnosticsClient as serverClient } from "~/lib/client.server";
 import { diagnosticsClient } from "~/lib/client";
 import {
   ProjectionPhase,
+  type GetOperationsStatusResponse,
   type ProjectionProgress,
 } from "../../src/gen/diagnostics/v1/service_pb";
 
@@ -45,7 +46,10 @@ type LiveProgress = {
 };
 
 export async function loader() {
-  const r = await serverClient.listProjections({});
+  const [r, opsR] = await Promise.all([
+    serverClient.listProjections({}),
+    serverClient.getOperationsStatus({}),
+  ]);
   const projections: ProjectionRow[] = r.projections.map((p) => ({
     name: p.name,
     phase: p.phase,
@@ -60,7 +64,7 @@ export async function loader() {
     rebuildLastError: p.rebuildLastError,
     resettableCount: p.resettableCount,
   }));
-  return { projections };
+  return { projections, ops: opsR };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -123,7 +127,7 @@ function formatEta(s: bigint): string {
 }
 
 export default function Projections({ loaderData }: Route.ComponentProps) {
-  const { projections } = loaderData;
+  const { projections, ops } = loaderData;
   const revalidator = useRevalidator();
   const rebuildFetcher = useFetcher<typeof action>();
 
@@ -279,6 +283,8 @@ export default function Projections({ loaderData }: Route.ComponentProps) {
         every event from the start of the stream. Reactor consumers are
         hidden from rebuild — replaying them would re-issue commands.
       </Text>
+
+      <OperationsCard ops={ops as GetOperationsStatusResponse} />
 
       <Box pos="relative">
         <LoadingOverlay
@@ -471,4 +477,121 @@ function Row({
       </Table.Td>
     </Table.Tr>
   );
+}
+
+// OperationsCard renders the live state of the three background loops
+// (fees accruer, periodic reconciler, margin reactor) as a row of
+// stat blocks above the projections table. Sourced from
+// DiagnosticsService.GetOperationsStatus; revalidates on the same 3s
+// cycle as the projections table.
+function OperationsCard({ ops }: { ops: GetOperationsStatusResponse }) {
+  return (
+    <Stack gap="xs">
+      <Title order={5}>Operations</Title>
+      <Group gap="md" align="stretch" grow>
+        <OpsBlock title="Fees Accruer" subtitle={fmtInterval(ops.accruer?.intervalMs)}>
+          {ops.accruer?.lastTickAt ? (
+            <Stack gap={2}>
+              <Text size="xs">
+                Last tick {fmtRelative(ops.accruer.lastTickAt)} —{" "}
+                {fmtDurMs(ops.accruer.lastTickMs)}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {ops.accruer.lastTickAccounts} account
+                {ops.accruer.lastTickAccounts === 1 ? "" : "s"},{" "}
+                {ops.accruer.lastTickFailed} failed
+              </Text>
+            </Stack>
+          ) : (
+            <Text size="xs" c="dimmed">
+              Awaiting first tick…
+            </Text>
+          )}
+        </OpsBlock>
+        <OpsBlock title="Reconciler" subtitle={fmtInterval(ops.reconciler?.intervalMs)}>
+          {ops.reconciler?.lastTickAt ? (
+            <Stack gap={2}>
+              <Text size="xs">
+                Last tick {fmtRelative(ops.reconciler.lastTickAt)} —{" "}
+                {fmtDurMs(ops.reconciler.lastTickMs)}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {ops.reconciler.lastTickSagasReconciled} saga
+                {ops.reconciler.lastTickSagasReconciled === 1 ? "" : "s"} ·{" "}
+                {ops.reconciler.lastTickMarginCallsEvaluated} call
+                {ops.reconciler.lastTickMarginCallsEvaluated === 1 ? "" : "s"} ·{" "}
+                {ops.reconciler.lastTickFailedSagas} failed
+              </Text>
+            </Stack>
+          ) : (
+            <Text size="xs" c="dimmed">
+              Awaiting first tick…
+            </Text>
+          )}
+        </OpsBlock>
+        <OpsBlock
+          title="Margin Reactor"
+          subtitle={`grace ${fmtDurMs(ops.marginReactor?.graceMs ?? 0n)}`}
+        >
+          <Text size="xs">
+            {ops.marginReactor?.activeCallCount ?? 0} open call
+            {ops.marginReactor?.activeCallCount === 1 ? "" : "s"}
+          </Text>
+          <Text size="xs" c="dimmed">
+            Event-driven (no tick)
+          </Text>
+        </OpsBlock>
+      </Group>
+    </Stack>
+  );
+}
+
+function OpsBlock({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Box style={{ border: "1px solid var(--mantine-color-default-border)", borderRadius: 4, padding: 8 }}>
+      <Stack gap={2}>
+        <Group justify="space-between" gap={4}>
+          <Text size="xs" fw={700}>
+            {title}
+          </Text>
+          <Text size="xs" c="dimmed">
+            {subtitle}
+          </Text>
+        </Group>
+        {children}
+      </Stack>
+    </Box>
+  );
+}
+
+function fmtInterval(ms: bigint | undefined): string {
+  if (!ms || ms <= 0n) return "no interval";
+  return `every ${fmtDurMs(ms)}`;
+}
+
+function fmtDurMs(ms: bigint | number): string {
+  const n = typeof ms === "bigint" ? Number(ms) : ms;
+  if (n <= 0) return "0ms";
+  if (n < 1000) return `${n}ms`;
+  const s = n / 1000;
+  if (s < 60) return `${s.toFixed(s >= 10 ? 0 : 1)}s`;
+  const m = s / 60;
+  if (m < 60) return `${m.toFixed(0)}m`;
+  return `${(m / 60).toFixed(1)}h`;
+}
+
+function fmtRelative(ts: { seconds: bigint; nanos: number } | undefined): string {
+  if (!ts) return "—";
+  const ms = Number(ts.seconds) * 1000 + Math.floor(ts.nanos / 1_000_000);
+  const diff = Math.max(0, Date.now() - ms);
+  if (diff < 1000) return "just now";
+  return `${fmtDurMs(diff)} ago`;
 }
