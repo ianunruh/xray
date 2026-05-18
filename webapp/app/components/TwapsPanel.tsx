@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import {
   ActionIcon,
   Card,
@@ -10,8 +10,8 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import { useFetcher } from "react-router";
 import { Side } from "../../src/gen/orderbook/v1/events_pb";
-import { sagaClient } from "~/lib/client";
 import { formatPrice, formatQuantity } from "~/lib/format";
 
 export type TwapRow = {
@@ -37,6 +37,8 @@ function avgFillPrice(filled: bigint, cash: bigint): bigint | null {
   return cash / filled;
 }
 
+type CancelResult = { ok: boolean; intent: string; error?: string };
+
 export function TwapsPanel({
   rows,
   onJumpToAggregate,
@@ -44,30 +46,40 @@ export function TwapsPanel({
   rows: TwapRow[];
   onJumpToAggregate?: (aggregateId: string) => void;
 }) {
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const fetcher = useFetcher<CancelResult>();
+  const cancellingId =
+    fetcher.state !== "idle" &&
+    fetcher.formData?.get("intent") === "cancel-saga"
+      ? String(fetcher.formData.get("sagaId") ?? "")
+      : null;
+
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    const data = fetcher.data;
+    if (data.ok) {
+      notifications.show({
+        title: "TWAP cancelled",
+        message: "",
+        color: "green",
+      });
+    } else if (data.error) {
+      notifications.show({
+        title: "Cancel failed",
+        message: data.error,
+        color: "red",
+      });
+    }
+  }, [fetcher.state, fetcher.data]);
 
   if (rows.length === 0) {
     return null;
   }
 
-  async function handleCancel(sagaId: string, symbol: string) {
-    setCancellingId(sagaId);
-    try {
-      await sagaClient.cancel({ sagaId });
-      notifications.show({
-        title: "TWAP cancelled",
-        message: `Cancelled TWAP for ${symbol}`,
-        color: "green",
-      });
-    } catch (e: unknown) {
-      notifications.show({
-        title: "Cancel failed",
-        message: e instanceof Error ? e.message : String(e),
-        color: "red",
-      });
-    } finally {
-      setCancellingId(null);
-    }
+  function handleCancel(sagaId: string) {
+    const fd = new FormData();
+    fd.set("intent", "cancel-saga");
+    fd.set("sagaId", sagaId);
+    fetcher.submit(fd, { method: "post" });
   }
 
   return (
@@ -141,7 +153,7 @@ export function TwapsPanel({
                         variant="subtle"
                         color="red"
                         loading={cancellingId === t.sagaId}
-                        onClick={() => handleCancel(t.sagaId, t.symbol)}
+                        onClick={() => handleCancel(t.sagaId)}
                         title="Cancel TWAP"
                       >
                         X

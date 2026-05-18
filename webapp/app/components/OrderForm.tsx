@@ -14,8 +14,13 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import { toJsonString } from "@bufbuild/protobuf";
+import { useFetcher } from "react-router";
 import { Side, OrderType, PositionSide, TimeInForce } from "../../src/gen/orderbook/v1/events_pb";
-import { sagaClient } from "~/lib/client";
+import {
+  type PlaceSagaRequest,
+  PlaceSagaRequestSchema,
+} from "../../src/gen/saga/v1/saga_pb";
 import { formatMoney, formatPrice, moneyToPrice, priceToNumber } from "~/lib/format";
 import { useAccountData } from "../hooks/accountData";
 import { useSharedMarketDepth } from "../hooks/marketDepth";
@@ -128,7 +133,7 @@ function ImpactRow({
 // modal and (b) actually submit the order if the user confirms. Built
 // after validation passes — once stored, the modal opens.
 type Pending = {
-  request: Parameters<typeof sagaClient.place>[0];
+  request: PlaceSagaRequest;
   heading: string;
   color: string;
   rows: { label: string; value: string }[];
@@ -136,6 +141,8 @@ type Pending = {
   successMessage: string;
   failureTitle: string;
 };
+
+type PlaceResult = { ok: boolean; intent: string; error?: string };
 
 const ACTION_MAP: Record<
   Action,
@@ -171,8 +178,32 @@ export function OrderForm({
   const [trailAmount, setTrailAmount] = useState<number | string>("");
   const [trailMode, setTrailMode] = useState<"AMOUNT" | "BPS">("AMOUNT");
   const [trailLimitOffset, setTrailLimitOffset] = useState<number | string>("");
-  const [loading, setLoading] = useState(false);
+  const fetcher = useFetcher<PlaceResult>();
+  const loading = fetcher.state !== "idle";
   const [pending, setPending] = useState<Pending | null>(null);
+
+  // React to place-saga action completion: surface the success/failure
+  // notification using metadata captured on `pending`, then clear it
+  // (which also closes the confirmation modal).
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data || !pending) return;
+    const data = fetcher.data;
+    if (data.ok) {
+      notifications.show({
+        title: pending.successTitle,
+        message: pending.successMessage,
+        color: "green",
+      });
+      setPending(null);
+    } else if (data.error) {
+      notifications.show({
+        title: pending.failureTitle,
+        message: data.error,
+        color: "red",
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.state, fetcher.data]);
 
   // Apply a fresh prefill — only triggers on nonce change so multiple
   // clicks on the same Close-at-50% menu re-apply even if the values
@@ -315,10 +346,12 @@ export function OrderForm({
       const verb = ACTION_MAP[action].verb;
       setPending({
         request: {
+          $typeName: "saga.v1.PlaceSagaRequest",
           accountId,
           plan: {
             case: "twap",
             value: {
+              $typeName: "saga.v1.TWAPPlan",
               symbol,
               side,
               positionSide: ps,
@@ -383,21 +416,25 @@ export function OrderForm({
       }
       setPending({
         request: {
+          $typeName: "saga.v1.PlaceSagaRequest",
           accountId,
           plan: {
             case: "singleOrder",
             value: {
+              $typeName: "saga.v1.SingleOrderPlan",
               symbol,
               side,
               orderType: ORDER_TYPES[orderType] ?? OrderType.LIMIT,
               price: 0n,
               stopPrice: moneyToPrice(stop),
               quantity: BigInt(qty),
+              displayQuantity: 0n,
               trailAmount: trailMode === "AMOUNT" ? moneyToPrice(trail) : 0n,
               trailOffsetBps: trailMode === "BPS" ? Math.round(trail) : 0,
               limitOffset: isTrailingLimit ? moneyToPrice(limOff) : 0n,
               timeInForce: TimeInForce.GTC,
               positionSide: ps,
+              replaceOrderId: "",
             },
           },
         },
@@ -442,18 +479,25 @@ export function OrderForm({
       }
       setPending({
         request: {
+          $typeName: "saga.v1.PlaceSagaRequest",
           accountId,
           plan: {
             case: "singleOrder",
             value: {
+              $typeName: "saga.v1.SingleOrderPlan",
               symbol,
               side,
               orderType: ORDER_TYPES[orderType] ?? OrderType.MARKET,
               price: isMarket ? 0n : moneyToPrice(prc),
+              stopPrice: 0n,
               quantity: BigInt(qty),
               displayQuantity: useIceberg ? BigInt(dq) : 0n,
+              trailAmount: 0n,
+              trailOffsetBps: 0,
+              limitOffset: 0n,
               timeInForce: TIME_IN_FORCE[tif] ?? TimeInForce.IOC,
               positionSide: ps,
+              replaceOrderId: "",
             },
           },
         },
@@ -496,10 +540,12 @@ export function OrderForm({
       const verb = direction === "SHORT" ? "Cover" : "Sell";
       setPending({
         request: {
+          $typeName: "saga.v1.PlaceSagaRequest",
           accountId,
           plan: {
             case: "oco",
             value: {
+              $typeName: "saga.v1.OCOPlan",
               symbol,
               exitSide: side,
               quantity: BigInt(qty),
@@ -545,10 +591,12 @@ export function OrderForm({
     const verb = direction === "SHORT" ? "Short" : "Long";
     setPending({
       request: {
+        $typeName: "saga.v1.PlaceSagaRequest",
         accountId,
         plan: {
           case: "bracket",
           value: {
+            $typeName: "saga.v1.BracketPlan",
             symbol,
             entrySide: side,
             entryPrice: moneyToPrice(entry),
@@ -572,26 +620,12 @@ export function OrderForm({
     });
   }
 
-  async function executePending() {
+  function executePending() {
     if (!pending) return;
-    setLoading(true);
-    try {
-      await sagaClient.place(pending.request);
-      notifications.show({
-        title: pending.successTitle,
-        message: pending.successMessage,
-        color: "green",
-      });
-      setPending(null);
-    } catch (e: unknown) {
-      notifications.show({
-        title: pending.failureTitle,
-        message: e instanceof Error ? e.message : String(e),
-        color: "red",
-      });
-    } finally {
-      setLoading(false);
-    }
+    const fd = new FormData();
+    fd.set("intent", "place-saga");
+    fd.set("request", toJsonString(PlaceSagaRequestSchema, pending.request));
+    fetcher.submit(fd, { method: "post", action: "/trading" });
   }
 
   // previewBlock is shared between the inline form (live impact while

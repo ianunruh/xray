@@ -20,12 +20,12 @@ import {
 import type { OrderPrefill } from "./OrderForm";
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import { formatMoney, formatPrice, formatQuantity, moneyToPrice, priceToNumber } from "~/lib/format";
+import { formatMoney, formatPrice, formatQuantity, priceToNumber } from "~/lib/format";
 import { OrderType, PositionSide, Side, TimeInForce } from "../../src/gen/orderbook/v1/events_pb";
 import { OrderStatus } from "../../src/gen/portfolio/v1/service_pb";
+import { useFetcher } from "react-router";
 import { useAccountData } from "../hooks/accountData";
 import { useMarginCalls } from "../hooks/useMarginCalls";
-import { portfolioClient, sagaClient } from "~/lib/client";
 
 function timestampToMillis(ts: Timestamp | undefined): number | null {
   if (!ts) return null;
@@ -141,6 +141,16 @@ function orderStatusColor(status: OrderStatus): string | undefined {
   }
 }
 
+type ModalResult = {
+  ok: boolean;
+  intent: string;
+  error?: string;
+  accountId?: string;
+  symbol?: string;
+  amount?: number;
+  quantity?: number;
+};
+
 function DepositModal({
   accountId,
   opened,
@@ -151,33 +161,37 @@ function DepositModal({
   onClose: () => void;
 }) {
   const [amount, setAmount] = useState<number | string>("");
-  const [loading, setLoading] = useState(false);
+  const fetcher = useFetcher<ModalResult>();
+  const loading = fetcher.state !== "idle";
 
-  async function handleSubmit() {
-    const val = Number(amount);
-    if (!val || val <= 0) return;
-    setLoading(true);
-    try {
-      await portfolioClient.deposit({
-        accountId,
-        amount: moneyToPrice(val),
-      });
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    const data = fetcher.data;
+    if (data.ok) {
       notifications.show({
         title: "Deposit successful",
-        message: `Deposited $${val} into ${accountId}`,
+        message: `Deposited $${data.amount ?? 0} into ${accountId}`,
         color: "green",
       });
       setAmount("");
       onClose();
-    } catch (e: unknown) {
+    } else if (data.error) {
       notifications.show({
         title: "Deposit failed",
-        message: e instanceof Error ? e.message : String(e),
+        message: data.error,
         color: "red",
       });
-    } finally {
-      setLoading(false);
     }
+  }, [fetcher.state, fetcher.data, accountId, onClose]);
+
+  function handleSubmit() {
+    const val = Number(amount);
+    if (!val || val <= 0) return;
+    const fd = new FormData();
+    fd.set("intent", "deposit");
+    fd.set("accountId", accountId);
+    fd.set("amount", String(val));
+    fetcher.submit(fd, { method: "post", action: "/trading" });
   }
 
   return (
@@ -213,33 +227,37 @@ function WithdrawModal({
   onClose: () => void;
 }) {
   const [amount, setAmount] = useState<number | string>("");
-  const [loading, setLoading] = useState(false);
+  const fetcher = useFetcher<ModalResult>();
+  const loading = fetcher.state !== "idle";
 
-  async function handleSubmit() {
-    const val = Number(amount);
-    if (!val || val <= 0) return;
-    setLoading(true);
-    try {
-      await portfolioClient.withdraw({
-        accountId,
-        amount: moneyToPrice(val),
-      });
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    const data = fetcher.data;
+    if (data.ok) {
       notifications.show({
         title: "Withdrawal successful",
-        message: `Withdrew $${val} from ${accountId}`,
+        message: `Withdrew $${data.amount ?? 0} from ${accountId}`,
         color: "green",
       });
       setAmount("");
       onClose();
-    } catch (e: unknown) {
+    } else if (data.error) {
       notifications.show({
         title: "Withdrawal failed",
-        message: e instanceof Error ? e.message : String(e),
+        message: data.error,
         color: "red",
       });
-    } finally {
-      setLoading(false);
     }
+  }, [fetcher.state, fetcher.data, accountId, onClose]);
+
+  function handleSubmit() {
+    const val = Number(amount);
+    if (!val || val <= 0) return;
+    const fd = new FormData();
+    fd.set("intent", "withdraw");
+    fd.set("accountId", accountId);
+    fd.set("amount", String(val));
+    fetcher.submit(fd, { method: "post", action: "/trading" });
   }
 
   return (
@@ -279,39 +297,43 @@ function CreditSharesModal({
   const [symbol, setSymbol] = useState("");
   const [quantity, setQuantity] = useState<number | string>("");
   const [costPerShare, setCostPerShare] = useState<number | string>("");
-  const [loading, setLoading] = useState(false);
+  const fetcher = useFetcher<ModalResult>();
+  const loading = fetcher.state !== "idle";
 
-  async function handleSubmit() {
-    if (!symbol) return;
-    const qty = Number(quantity);
-    const cost = Number(costPerShare);
-    if (!qty || qty <= 0 || !cost || cost <= 0) return;
-    setLoading(true);
-    try {
-      await portfolioClient.creditShares({
-        accountId,
-        symbol,
-        quantity: BigInt(qty),
-        costPerShare: moneyToPrice(cost),
-      });
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    const data = fetcher.data;
+    if (data.ok) {
       notifications.show({
         title: "Shares credited",
-        message: `Credited ${qty} ${symbol} to ${accountId}`,
+        message: `Credited ${data.quantity ?? 0} ${data.symbol ?? ""} to ${accountId}`,
         color: "green",
       });
       setSymbol("");
       setQuantity("");
       setCostPerShare("");
       onClose();
-    } catch (e: unknown) {
+    } else if (data.error) {
       notifications.show({
         title: "Credit shares failed",
-        message: e instanceof Error ? e.message : String(e),
+        message: data.error,
         color: "red",
       });
-    } finally {
-      setLoading(false);
     }
+  }, [fetcher.state, fetcher.data, accountId, onClose]);
+
+  function handleSubmit() {
+    if (!symbol) return;
+    const qty = Number(quantity);
+    const cost = Number(costPerShare);
+    if (!qty || qty <= 0 || !cost || cost <= 0) return;
+    const fd = new FormData();
+    fd.set("intent", "credit-shares");
+    fd.set("accountId", accountId);
+    fd.set("symbol", symbol);
+    fd.set("quantity", String(qty));
+    fd.set("costPerShare", String(cost));
+    fetcher.submit(fd, { method: "post", action: "/trading" });
   }
 
   return (
@@ -932,33 +954,43 @@ export function PortfolioPositions({
 }
 
 // PortfolioOrders renders the pending and recent orders tables for the
-// account. Cancel actions hang off the saga client.
+// account. Cancel actions submit to /trading's cancel-saga action.
 export function PortfolioOrders({
   onJumpToAggregate,
 }: {
   onJumpToAggregate?: (aggregateId: string) => void;
 }) {
   const { portfolio } = useAccountData();
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const fetcher = useFetcher<ModalResult>();
+  const cancellingId =
+    fetcher.state !== "idle" &&
+    fetcher.formData?.get("intent") === "cancel-saga"
+      ? String(fetcher.formData.get("sagaId") ?? "")
+      : null;
 
-  async function handleCancel(sagaId: string, symbol: string) {
-    setCancellingId(sagaId);
-    try {
-      await sagaClient.cancel({ sagaId });
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    const data = fetcher.data;
+    if (data.ok) {
       notifications.show({
         title: "Order cancelled",
-        message: `Cancelled order for ${symbol}`,
+        message: "",
         color: "green",
       });
-    } catch (e: unknown) {
+    } else if (data.error) {
       notifications.show({
         title: "Cancel failed",
-        message: e instanceof Error ? e.message : String(e),
+        message: data.error,
         color: "red",
       });
-    } finally {
-      setCancellingId(null);
     }
+  }, [fetcher.state, fetcher.data]);
+
+  function handleCancel(sagaId: string) {
+    const fd = new FormData();
+    fd.set("intent", "cancel-saga");
+    fd.set("sagaId", sagaId);
+    fetcher.submit(fd, { method: "post", action: "/trading" });
   }
 
   if (!portfolio) {
@@ -1056,7 +1088,7 @@ export function PortfolioOrders({
                               <Menu.Item
                                 color="red"
                                 disabled={cancellingId === o.sagaId}
-                                onClick={() => handleCancel(o.sagaId, o.symbol)}
+                                onClick={() => handleCancel(o.sagaId)}
                               >
                                 Cancel
                               </Menu.Item>

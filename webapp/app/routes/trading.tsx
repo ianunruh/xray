@@ -20,12 +20,14 @@ import {
   useSearchParams,
 } from "react-router";
 import type { Route } from "./+types/trading";
+import { fromJsonString } from "@bufbuild/protobuf";
 import {
   orderBookClient,
   portfolioClient,
   sagaClient,
 } from "~/lib/client.server";
 import { moneyToPrice } from "~/lib/format";
+import { PlaceSagaRequestSchema } from "../../src/gen/saga/v1/saga_pb";
 import { AccountDataProvider } from "~/hooks/accountData";
 import { MarketDepthProvider } from "~/hooks/marketDepth";
 import { useOrderStatusNotifications } from "~/hooks/useOrderStatusNotifications";
@@ -172,8 +174,19 @@ export async function loader({ request }: Route.LoaderArgs) {
   return { accountIds, symbols, brackets, ocos, twaps, closingPnl };
 }
 
+// ActionResult mirrors the relevant inputs back to the client so
+// notifications can render specifics (amount, symbol, etc.) without
+// reaching into fetcher.formData — that field is typed away once the
+// fetcher returns to idle.
 type ActionResult =
-  | { ok: true; intent: string; accountId?: string }
+  | {
+      ok: true;
+      intent: string;
+      accountId?: string;
+      symbol?: string;
+      amount?: number;
+      quantity?: number;
+    }
   | { ok: false; intent: string; error: string };
 
 export async function action({
@@ -184,15 +197,73 @@ export async function action({
   try {
     switch (intent) {
       case "create-account": {
+        // Same RPC as "deposit"; kept separate so the trading route can
+        // auto-select the new account on success.
         const accountId = String(form.get("accountId") ?? "").trim();
-        const deposit = Number(form.get("deposit") ?? "0");
+        const amount = Number(form.get("amount") ?? "0");
         if (!accountId) throw new Error("account id required");
-        if (!deposit || deposit <= 0) throw new Error("deposit must be > 0");
+        if (!amount || amount <= 0) throw new Error("amount must be > 0");
         await portfolioClient.deposit({
           accountId,
-          amount: moneyToPrice(deposit),
+          amount: moneyToPrice(amount),
         });
-        return { ok: true, intent, accountId };
+        return { ok: true, intent, accountId, amount };
+      }
+      case "deposit": {
+        const accountId = String(form.get("accountId") ?? "").trim();
+        const amount = Number(form.get("amount") ?? "0");
+        if (!accountId) throw new Error("account id required");
+        if (!amount || amount <= 0) throw new Error("amount must be > 0");
+        await portfolioClient.deposit({
+          accountId,
+          amount: moneyToPrice(amount),
+        });
+        return { ok: true, intent, accountId, amount };
+      }
+      case "withdraw": {
+        const accountId = String(form.get("accountId") ?? "").trim();
+        const amount = Number(form.get("amount") ?? "0");
+        if (!accountId) throw new Error("account id required");
+        if (!amount || amount <= 0) throw new Error("amount must be > 0");
+        await portfolioClient.withdraw({
+          accountId,
+          amount: moneyToPrice(amount),
+        });
+        return { ok: true, intent, accountId, amount };
+      }
+      case "credit-shares": {
+        const accountId = String(form.get("accountId") ?? "").trim();
+        const symbol = String(form.get("symbol") ?? "").trim();
+        const quantity = Number(form.get("quantity") ?? "0");
+        const costPerShare = Number(form.get("costPerShare") ?? "0");
+        if (!accountId) throw new Error("account id required");
+        if (!symbol) throw new Error("symbol required");
+        if (!quantity || quantity <= 0) throw new Error("quantity must be > 0");
+        if (!costPerShare || costPerShare <= 0)
+          throw new Error("cost per share must be > 0");
+        await portfolioClient.creditShares({
+          accountId,
+          symbol,
+          quantity: BigInt(quantity),
+          costPerShare: moneyToPrice(costPerShare),
+        });
+        return { ok: true, intent, accountId, symbol, quantity };
+      }
+      case "place-saga": {
+        // Round-trip the full PlaceSagaRequest through protojson — handles
+        // the plan oneOf (single/bracket/oco/twap) and bigint fields
+        // without bespoke serialization.
+        const requestJson = String(form.get("request") ?? "");
+        if (!requestJson) throw new Error("missing request");
+        const req = fromJsonString(PlaceSagaRequestSchema, requestJson);
+        await sagaClient.place(req);
+        return { ok: true, intent };
+      }
+      case "cancel-saga": {
+        const sagaId = String(form.get("sagaId") ?? "");
+        if (!sagaId) throw new Error("missing sagaId");
+        await sagaClient.cancel({ sagaId });
+        return { ok: true, intent };
       }
       default:
         return { ok: false, intent, error: `unknown intent: ${intent}` };
@@ -297,7 +368,7 @@ export default function Trading({ loaderData }: Route.ComponentProps) {
     const fd = new FormData();
     fd.set("intent", "create-account");
     fd.set("accountId", id);
-    fd.set("deposit", String(dep));
+    fd.set("amount", String(dep));
     createFetcher.submit(fd, { method: "post" });
   }
 
