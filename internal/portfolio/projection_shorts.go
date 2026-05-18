@@ -149,3 +149,45 @@ func (p *PgShortsBySymbolProjection) AccountsWithShort(ctx context.Context, symb
 	}
 	return out, nil
 }
+
+// SymbolShortInterest is the venue-wide aggregate for one symbol —
+// every account's open short position summed, plus the count of
+// accounts contributing.
+type SymbolShortInterest struct {
+	Symbol       string
+	TotalQty     int64
+	AccountCount int32
+}
+
+// ListShortInterest returns one row per symbol with at least one open
+// short, sorted by symbol. Used by the venue-wide short-interest panel.
+func (p *PgShortsBySymbolProjection) ListShortInterest(ctx context.Context) ([]*SymbolShortInterest, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT symbol, SUM(quantity), COUNT(*)
+		FROM projection_shorts_by_symbol
+		WHERE quantity > 0
+		GROUP BY symbol
+		ORDER BY symbol`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query short interest: %w", err)
+	}
+	defer rows.Close()
+	var out []*SymbolShortInterest
+	for rows.Next() {
+		var (
+			sym    string
+			total  int64
+			count  int32
+		)
+		if err := rows.Scan(&sym, &total, &count); err != nil {
+			return nil, fmt.Errorf("scan short interest: %w", err)
+		}
+		out = append(out, &SymbolShortInterest{
+			Symbol:       sym,
+			TotalQty:     total,
+			AccountCount: count,
+		})
+	}
+	return out, rows.Err()
+}
