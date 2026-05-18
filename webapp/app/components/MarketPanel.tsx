@@ -23,12 +23,14 @@ import { DepthSide } from "./MarketDepth";
 import { TradeTable } from "./TradeTable";
 import { CandleChart } from "./CandleChart";
 import { ReplayControls } from "./ReplayControls";
-import type { MarketPhase } from "../../src/gen/orderbook/v1/events_pb";
+import { MarketPhase, Side } from "../../src/gen/orderbook/v1/events_pb";
 import type {
   GetOfficialCloseResponse,
+  IndicativeAuctionState,
   PriceLevel,
   Trade,
 } from "../../src/gen/orderbook/v1/service_pb";
+import { useIndicativeAuctionState } from "../hooks/useIndicativeAuctionState";
 import type { ReplayBounds } from "~/lib/replay";
 
 type Mode = "live" | "replay";
@@ -277,6 +279,72 @@ function useLiveTrades(symbol: string): Trade[] {
   return trades;
 }
 
+// IndicativeAuctionBanner renders the live "what would uncross do right
+// now" snapshot while the symbol is in an auction phase. Subscribed in
+// LiveBody via useIndicativeAuctionState; rendered only when phase is
+// AUCTION or CLOSING_AUCTION. The server pushes on every order
+// arrival + a 1Hz heartbeat, so the freshness label ticks locally to
+// avoid going stale-looking between server updates.
+function IndicativeAuctionBanner({ state }: { state: IndicativeAuctionState }) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, []);
+  const computedMs = state.computedAt
+    ? Number(state.computedAt.seconds) * 1000 +
+      Math.floor(state.computedAt.nanos / 1_000_000)
+    : nowMs;
+  const ageSec = Math.max(0, Math.round((nowMs - computedMs) / 1000));
+  const isClosing = state.phase === MarketPhase.CLOSING_AUCTION;
+  const label = isClosing ? "Indicative closing cross" : "Indicative opening cross";
+  const imbColor =
+    state.imbalanceQty === 0n
+      ? "dimmed"
+      : state.imbalanceSide === Side.BUY
+        ? "green"
+        : "red";
+  const imbText =
+    state.imbalanceQty === 0n
+      ? "balanced"
+      : `${formatQuantity(state.imbalanceQty)} ${state.imbalanceSide === Side.BUY ? "buy" : "sell"}`;
+  return (
+    <Card withBorder bg="dark.6" p="xs">
+      <Group justify="space-between" align="center" wrap="nowrap">
+        <Group gap="xl" wrap="nowrap">
+          <div>
+            <Text size="xs" c="dimmed">
+              {label}
+            </Text>
+            <Text fw={700} ff="monospace" size="lg">
+              {state.indicativePrice > 0n ? formatPrice(state.indicativePrice) : "—"}
+            </Text>
+          </div>
+          <div>
+            <Text size="xs" c="dimmed">
+              Match Qty
+            </Text>
+            <Text fw={600} ff="monospace">
+              {state.matchedQty > 0n ? formatQuantity(state.matchedQty) : "—"}
+            </Text>
+          </div>
+          <div>
+            <Text size="xs" c="dimmed">
+              Imbalance
+            </Text>
+            <Text fw={600} ff="monospace" c={imbColor}>
+              {imbText}
+            </Text>
+          </div>
+        </Group>
+        <Text size="xs" c="dimmed">
+          {ageSec}s ago
+        </Text>
+      </Group>
+    </Card>
+  );
+}
+
 function LiveBody({
   symbol,
   sessionVolume,
@@ -288,6 +356,10 @@ function LiveBody({
 }) {
   const { bids, asks, maxQuantity } = useSharedMarketDepth();
   const trades = useLiveTrades(symbol);
+  const indicative = useIndicativeAuctionState(symbol);
+  const inAuction =
+    indicative?.phase === MarketPhase.AUCTION ||
+    indicative?.phase === MarketPhase.CLOSING_AUCTION;
   return (
     <>
       <MarketTicker
@@ -297,6 +369,9 @@ function LiveBody({
         sessionVolume={sessionVolume}
         officialClose={officialClose}
       />
+      {inAuction && indicative && (
+        <IndicativeAuctionBanner state={indicative} />
+      )}
       <CandleChart symbol={symbol} />
       <Grid>
         <Grid.Col span={6}>
