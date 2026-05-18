@@ -19,6 +19,7 @@ package reconciler
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
@@ -58,6 +59,20 @@ type Reconciler struct {
 	activeCalls      portfolio.ActiveMarginCallsTracker
 	now              func() time.Time
 	log              *slog.Logger
+
+	mu     sync.Mutex
+	status Status
+}
+
+// Status is a point-in-time snapshot of the reconciler for diagnostics.
+// LastTickAt is zero before the first tick completes.
+type Status struct {
+	Interval                     time.Duration
+	LastTickAt                   time.Time
+	LastTickDuration             time.Duration
+	LastTickSagasReconciled      int
+	LastTickMarginCallsEvaluated int
+	LastTickFailedSagas          int
 }
 
 func New(
@@ -86,7 +101,16 @@ func New(
 		activeCalls:      activeCalls,
 		now:              time.Now,
 		log:              log,
+		status:           Status{Interval: interval},
 	}
+}
+
+// Status returns a snapshot of the reconciler's current configuration
+// and last-tick stats. Safe to call from any goroutine.
+func (r *Reconciler) Status() Status {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.status
 }
 
 // Run loops until ctx is cancelled, calling ReconcileOnce on each tick.
@@ -110,33 +134,49 @@ func (r *Reconciler) Run(ctx context.Context) {
 // then evaluate every open margin call for grace expiry. Errors are
 // logged per-item so one bad saga doesn't block the rest of the pass.
 func (r *Reconciler) ReconcileOnce(ctx context.Context) error {
+	start := r.now()
 	sagas, err := r.sagaLookup.List(ctx, "", "",
 		sagav1.SagaKind_SAGA_KIND_UNSPECIFIED,
 		sagav1.SagaStatus_SAGA_STATUS_ACTIVE)
 	if err != nil {
 		return err
 	}
+	failedSagas := 0
 	for _, s := range sagas {
 		if err := r.reconcileSaga(ctx, s); err != nil {
+			failedSagas++
 			r.log.Warn("reconcile saga failed",
 				"saga_id", s.SagaID, "kind", s.Kind, "error", err)
 		}
 	}
-	r.reconcileMarginCalls(ctx)
+	callsEvaluated := r.reconcileMarginCalls(ctx)
+	r.recordTick(start, len(sagas), callsEvaluated, failedSagas)
 	return nil
 }
 
-func (r *Reconciler) reconcileMarginCalls(ctx context.Context) {
+func (r *Reconciler) recordTick(start time.Time, sagas, callsEvaluated, failed int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.status.LastTickAt = start
+	r.status.LastTickDuration = r.now().Sub(start)
+	r.status.LastTickSagasReconciled = sagas
+	r.status.LastTickMarginCallsEvaluated = callsEvaluated
+	r.status.LastTickFailedSagas = failed
+}
+
+func (r *Reconciler) reconcileMarginCalls(ctx context.Context) int {
 	if r.marginReactor == nil || r.activeCalls == nil {
-		return
+		return 0
 	}
 	now := r.now()
-	for _, call := range r.activeCalls.ListOpenCalls(ctx) {
+	calls := r.activeCalls.ListOpenCalls(ctx)
+	for _, call := range calls {
 		if err := r.marginReactor.EvaluateGraceExpiry(ctx, call.AccountID, now); err != nil {
 			r.log.Warn("reconcile margin call failed",
 				"account_id", call.AccountID, "call_id", call.CallID, "error", err)
 		}
 	}
+	return len(calls)
 }
 
 func (r *Reconciler) reconcileSaga(ctx context.Context, s *sagasvc.SagaRow) error {
