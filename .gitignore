@@ -3,5 +3,4 @@ web/dist/
 webapp/node_modules/
 webapp/build/
 webapp/.react-router/
-webapp/src/gen/
 xray.log
