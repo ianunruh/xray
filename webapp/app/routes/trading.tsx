@@ -40,6 +40,7 @@ import {
 } from "../../src/gen/orderbook/v1/events_pb";
 import type { GetOfficialCloseResponse } from "../../src/gen/orderbook/v1/service_pb";
 import type {
+  FeeRecord,
   GetMarginSnapshotResponse,
   MarginCallRecord,
   PreviewOrderImpactResponse,
@@ -65,16 +66,19 @@ import {
 } from "~/components/RecentPnLPanel";
 import { MarketPanel } from "~/components/MarketPanel";
 import { OrderForm, type OrderPrefill } from "~/components/OrderForm";
+import { PortfolioFees } from "~/components/PortfolioFees";
 import { SagaKind, SagaStatus } from "../../src/gen/saga/v1/saga_pb";
 
-type Tab = "trade" | "orders" | "positions";
+type Tab = "trade" | "orders" | "positions" | "fees";
 
 const REVALIDATE_INTERVAL_MS = 2500;
 const PNL_HISTORY_LIMIT = 25;
+const FEE_HISTORY_LIMIT = 200;
 
 function parseTab(v: string | null): Tab {
   if (v === "orders") return "orders";
   if (v === "positions") return "positions";
+  if (v === "fees") return "fees";
   return "trade";
 }
 
@@ -163,11 +167,12 @@ export async function loader({ request }: Route.LoaderArgs) {
       closingPnl: [] as RealizedPnlRow[],
       marginSnapshot: null as GetMarginSnapshotResponse | null,
       marginCalls: [] as MarginCallRecord[],
+      feeHistory: [] as FeeRecord[],
       ...symbolData,
     };
   }
 
-  const [bracketsResp, ocosResp, twapsResp, pnlResp, marginResp, marginCallsResp] =
+  const [bracketsResp, ocosResp, twapsResp, pnlResp, marginResp, marginCallsResp, feesResp] =
     await Promise.all([
       sagaClient.list({
         accountId: account,
@@ -187,6 +192,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       portfolioClient.getPnL({ accountId: account }),
       portfolioClient.getMarginSnapshot({ accountId: account }),
       portfolioClient.listMarginCalls({ accountId: account, limit: 20 }),
+      portfolioClient.listFeeHistory({ accountId: account, limit: FEE_HISTORY_LIMIT }),
     ]);
 
   const brackets: BracketRow[] = [];
@@ -273,6 +279,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     // RR's deeply-readonly loader transforms.
     marginSnapshot: marginResp as GetMarginSnapshotResponse,
     marginCalls: marginCallsResp.calls as MarginCallRecord[],
+    feeHistory: feesResp.records as FeeRecord[],
     ...symbolData,
   };
 }
@@ -427,6 +434,7 @@ export default function Trading({ loaderData }: Route.ComponentProps) {
   const marginSnapshot =
     loaderData.marginSnapshot as GetMarginSnapshotResponse | null;
   const marginCalls = loaderData.marginCalls as MarginCallRecord[];
+  const feeHistory = loaderData.feeHistory as FeeRecord[];
   const officialClose =
     loaderData.officialClose as GetOfficialCloseResponse | null;
   const navigate = useNavigate();
@@ -558,6 +566,7 @@ export default function Trading({ loaderData }: Route.ComponentProps) {
             ocos={ocos}
             twaps={twaps}
             closingPnl={closingPnl}
+            feeHistory={feeHistory}
             phase={phase}
             sessionVolume={sessionVolume}
             officialClose={officialClose}
@@ -611,6 +620,7 @@ function TradingBody({
   ocos,
   twaps,
   closingPnl,
+  feeHistory,
   phase,
   sessionVolume,
   officialClose,
@@ -628,6 +638,7 @@ function TradingBody({
   ocos: OcoRow[];
   twaps: TwapRow[];
   closingPnl: RealizedPnlRow[];
+  feeHistory: FeeRecord[];
   phase: MarketPhase;
   sessionVolume: bigint;
   officialClose: GetOfficialCloseResponse | null;
@@ -650,6 +661,7 @@ function TradingBody({
           <Tabs.Tab value="trade">Trade</Tabs.Tab>
           <Tabs.Tab value="orders">Orders</Tabs.Tab>
           <Tabs.Tab value="positions">Positions</Tabs.Tab>
+          <Tabs.Tab value="fees">Fees</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="trade" pt="md">
@@ -699,6 +711,10 @@ function TradingBody({
             />
             <RecentPnLPanel rows={closingPnl} />
           </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="fees" pt="md">
+          <PortfolioFees rows={feeHistory} />
         </Tabs.Panel>
       </Tabs>
     </Stack>
