@@ -302,6 +302,15 @@ export declare type PendingOrder = Message<"portfolio.v1.PendingOrder"> & {
    * @generated from field: int64 display_quantity = 14;
    */
   displayQuantity: bigint;
+
+  /**
+   * Cumulative transaction fees paid on this order's fills (this
+   * account's side only). Sum of TransactionFeeCharged.amount across
+   * every fill.
+   *
+   * @generated from field: int64 fees_paid = 15;
+   */
+  feesPaid: bigint;
 };
 
 /**
@@ -893,6 +902,17 @@ export declare type PreviewOrderImpactResponse = Message<"portfolio.v1.PreviewOr
    * @generated from field: repeated string warnings = 8;
    */
   warnings: string[];
+
+  /**
+   * Per-side transaction fee on the simulated fill, in cash units
+   * (TxnFeeBps applied to estimated_fill_price * quantity). Zero when
+   * estimated_fill_price is zero. The seller side pays a symmetric
+   * fee that is not shown here — this is what the previewing account
+   * would be charged.
+   *
+   * @generated from field: int64 estimated_fee = 9;
+   */
+  estimatedFee: bigint;
 };
 
 /**

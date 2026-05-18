@@ -159,6 +159,11 @@ func (r *Reactor) holdCashForBuy(ctx context.Context, saga *OrderSaga) error {
 	if err != nil {
 		return r.emitActionFailed(ctx, saga.SagaID, "hold_cash", err.Error())
 	}
+	// Pad the hold by the transaction fee that will be debited at
+	// settlement, so a maxed-out account doesn't overdraw on the fee
+	// debit. Sells/short-opens absorb their fees out of proceeds and
+	// don't need padding here.
+	cashAmount += margin.TxnFeeAmount(cashAmount)
 	if cashAmount > 0 {
 		holdCmd := portfolio.HoldCash{
 			AccountID:   saga.AccountID,
@@ -415,6 +420,7 @@ func (r *Reactor) settleTrade(ctx context.Context, sagaID string, data *orderboo
 		FillQuantity: data.Quantity,
 		FillPrice:    data.Price,
 		CashSettled:  cashAmount,
+		FeeCharged:   margin.TxnFeeAmount(cashAmount),
 	}
 	if err := r.sagaHandler.Handle(ctx, fillCmd, func(saga *OrderSaga) ([]es.Event, error) {
 		return ExecuteRecordFill(saga, fillCmd)

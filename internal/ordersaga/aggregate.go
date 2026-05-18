@@ -69,6 +69,7 @@ type OrderSaga struct {
 	AmountHeld     int64
 	FilledQty      int64
 	CashSettled    int64
+	FeesPaid       int64
 	Status         Status
 	ActionAttempts int
 	PositionSide   orderbookv1.PositionSide
@@ -149,6 +150,7 @@ func (s *OrderSaga) applyOrderPlaced(data *portfoliov1.OrderSagaOrderPlaced) {
 func (s *OrderSaga) applyFillRecorded(data *portfoliov1.OrderSagaFillRecorded) {
 	s.FilledQty += data.FillQuantity
 	s.CashSettled += data.CashSettled
+	s.FeesPaid += data.FeeCharged
 	s.ActionAttempts = 0
 }
 

@@ -903,6 +903,80 @@ export declare type ShortBorrowFeeAccrued = Message<"portfolio.v1.ShortBorrowFee
 export declare const ShortBorrowFeeAccruedSchema: GenMessage<ShortBorrowFeeAccrued>;
 
 /**
+ * TransactionFeeCharged records the per-side commission debited from
+ * an account on a single trade fill. Emitted alongside the matching
+ * settlement event (CashSettled, SharesSettled, ShortOpened,
+ * ShortCovered) by the four Execute*Settle* commands. One event per
+ * (saga, trade) per account — replays are short-circuited by the
+ * existing per-trade idempotency guard on the parent settlement.
+ *
+ * @generated from message portfolio.v1.TransactionFeeCharged
+ */
+export declare type TransactionFeeCharged = Message<"portfolio.v1.TransactionFeeCharged"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string order_saga_id = 2;
+   */
+  orderSagaId: string;
+
+  /**
+   * @generated from field: string trade_id = 3;
+   */
+  tradeId: string;
+
+  /**
+   * @generated from field: string symbol = 4;
+   */
+  symbol: string;
+
+  /**
+   * Notional this fee was applied to (price * quantity).
+   *
+   * @generated from field: int64 notional = 5;
+   */
+  notional: bigint;
+
+  /**
+   * Rate in bps (snapshot of TxnFeeBps at the time of the trade).
+   *
+   * @generated from field: int64 rate_bps = 6;
+   */
+  rateBps: bigint;
+
+  /**
+   * Cash debited from this account. Always > 0 (zero-fee fills omit
+   * the event entirely).
+   *
+   * @generated from field: int64 amount = 7;
+   */
+  amount: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp charged_at = 8;
+   */
+  chargedAt?: Timestamp | undefined;
+
+  /**
+   * Position side of the settlement this fee is paired with — LONG
+   * for buy/sell-to-close, SHORT for open/cover. Lets per-position
+   * projections route the fee to the correct row.
+   *
+   * @generated from field: orderbook.v1.PositionSide position_side = 9;
+   */
+  positionSide: PositionSide;
+};
+
+/**
+ * Describes the message portfolio.v1.TransactionFeeCharged.
+ * Use `create(TransactionFeeChargedSchema)` to create a new message.
+ */
+export declare const TransactionFeeChargedSchema: GenMessage<TransactionFeeCharged>;
+
+/**
  * @generated from message portfolio.v1.OrderSagaStarted
  */
 export declare type OrderSagaStarted = Message<"portfolio.v1.OrderSagaStarted"> & {
@@ -1137,6 +1211,15 @@ export declare type OrderSagaFillRecorded = Message<"portfolio.v1.OrderSagaFillR
    * @generated from field: google.protobuf.Timestamp filled_at = 6;
    */
   filledAt?: Timestamp | undefined;
+
+  /**
+   * Transaction fee debited from this account for this fill. Mirrors
+   * the amount on the TransactionFeeCharged portfolio event emitted
+   * alongside the fill's settlement.
+   *
+   * @generated from field: int64 fee_charged = 7;
+   */
+  feeCharged: bigint;
 };
 
 /**

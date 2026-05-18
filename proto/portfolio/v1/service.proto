@@ -87,6 +87,10 @@ message PendingOrder {
   int64 last_fill_price = 13;
   // Iceberg slice size for the underlying orderbook order; 0 = normal.
   int64 display_quantity = 14;
+  // Cumulative transaction fees paid on this order's fills (this
+  // account's side only). Sum of TransactionFeeCharged.amount across
+  // every fill.
+  int64 fees_paid = 15;
 }
 
 // OrderStatus is kept for the PendingOrder field on GetPortfolioResponse,
@@ -286,6 +290,13 @@ message PreviewOrderImpactResponse {
   // or "no ask liquidity for market buy". Empty when the preview is
   // clean.
   repeated string warnings = 8;
+
+  // Per-side transaction fee on the simulated fill, in cash units
+  // (TxnFeeBps applied to estimated_fill_price * quantity). Zero when
+  // estimated_fill_price is zero. The seller side pays a symmetric
+  // fee that is not shown here — this is what the previewing account
+  // would be charged.
+  int64 estimated_fee = 9;
 }
 
 message PositionMarginInfo {

@@ -186,6 +186,7 @@ type RecordFill struct {
 	FillQuantity int64
 	FillPrice    int64
 	CashSettled  int64
+	FeeCharged   int64
 }
 
 func (c RecordFill) AggregateID() string {
@@ -208,6 +209,7 @@ func ExecuteRecordFill(saga *OrderSaga, cmd RecordFill) ([]es.Event, error) {
 			FillQuantity: cmd.FillQuantity,
 			FillPrice:    cmd.FillPrice,
 			CashSettled:  cmd.CashSettled,
+			FeeCharged:   cmd.FeeCharged,
 			FilledAt:     timestamppb.New(now),
 		},
 	}

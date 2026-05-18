@@ -623,6 +623,19 @@ export function OrderForm({
           </Text>
         </Group>
       )}
+      {preview.estimatedFee > 0n && (
+        <Group justify="space-between" gap="xs">
+          <Text size="xs" c="dimmed">
+            Est. fee
+          </Text>
+          <Text size="xs" fw={600} ff="monospace">
+            {formatMoney(preview.estimatedFee)}
+            <Text component="span" size="xs" c="dimmed" ml={6}>
+              (0.10% of notional)
+            </Text>
+          </Text>
+        </Group>
+      )}
       {side === Side.BUY &&
         positionSide === PositionSide.SHORT &&
         preview.estimatedFillPrice > 0n &&

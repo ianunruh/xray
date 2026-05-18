@@ -1002,6 +1002,7 @@ export function PortfolioOrders({
                   <Table.Th ta="right">Price</Table.Th>
                   <Table.Th ta="right">Qty</Table.Th>
                   <Table.Th ta="right">Filled</Table.Th>
+                  <Table.Th ta="right">Fees</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th />
                 </Table.Tr>
@@ -1038,6 +1039,9 @@ export function PortfolioOrders({
                       </Table.Td>
                       <Table.Td ta="right">
                         {formatQuantity(o.filledQuantity)}
+                      </Table.Td>
+                      <Table.Td ta="right">
+                        {o.feesPaid > 0n ? formatMoney(o.feesPaid) : <Text component="span" size="xs" c="dimmed">—</Text>}
                       </Table.Td>
                       <Table.Td>{orderStatusName(o.status)}</Table.Td>
                       <Table.Td>
@@ -1088,6 +1092,7 @@ export function PortfolioOrders({
                   <Table.Th ta="right">Price</Table.Th>
                   <Table.Th ta="right">Qty</Table.Th>
                   <Table.Th ta="right">Filled</Table.Th>
+                  <Table.Th ta="right">Fees</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th>Reason</Table.Th>
                   <Table.Th />
@@ -1118,6 +1123,9 @@ export function PortfolioOrders({
                     </Table.Td>
                     <Table.Td ta="right">
                       {formatQuantity(o.filledQuantity)}
+                    </Table.Td>
+                    <Table.Td ta="right">
+                      {o.feesPaid > 0n ? formatMoney(o.feesPaid) : <Text component="span" size="xs" c="dimmed">—</Text>}
                     </Table.Td>
                     <Table.Td c={orderStatusColor(o.status)}>
                       {orderStatusName(o.status)}

@@ -41,7 +41,12 @@ type OrderImpact struct {
 	ProjectedInCall                 bool
 	SufficientBuyingPower           bool
 	EstimatedFillPrice              int64
-	Warnings                        []string
+	// EstimatedFee is the per-side transaction fee the previewing
+	// account would pay on the simulated fill. Zero when
+	// EstimatedFillPrice is zero (e.g. no liquidity for a market
+	// order).
+	EstimatedFee int64
+	Warnings     []string
 }
 
 // ComputeOrderImpact projects what an order would do to the account's
@@ -64,6 +69,9 @@ func ComputeOrderImpact(ctx context.Context, p *Portfolio, marker Marker, book B
 		impact.Warnings = append(impact.Warnings, fillWarn)
 	}
 	impact.EstimatedFillPrice = fillPrice
+	if fillPrice > 0 {
+		impact.EstimatedFee = margin.TxnFeeAmount(fillPrice * plan.Quantity)
+	}
 
 	mark, _, hasMark := lookupMark(marker, plan.Symbol)
 	if !hasMark {

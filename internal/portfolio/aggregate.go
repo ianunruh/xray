@@ -203,6 +203,8 @@ func (p *Portfolio) Apply(evt es.Event) error {
 		p.applyMarginInterestAccrued(data)
 	case *portfoliov1.ShortBorrowFeeAccrued:
 		p.applyShortBorrowFeeAccrued(data)
+	case *portfoliov1.TransactionFeeCharged:
+		p.applyTransactionFeeCharged(data)
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}
@@ -470,6 +472,10 @@ func (p *Portfolio) applyMarginInterestAccrued(data *portfoliov1.MarginInterestA
 func (p *Portfolio) applyShortBorrowFeeAccrued(data *portfoliov1.ShortBorrowFeeAccrued) {
 	p.CashBalance -= data.Amount
 	p.advanceAccrualClock(data.PeriodEnd)
+}
+
+func (p *Portfolio) applyTransactionFeeCharged(data *portfoliov1.TransactionFeeCharged) {
+	p.CashBalance -= data.Amount
 }
 
 func (p *Portfolio) advanceAccrualClock(end *timestamppb.Timestamp) {

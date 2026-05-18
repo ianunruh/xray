@@ -6,9 +6,43 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
+	"github.com/ianunruh/xray/internal/margin"
 	"github.com/ianunruh/xray/pkg/es"
 )
+
+// applyTxnFee computes the per-side transaction fee on notional,
+// builds and applies the matching TransactionFeeCharged event, and
+// returns it for the caller to include in its event list. Returns
+// (zero event, false) when the fee rounds to zero — settlement
+// callers should omit the event entirely in that case.
+func applyTxnFee(p *Portfolio, accountID, sagaID, tradeID, symbol string, notional int64, positionSide orderbookv1.PositionSide, now time.Time) (es.Event, bool, error) {
+	amount := margin.TxnFeeAmount(notional)
+	if amount <= 0 {
+		return es.Event{}, false, nil
+	}
+	evt := es.Event{
+		AggregateID: p.AggregateID(),
+		Type:        EventTransactionFeeCharged,
+		Timestamp:   now,
+		Data: &portfoliov1.TransactionFeeCharged{
+			AccountId:    accountID,
+			OrderSagaId:  sagaID,
+			TradeId:      tradeID,
+			Symbol:       symbol,
+			Notional:     notional,
+			RateBps:      margin.TxnFeeBps,
+			Amount:       amount,
+			ChargedAt:    timestamppb.New(now),
+			PositionSide: positionSide,
+		},
+	}
+	if err := p.Apply(evt); err != nil {
+		return es.Event{}, false, err
+	}
+	return evt, true, nil
+}
 
 var (
 	ErrInvalidAmount        = errors.New("amount must be positive")
@@ -211,7 +245,13 @@ func ExecuteSettleTrade(p *Portfolio, cmd SettleTrade) ([]es.Event, error) {
 	if err := p.Apply(evt); err != nil {
 		return nil, err
 	}
-	return []es.Event{evt}, nil
+	out := []es.Event{evt}
+	if feeEvt, ok, err := applyTxnFee(p, cmd.AccountID, cmd.OrderSagaID, cmd.TradeID, cmd.Symbol, cmd.Amount, orderbookv1.PositionSide_POSITION_SIDE_LONG, now); err != nil {
+		return nil, err
+	} else if ok {
+		out = append(out, feeEvt)
+	}
+	return out, nil
 }
 
 type CreditShares struct {
@@ -374,7 +414,13 @@ func ExecuteSettleSale(p *Portfolio, cmd SettleSale) ([]es.Event, error) {
 	if err := p.Apply(evt); err != nil {
 		return nil, err
 	}
-	return []es.Event{evt}, nil
+	out := []es.Event{evt}
+	if feeEvt, ok, err := applyTxnFee(p, cmd.AccountID, cmd.OrderSagaID, cmd.TradeID, cmd.Symbol, cmd.Proceeds, orderbookv1.PositionSide_POSITION_SIDE_LONG, now); err != nil {
+		return nil, err
+	} else if ok {
+		out = append(out, feeEvt)
+	}
+	return out, nil
 }
 
 // --- Short-selling commands ---
@@ -525,7 +571,13 @@ func ExecuteOpenShort(p *Portfolio, cmd OpenShort) ([]es.Event, error) {
 	if err := p.Apply(evt); err != nil {
 		return nil, err
 	}
-	return []es.Event{evt}, nil
+	out := []es.Event{evt}
+	if feeEvt, ok, err := applyTxnFee(p, cmd.AccountID, cmd.OrderSagaID, cmd.TradeID, cmd.Symbol, proceeds, orderbookv1.PositionSide_POSITION_SIDE_SHORT, now); err != nil {
+		return nil, err
+	} else if ok {
+		out = append(out, feeEvt)
+	}
+	return out, nil
 }
 
 type HoldShortCover struct {
@@ -666,7 +718,13 @@ func ExecuteCoverShort(p *Portfolio, cmd CoverShort) ([]es.Event, error) {
 	if err := p.Apply(evt); err != nil {
 		return nil, err
 	}
-	return []es.Event{evt}, nil
+	out := []es.Event{evt}
+	if feeEvt, ok, err := applyTxnFee(p, cmd.AccountID, cmd.OrderSagaID, cmd.TradeID, cmd.Symbol, cost, orderbookv1.PositionSide_POSITION_SIDE_SHORT, now); err != nil {
+		return nil, err
+	} else if ok {
+		out = append(out, feeEvt)
+	}
+	return out, nil
 }
 
 // --- Margin call commands ---

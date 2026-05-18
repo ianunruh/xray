@@ -253,6 +253,7 @@ func (s *Server) PreviewOrderImpact(ctx context.Context, req *connect.Request[po
 		ProjectedInCall:                 impact.ProjectedInCall,
 		SufficientBuyingPower:           impact.SufficientBuyingPower,
 		EstimatedFillPrice:              impact.EstimatedFillPrice,
+		EstimatedFee:                    impact.EstimatedFee,
 		Warnings:                        impact.Warnings,
 	}), nil
 }

@@ -50,6 +50,8 @@ func (p *PgPnLProjection) HandleEvents(ctx context.Context, events []es.Event) e
 			p.handleShortOpen(batch, data)
 		case *portfoliov1.ShortCovered:
 			p.handleShortCover(batch, data)
+		case *portfoliov1.TransactionFeeCharged:
+			p.handleTxnFee(batch, data)
 		}
 	}
 
@@ -131,6 +133,20 @@ func (p *PgPnLProjection) handleShortOpen(batch *pgx.Batch, data *portfoliov1.Sh
 		VALUES ($1, $2, $3, $4, $5, $6, 0, $7)`,
 		data.AccountId, data.Symbol, int32(orderbookv1.Side_SIDE_SELL),
 		posSideShort, data.Quantity, data.PricePerShare, at,
+	)
+}
+
+// handleTxnFee debits realized PnL on the (account, symbol,
+// position_side) row matching the settlement that the fee was paired
+// with. Treating the fee as realized at fee time (vs folding into
+// cost basis) matches how retail PnL displays typically show
+// commissions and avoids touching total_cost/quantity arithmetic.
+func (p *PgPnLProjection) handleTxnFee(batch *pgx.Batch, data *portfoliov1.TransactionFeeCharged) {
+	batch.Queue(
+		`UPDATE projection_pnl_positions
+		SET realized_pnl = realized_pnl - $1::BIGINT
+		WHERE account_id = $2 AND symbol = $3 AND position_side = $4::INT`,
+		data.Amount, data.AccountId, data.Symbol, int32(data.PositionSide),
 	)
 }
 

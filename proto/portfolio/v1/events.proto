@@ -243,6 +243,31 @@ message ShortBorrowFeeAccrued {
   int64 amount = 8;
 }
 
+// TransactionFeeCharged records the per-side commission debited from
+// an account on a single trade fill. Emitted alongside the matching
+// settlement event (CashSettled, SharesSettled, ShortOpened,
+// ShortCovered) by the four Execute*Settle* commands. One event per
+// (saga, trade) per account — replays are short-circuited by the
+// existing per-trade idempotency guard on the parent settlement.
+message TransactionFeeCharged {
+  string account_id = 1;
+  string order_saga_id = 2;
+  string trade_id = 3;
+  string symbol = 4;
+  // Notional this fee was applied to (price * quantity).
+  int64 notional = 5;
+  // Rate in bps (snapshot of TxnFeeBps at the time of the trade).
+  int64 rate_bps = 6;
+  // Cash debited from this account. Always > 0 (zero-fee fills omit
+  // the event entirely).
+  int64 amount = 7;
+  google.protobuf.Timestamp charged_at = 8;
+  // Position side of the settlement this fee is paired with — LONG
+  // for buy/sell-to-close, SHORT for open/cover. Lets per-position
+  // projections route the fee to the correct row.
+  orderbook.v1.PositionSide position_side = 9;
+}
+
 // Order saga events — stored under aggregate ID "order-saga:{uuid}".
 
 message OrderSagaStarted {
@@ -308,6 +333,10 @@ message OrderSagaFillRecorded {
   int64 fill_price = 4;
   int64 cash_settled = 5;
   google.protobuf.Timestamp filled_at = 6;
+  // Transaction fee debited from this account for this fill. Mirrors
+  // the amount on the TransactionFeeCharged portfolio event emitted
+  // alongside the fill's settlement.
+  int64 fee_charged = 7;
 }
 
 message OrderSagaCompleted {

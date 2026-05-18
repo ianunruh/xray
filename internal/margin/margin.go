@@ -80,6 +80,22 @@ const (
 	ShortBorrowRateBps int64 = 300 // 3% APR
 )
 
+// TxnFeeBps is the per-side transaction fee on every fill, in basis
+// points of notional (price * quantity). 10 bps = 0.10%. Charged
+// symmetrically to both buyer and seller of each trade. Mutable so
+// tests can pin it to zero (existing settlement tests pre-date fees
+// and assert exact cash balances).
+var TxnFeeBps int64 = 10
+
+// TxnFeeAmount returns the per-side transaction fee on a fill of the
+// given notional value. Integer floor — sub-cent fees round to zero.
+func TxnFeeAmount(notional int64) int64 {
+	if notional <= 0 {
+		return 0
+	}
+	return notional * TxnFeeBps / bpsScale
+}
+
 // AccruedAmount returns the time-prorated charge on principal at the
 // annual rate, computed as principal * (rateBps/bpsScale) * (elapsed/year).
 // Year fixed at 365 * 24h. Uses float64 internally so large principals

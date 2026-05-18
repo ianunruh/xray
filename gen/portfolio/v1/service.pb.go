@@ -599,8 +599,12 @@ type PendingOrder struct {
 	LastFillPrice int64 `protobuf:"varint,13,opt,name=last_fill_price,json=lastFillPrice,proto3" json:"last_fill_price,omitempty"`
 	// Iceberg slice size for the underlying orderbook order; 0 = normal.
 	DisplayQuantity int64 `protobuf:"varint,14,opt,name=display_quantity,json=displayQuantity,proto3" json:"display_quantity,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Cumulative transaction fees paid on this order's fills (this
+	// account's side only). Sum of TransactionFeeCharged.amount across
+	// every fill.
+	FeesPaid      int64 `protobuf:"varint,15,opt,name=fees_paid,json=feesPaid,proto3" json:"fees_paid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PendingOrder) Reset() {
@@ -727,6 +731,13 @@ func (x *PendingOrder) GetLastFillPrice() int64 {
 func (x *PendingOrder) GetDisplayQuantity() int64 {
 	if x != nil {
 		return x.DisplayQuantity
+	}
+	return 0
+}
+
+func (x *PendingOrder) GetFeesPaid() int64 {
+	if x != nil {
+		return x.FeesPaid
 	}
 	return 0
 }
@@ -1770,7 +1781,13 @@ type PreviewOrderImpactResponse struct {
 	// Human-readable warnings, e.g. "would breach maintenance margin"
 	// or "no ask liquidity for market buy". Empty when the preview is
 	// clean.
-	Warnings      []string `protobuf:"bytes,8,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	Warnings []string `protobuf:"bytes,8,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	// Per-side transaction fee on the simulated fill, in cash units
+	// (TxnFeeBps applied to estimated_fill_price * quantity). Zero when
+	// estimated_fill_price is zero. The seller side pays a symmetric
+	// fee that is not shown here — this is what the previewing account
+	// would be charged.
+	EstimatedFee  int64 `protobuf:"varint,9,opt,name=estimated_fee,json=estimatedFee,proto3" json:"estimated_fee,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1859,6 +1876,13 @@ func (x *PreviewOrderImpactResponse) GetWarnings() []string {
 		return x.Warnings
 	}
 	return nil
+}
+
+func (x *PreviewOrderImpactResponse) GetEstimatedFee() int64 {
+	if x != nil {
+		return x.EstimatedFee
+	}
+	return 0
 }
 
 type PositionMarginInfo struct {
@@ -2007,7 +2031,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\faverage_cost\x18\x04 \x01(\x03R\vaverageCost\x12\x1f\n" +
 	"\vshares_held\x18\x05 \x01(\x03R\n" +
 	"sharesHeld\x12!\n" +
-	"\frealized_pnl\x18\x06 \x01(\x03R\vrealizedPnl\"\xd2\x04\n" +
+	"\frealized_pnl\x18\x06 \x01(\x03R\vrealizedPnl\"\xef\x04\n" +
 	"\fPendingOrder\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12&\n" +
@@ -2026,7 +2050,8 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"failReason\x125\n" +
 	"\bended_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\aendedAt\x12&\n" +
 	"\x0flast_fill_price\x18\r \x01(\x03R\rlastFillPrice\x12)\n" +
-	"\x10display_quantity\x18\x0e \x01(\x03R\x0fdisplayQuantity\"7\n" +
+	"\x10display_quantity\x18\x0e \x01(\x03R\x0fdisplayQuantity\x12\x1b\n" +
+	"\tfees_paid\x18\x0f \x01(\x03R\bfeesPaid\"7\n" +
 	"\x16StreamPortfolioRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\".\n" +
@@ -2120,7 +2145,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\n" +
 	"order_type\x18\x05 \x01(\x0e2\x17.orderbook.v1.OrderTypeR\torderType\x12\x14\n" +
 	"\x05price\x18\x06 \x01(\x03R\x05price\x12\x1a\n" +
-	"\bquantity\x18\a \x01(\x03R\bquantity\"\xad\x03\n" +
+	"\bquantity\x18\a \x01(\x03R\bquantity\"\xd2\x03\n" +
 	"\x1aPreviewOrderImpactResponse\x12.\n" +
 	"\x13buying_power_impact\x18\x01 \x01(\x03R\x11buyingPowerImpact\x12)\n" +
 	"\x10projected_equity\x18\x02 \x01(\x03R\x0fprojectedEquity\x12J\n" +
@@ -2129,7 +2154,8 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\x11projected_in_call\x18\x05 \x01(\bR\x0fprojectedInCall\x126\n" +
 	"\x17sufficient_buying_power\x18\x06 \x01(\bR\x15sufficientBuyingPower\x120\n" +
 	"\x14estimated_fill_price\x18\a \x01(\x03R\x12estimatedFillPrice\x12\x1a\n" +
-	"\bwarnings\x18\b \x03(\tR\bwarnings\"\xa1\x02\n" +
+	"\bwarnings\x18\b \x03(\tR\bwarnings\x12#\n" +
+	"\restimated_fee\x18\t \x01(\x03R\festimatedFee\"\xa1\x02\n" +
 	"\x12PositionMarginInfo\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12.\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x1a.orderbook.v1.PositionSideR\x04side\x12\x1a\n" +
