@@ -18,6 +18,7 @@ service PortfolioService {
   rpc GetMarginSnapshot(GetMarginSnapshotRequest) returns (GetMarginSnapshotResponse);
   rpc PreviewOrderImpact(PreviewOrderImpactRequest) returns (PreviewOrderImpactResponse);
   rpc ListMarginCalls(ListMarginCallsRequest) returns (ListMarginCallsResponse);
+  rpc ListFeeHistory(ListFeeHistoryRequest) returns (ListFeeHistoryResponse);
 }
 
 message DepositRequest {
@@ -256,6 +257,51 @@ message ListMarginCallsRequest {
 
 message ListMarginCallsResponse {
   repeated MarginCallRecord calls = 1;
+}
+
+// FeeKind discriminates rows in the fee-history projection. Each row
+// is one event: a transaction-fee fill, one cycle of margin interest,
+// or one cycle of short-borrow fee.
+enum FeeKind {
+  FEE_KIND_UNSPECIFIED      = 0;
+  FEE_KIND_TRANSACTION      = 1;
+  FEE_KIND_MARGIN_INTEREST  = 2;
+  FEE_KIND_SHORT_BORROW     = 3;
+}
+
+// FeeRecord is one row in the per-account fee history feed. Optional
+// fields (symbol, related_id, rate_bps, notional, period_start) are
+// populated only for the kinds where they apply.
+message FeeRecord {
+  string                      account_id   = 1;
+  FeeKind                     kind         = 2;
+  // Cash debited. Always >= 0; zero is meaningful for accruals (the
+  // rate ticked but there was nothing owed).
+  int64                       amount       = 3;
+  // Empty for FEE_KIND_MARGIN_INTEREST.
+  string                      symbol       = 4;
+  // For transaction fees: the fill instant. For accruals: period_end.
+  google.protobuf.Timestamp   charged_at   = 5;
+  // For transaction fees: trade_id. Empty for accruals.
+  string                      related_id   = 6;
+  // Rate in bps. Only populated for accruals.
+  int64                       rate_bps     = 7;
+  // Notional the fee was applied to. Only populated for transaction
+  // fees.
+  int64                       notional     = 8;
+  // Start of the accrual cycle. Only populated for accruals.
+  google.protobuf.Timestamp   period_start = 9;
+}
+
+message ListFeeHistoryRequest {
+  string account_id = 1;
+  // Cap. 0 = no cap.
+  int32  limit      = 2;
+}
+
+message ListFeeHistoryResponse {
+  // Newest-first.
+  repeated FeeRecord records = 1;
 }
 
 // PreviewOrderImpact simulates the hold + fill an order would create

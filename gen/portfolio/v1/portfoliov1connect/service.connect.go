@@ -62,6 +62,9 @@ const (
 	// PortfolioServiceListMarginCallsProcedure is the fully-qualified name of the PortfolioService's
 	// ListMarginCalls RPC.
 	PortfolioServiceListMarginCallsProcedure = "/portfolio.v1.PortfolioService/ListMarginCalls"
+	// PortfolioServiceListFeeHistoryProcedure is the fully-qualified name of the PortfolioService's
+	// ListFeeHistory RPC.
+	PortfolioServiceListFeeHistoryProcedure = "/portfolio.v1.PortfolioService/ListFeeHistory"
 )
 
 // PortfolioServiceClient is a client for the portfolio.v1.PortfolioService service.
@@ -76,6 +79,7 @@ type PortfolioServiceClient interface {
 	GetMarginSnapshot(context.Context, *connect.Request[v1.GetMarginSnapshotRequest]) (*connect.Response[v1.GetMarginSnapshotResponse], error)
 	PreviewOrderImpact(context.Context, *connect.Request[v1.PreviewOrderImpactRequest]) (*connect.Response[v1.PreviewOrderImpactResponse], error)
 	ListMarginCalls(context.Context, *connect.Request[v1.ListMarginCallsRequest]) (*connect.Response[v1.ListMarginCallsResponse], error)
+	ListFeeHistory(context.Context, *connect.Request[v1.ListFeeHistoryRequest]) (*connect.Response[v1.ListFeeHistoryResponse], error)
 }
 
 // NewPortfolioServiceClient constructs a client for the portfolio.v1.PortfolioService service. By
@@ -149,6 +153,12 @@ func NewPortfolioServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(portfolioServiceMethods.ByName("ListMarginCalls")),
 			connect.WithClientOptions(opts...),
 		),
+		listFeeHistory: connect.NewClient[v1.ListFeeHistoryRequest, v1.ListFeeHistoryResponse](
+			httpClient,
+			baseURL+PortfolioServiceListFeeHistoryProcedure,
+			connect.WithSchema(portfolioServiceMethods.ByName("ListFeeHistory")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -164,6 +174,7 @@ type portfolioServiceClient struct {
 	getMarginSnapshot  *connect.Client[v1.GetMarginSnapshotRequest, v1.GetMarginSnapshotResponse]
 	previewOrderImpact *connect.Client[v1.PreviewOrderImpactRequest, v1.PreviewOrderImpactResponse]
 	listMarginCalls    *connect.Client[v1.ListMarginCallsRequest, v1.ListMarginCallsResponse]
+	listFeeHistory     *connect.Client[v1.ListFeeHistoryRequest, v1.ListFeeHistoryResponse]
 }
 
 // Deposit calls portfolio.v1.PortfolioService.Deposit.
@@ -216,6 +227,11 @@ func (c *portfolioServiceClient) ListMarginCalls(ctx context.Context, req *conne
 	return c.listMarginCalls.CallUnary(ctx, req)
 }
 
+// ListFeeHistory calls portfolio.v1.PortfolioService.ListFeeHistory.
+func (c *portfolioServiceClient) ListFeeHistory(ctx context.Context, req *connect.Request[v1.ListFeeHistoryRequest]) (*connect.Response[v1.ListFeeHistoryResponse], error) {
+	return c.listFeeHistory.CallUnary(ctx, req)
+}
+
 // PortfolioServiceHandler is an implementation of the portfolio.v1.PortfolioService service.
 type PortfolioServiceHandler interface {
 	Deposit(context.Context, *connect.Request[v1.DepositRequest]) (*connect.Response[v1.DepositResponse], error)
@@ -228,6 +244,7 @@ type PortfolioServiceHandler interface {
 	GetMarginSnapshot(context.Context, *connect.Request[v1.GetMarginSnapshotRequest]) (*connect.Response[v1.GetMarginSnapshotResponse], error)
 	PreviewOrderImpact(context.Context, *connect.Request[v1.PreviewOrderImpactRequest]) (*connect.Response[v1.PreviewOrderImpactResponse], error)
 	ListMarginCalls(context.Context, *connect.Request[v1.ListMarginCallsRequest]) (*connect.Response[v1.ListMarginCallsResponse], error)
+	ListFeeHistory(context.Context, *connect.Request[v1.ListFeeHistoryRequest]) (*connect.Response[v1.ListFeeHistoryResponse], error)
 }
 
 // NewPortfolioServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -297,6 +314,12 @@ func NewPortfolioServiceHandler(svc PortfolioServiceHandler, opts ...connect.Han
 		connect.WithSchema(portfolioServiceMethods.ByName("ListMarginCalls")),
 		connect.WithHandlerOptions(opts...),
 	)
+	portfolioServiceListFeeHistoryHandler := connect.NewUnaryHandler(
+		PortfolioServiceListFeeHistoryProcedure,
+		svc.ListFeeHistory,
+		connect.WithSchema(portfolioServiceMethods.ByName("ListFeeHistory")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/portfolio.v1.PortfolioService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case PortfolioServiceDepositProcedure:
@@ -319,6 +342,8 @@ func NewPortfolioServiceHandler(svc PortfolioServiceHandler, opts ...connect.Han
 			portfolioServicePreviewOrderImpactHandler.ServeHTTP(w, r)
 		case PortfolioServiceListMarginCallsProcedure:
 			portfolioServiceListMarginCallsHandler.ServeHTTP(w, r)
+		case PortfolioServiceListFeeHistoryProcedure:
+			portfolioServiceListFeeHistoryHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -366,4 +391,8 @@ func (UnimplementedPortfolioServiceHandler) PreviewOrderImpact(context.Context, 
 
 func (UnimplementedPortfolioServiceHandler) ListMarginCalls(context.Context, *connect.Request[v1.ListMarginCallsRequest]) (*connect.Response[v1.ListMarginCallsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portfolio.v1.PortfolioService.ListMarginCalls is not implemented"))
+}
+
+func (UnimplementedPortfolioServiceHandler) ListFeeHistory(context.Context, *connect.Request[v1.ListFeeHistoryRequest]) (*connect.Response[v1.ListFeeHistoryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("portfolio.v1.PortfolioService.ListFeeHistory is not implemented"))
 }

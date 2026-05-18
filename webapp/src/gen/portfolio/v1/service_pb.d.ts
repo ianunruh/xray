@@ -804,6 +804,123 @@ export declare type ListMarginCallsResponse = Message<"portfolio.v1.ListMarginCa
 export declare const ListMarginCallsResponseSchema: GenMessage<ListMarginCallsResponse>;
 
 /**
+ * FeeRecord is one row in the per-account fee history feed. Optional
+ * fields (symbol, related_id, rate_bps, notional, period_start) are
+ * populated only for the kinds where they apply.
+ *
+ * @generated from message portfolio.v1.FeeRecord
+ */
+export declare type FeeRecord = Message<"portfolio.v1.FeeRecord"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: portfolio.v1.FeeKind kind = 2;
+   */
+  kind: FeeKind;
+
+  /**
+   * Cash debited. Always >= 0; zero is meaningful for accruals (the
+   * rate ticked but there was nothing owed).
+   *
+   * @generated from field: int64 amount = 3;
+   */
+  amount: bigint;
+
+  /**
+   * Empty for FEE_KIND_MARGIN_INTEREST.
+   *
+   * @generated from field: string symbol = 4;
+   */
+  symbol: string;
+
+  /**
+   * For transaction fees: the fill instant. For accruals: period_end.
+   *
+   * @generated from field: google.protobuf.Timestamp charged_at = 5;
+   */
+  chargedAt?: Timestamp | undefined;
+
+  /**
+   * For transaction fees: trade_id. Empty for accruals.
+   *
+   * @generated from field: string related_id = 6;
+   */
+  relatedId: string;
+
+  /**
+   * Rate in bps. Only populated for accruals.
+   *
+   * @generated from field: int64 rate_bps = 7;
+   */
+  rateBps: bigint;
+
+  /**
+   * Notional the fee was applied to. Only populated for transaction
+   * fees.
+   *
+   * @generated from field: int64 notional = 8;
+   */
+  notional: bigint;
+
+  /**
+   * Start of the accrual cycle. Only populated for accruals.
+   *
+   * @generated from field: google.protobuf.Timestamp period_start = 9;
+   */
+  periodStart?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.FeeRecord.
+ * Use `create(FeeRecordSchema)` to create a new message.
+ */
+export declare const FeeRecordSchema: GenMessage<FeeRecord>;
+
+/**
+ * @generated from message portfolio.v1.ListFeeHistoryRequest
+ */
+export declare type ListFeeHistoryRequest = Message<"portfolio.v1.ListFeeHistoryRequest"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * Cap. 0 = no cap.
+   *
+   * @generated from field: int32 limit = 2;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message portfolio.v1.ListFeeHistoryRequest.
+ * Use `create(ListFeeHistoryRequestSchema)` to create a new message.
+ */
+export declare const ListFeeHistoryRequestSchema: GenMessage<ListFeeHistoryRequest>;
+
+/**
+ * @generated from message portfolio.v1.ListFeeHistoryResponse
+ */
+export declare type ListFeeHistoryResponse = Message<"portfolio.v1.ListFeeHistoryResponse"> & {
+  /**
+   * Newest-first.
+   *
+   * @generated from field: repeated portfolio.v1.FeeRecord records = 1;
+   */
+  records: FeeRecord[];
+};
+
+/**
+ * Describes the message portfolio.v1.ListFeeHistoryResponse.
+ * Use `create(ListFeeHistoryResponseSchema)` to create a new message.
+ */
+export declare const ListFeeHistoryResponseSchema: GenMessage<ListFeeHistoryResponse>;
+
+/**
  * PreviewOrderImpact simulates the hold + fill an order would create
  * and returns the resulting margin state. Used by the UI to surface
  * "would this put me in margin call" before the user submits.
@@ -1036,6 +1153,40 @@ export enum OrderStatus {
 export declare const OrderStatusSchema: GenEnum<OrderStatus>;
 
 /**
+ * FeeKind discriminates rows in the fee-history projection. Each row
+ * is one event: a transaction-fee fill, one cycle of margin interest,
+ * or one cycle of short-borrow fee.
+ *
+ * @generated from enum portfolio.v1.FeeKind
+ */
+export enum FeeKind {
+  /**
+   * @generated from enum value: FEE_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: FEE_KIND_TRANSACTION = 1;
+   */
+  TRANSACTION = 1,
+
+  /**
+   * @generated from enum value: FEE_KIND_MARGIN_INTEREST = 2;
+   */
+  MARGIN_INTEREST = 2,
+
+  /**
+   * @generated from enum value: FEE_KIND_SHORT_BORROW = 3;
+   */
+  SHORT_BORROW = 3,
+}
+
+/**
+ * Describes the enum portfolio.v1.FeeKind.
+ */
+export declare const FeeKindSchema: GenEnum<FeeKind>;
+
+/**
  * @generated from service portfolio.v1.PortfolioService
  */
 export declare const PortfolioService: GenService<{
@@ -1118,6 +1269,14 @@ export declare const PortfolioService: GenService<{
     methodKind: "unary";
     input: typeof ListMarginCallsRequestSchema;
     output: typeof ListMarginCallsResponseSchema;
+  },
+  /**
+   * @generated from rpc portfolio.v1.PortfolioService.ListFeeHistory
+   */
+  listFeeHistory: {
+    methodKind: "unary";
+    input: typeof ListFeeHistoryRequestSchema;
+    output: typeof ListFeeHistoryResponseSchema;
   },
 }>;
 
