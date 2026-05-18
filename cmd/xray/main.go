@@ -133,7 +133,7 @@ func main() {
 
 	portfolioHandler := es.NewHandler(store, registry, func(id string) *portfolio.Portfolio {
 		return portfolio.NewPortfolio(id)
-	}, log).WithPublisher(publisher)
+	}, log).WithSnapshots(store).WithPublisher(publisher)
 
 	orderSagaHandler := es.NewHandler(store, registry, func(id string) *ordersaga.OrderSaga {
 		return ordersaga.NewOrderSaga(id)
@@ -331,12 +331,14 @@ func main() {
 }
 
 // newSnapshotter constructs the async snapshotter and registers every
-// aggregate type whose factory produces a Snapshotable. Today only the
-// OrderBook qualifies; new entries are one-liners.
+// aggregate type whose factory produces a Snapshotable.
 func newSnapshotter(store *pgstore.Store, registry *es.Registry, log *slog.Logger) *snapshotter.Snapshotter {
 	s := snapshotter.New(store, store, registry, log)
 	s.Register("orderbook", func(id string) es.Aggregate {
 		return orderbook.NewOrderBook(id)
+	})
+	s.Register(portfolio.AggregateType, func(id string) es.Aggregate {
+		return portfolio.NewPortfolio(id)
 	})
 	return s
 }

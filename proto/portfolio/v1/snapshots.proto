@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package portfolio.v1;
+
+option go_package = "github.com/ianunruh/xray/gen/portfolio/v1;portfoliov1";
+
+import "google/protobuf/timestamp.proto";
+
+// PortfolioSnapshot captures the full state of one Portfolio aggregate
+// for fast hydration. Field meanings track the corresponding fields on
+// internal/portfolio.Portfolio. New optional fields can be appended; the
+// snapshotter overwrites the row on every save so partial-coverage
+// snapshots from older code disappear naturally.
+message PortfolioSnapshot {
+  string account_id = 1;
+  int64 cash_balance = 2;
+  int64 cash_held = 3;
+
+  map<string, HoldingSnapshot> holdings = 4;
+  map<string, int64> holds_by_saga = 5;
+  map<string, int64> shares_held = 6;
+  map<string, ShareHoldSnapshot> share_holds_by_saga = 7;
+  map<string, SettledTradeSet> settled_trades = 8;
+
+  map<string, ShortPositionSnapshot> short_positions = 9;
+  int64 proceeds_pool = 10;
+  int64 collateral_pool = 11;
+  map<string, CollateralHoldSnapshot> collateral_held_by_saga = 12;
+  map<string, int64> short_covers_held = 13;
+  map<string, ShareHoldSnapshot> short_cover_holds_by_saga = 14;
+
+  MarginCallSnapshot active_margin_call = 15;
+  google.protobuf.Timestamp last_accrued_at = 16;
+}
+
+message HoldingSnapshot {
+  int64 quantity = 1;
+  int64 total_cost = 2;
+}
+
+message ShareHoldSnapshot {
+  string symbol = 1;
+  int64 quantity = 2;
+}
+
+message CollateralHoldSnapshot {
+  string symbol = 1;
+  int64 quantity = 2;
+  int64 amount = 3;
+}
+
+message ShortPositionSnapshot {
+  int64 quantity = 1;
+  int64 proceeds_held = 2;
+  int64 collateral_held = 3;
+  int64 avg_open_price = 4;
+}
+
+// SettledTradeSet is the proto-friendly representation of
+// map<saga_id, set<trade_id>> — proto doesn't have set or
+// nested-map types, so trade IDs land in a repeated string.
+message SettledTradeSet {
+  repeated string trade_ids = 1;
+}
+
+message MarginCallSnapshot {
+  string call_id = 1;
+  string trigger_trade_id = 2;
+  string trigger_symbol = 3;
+  int64 mark_price = 4;
+  int64 equity_at_issue = 5;
+  int64 requirement_at_issue = 6;
+  google.protobuf.Timestamp issued_at = 7;
+  google.protobuf.Timestamp grace_expires_at = 8;
+}
