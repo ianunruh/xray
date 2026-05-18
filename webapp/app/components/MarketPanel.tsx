@@ -12,13 +12,7 @@ import {
 } from "@mantine/core";
 import { orderBookClient } from "~/lib/client";
 import { useSharedMarketDepth } from "../hooks/marketDepth";
-import {
-  phaseColor,
-  phaseLabel,
-  useOrderBookPhase,
-} from "../hooks/useOrderBookPhase";
-import { useOfficialClose } from "../hooks/useOfficialClose";
-import { useReplayBounds } from "../hooks/useReplayBounds";
+import { phaseColor, phaseLabel } from "~/lib/marketPhase";
 import {
   useReplayOrderBook,
   type ReplayTarget,
@@ -29,13 +23,30 @@ import { DepthSide } from "./MarketDepth";
 import { TradeTable } from "./TradeTable";
 import { CandleChart } from "./CandleChart";
 import { ReplayControls } from "./ReplayControls";
-import type { PriceLevel, Trade } from "../../src/gen/orderbook/v1/service_pb";
+import type { MarketPhase } from "../../src/gen/orderbook/v1/events_pb";
+import type {
+  GetOfficialCloseResponse,
+  PriceLevel,
+  Trade,
+} from "../../src/gen/orderbook/v1/service_pb";
+import type { ReplayBounds } from "~/lib/replay";
 
 type Mode = "live" | "replay";
 
-export function MarketPanel({ symbol }: { symbol: string }) {
+export function MarketPanel({
+  symbol,
+  phase,
+  officialClose,
+  replayBounds,
+  onRefreshReplay,
+}: {
+  symbol: string;
+  phase: MarketPhase;
+  officialClose: GetOfficialCloseResponse | null;
+  replayBounds: ReplayBounds | null;
+  onRefreshReplay: () => void;
+}) {
   const [mode, setMode] = useState<Mode>("live");
-  const close = useOfficialClose(symbol);
 
   return (
     <Card withBorder>
@@ -54,7 +65,9 @@ export function MarketPanel({ symbol }: { symbol: string }) {
             />
           </Group>
           {mode === "live" ? (
-            <LivePhaseBadge symbol={symbol} />
+            <Badge color={phaseColor(phase)} variant="filled">
+              {phaseLabel(phase)}
+            </Badge>
           ) : (
             <Badge color="grape" variant="filled">
               REPLAY
@@ -65,29 +78,24 @@ export function MarketPanel({ symbol }: { symbol: string }) {
         {mode === "live" ? (
           <LiveBody symbol={symbol} />
         ) : (
-          <ReplayBody symbol={symbol} />
+          <ReplayBody
+            symbol={symbol}
+            bounds={replayBounds}
+            onRefresh={onRefreshReplay}
+          />
         )}
 
-        {close && (
+        {officialClose && (
           <Text size="xs" c="dimmed" ta="center">
-            Official close {close.sessionDate}:{" "}
+            Official close {officialClose.sessionDate}:{" "}
             <Text component="span" ff="monospace" c="bright">
-              {formatPrice(close.closePrice)}
+              {formatPrice(officialClose.closePrice)}
             </Text>{" "}
-            on {formatQuantity(close.closeVolume)} shares
+            on {formatQuantity(officialClose.closeVolume)} shares
           </Text>
         )}
       </Stack>
     </Card>
-  );
-}
-
-function LivePhaseBadge({ symbol }: { symbol: string }) {
-  const phase = useOrderBookPhase(symbol);
-  return (
-    <Badge color={phaseColor(phase)} variant="filled">
-      {phaseLabel(phase)}
-    </Badge>
   );
 }
 
@@ -218,8 +226,15 @@ function LiveBody({ symbol }: { symbol: string }) {
   );
 }
 
-function ReplayBody({ symbol }: { symbol: string }) {
-  const { bounds, refresh } = useReplayBounds(symbol);
+function ReplayBody({
+  symbol,
+  bounds,
+  onRefresh,
+}: {
+  symbol: string;
+  bounds: ReplayBounds | null;
+  onRefresh: () => void;
+}) {
   const [target, setTarget] = useState<ReplayTarget | null>(null);
   const effectiveTarget: ReplayTarget | null =
     target ?? (bounds ? { kind: "version", version: bounds.lastVersion } : null);
@@ -262,7 +277,7 @@ function ReplayBody({ symbol }: { symbol: string }) {
         onJumpEnd={() =>
           setTarget({ kind: "version", version: bounds.lastVersion })
         }
-        onRefresh={refresh}
+        onRefresh={onRefresh}
       />
       <Group gap="xs">
         <Badge

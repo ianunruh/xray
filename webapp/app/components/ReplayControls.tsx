@@ -1,5 +1,5 @@
 import { Button, Group, Slider, Stack, Text } from "@mantine/core";
-import type { ReplayBounds } from "../hooks/useReplayBounds";
+import type { ReplayBounds } from "~/lib/replay";
 
 // ReplayControls renders the time scrubber for replay mode. The slider's
 // position is held in atDate (ms since epoch). Start/end jump buttons fire

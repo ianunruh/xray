@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { portfolioClient } from "~/lib/client";
+import { useEffect } from "react";
+import { useFetcher } from "react-router";
 import { Side, OrderType, PositionSide } from "../../src/gen/orderbook/v1/events_pb";
 import type { PreviewOrderImpactResponse } from "../../src/gen/portfolio/v1/service_pb";
 
@@ -13,16 +13,22 @@ export type PreviewParams = {
   quantity: bigint;
 };
 
-// usePreviewOrderImpact debounces the form inputs and calls the
-// server's PreviewOrderImpact RPC. Returns null when the inputs aren't
-// complete enough to preview (zero qty, missing limit price, etc.).
+type PreviewResult = {
+  ok: boolean;
+  intent: string;
+  preview?: PreviewOrderImpactResponse;
+};
+
+// usePreviewOrderImpact debounces the form inputs and submits to the
+// trading route's preview-impact action. The action proxies to
+// PortfolioService.PreviewOrderImpact server-side; this hook is the
+// browser-side glue. Returns null when the inputs aren't complete
+// enough to preview (zero qty, missing limit price, etc.).
 export function usePreviewOrderImpact(
   params: PreviewParams | null,
   debounceMs = 200,
 ): PreviewOrderImpactResponse | null {
-  const [preview, setPreview] = useState<PreviewOrderImpactResponse | null>(
-    null,
-  );
+  const fetcher = useFetcher<PreviewResult>();
 
   // Stable key for the effect: stringify the params (small object).
   const key = params
@@ -30,33 +36,24 @@ export function usePreviewOrderImpact(
     : null;
 
   useEffect(() => {
-    if (!params) {
-      setPreview(null);
-      return;
-    }
-    let cancelled = false;
-    const t = window.setTimeout(async () => {
-      try {
-        const resp = await portfolioClient.previewOrderImpact({
-          accountId: params.accountId,
-          symbol: params.symbol,
-          side: params.side,
-          positionSide: params.positionSide,
-          orderType: params.orderType,
-          price: params.price,
-          quantity: params.quantity,
-        });
-        if (!cancelled) setPreview(resp);
-      } catch {
-        if (!cancelled) setPreview(null);
-      }
+    if (!params) return;
+    const t = window.setTimeout(() => {
+      const fd = new FormData();
+      fd.set("intent", "preview-impact");
+      fd.set("accountId", params.accountId);
+      fd.set("symbol", params.symbol);
+      fd.set("side", String(params.side));
+      fd.set("positionSide", String(params.positionSide));
+      fd.set("orderType", String(params.orderType));
+      fd.set("price", String(params.price));
+      fd.set("quantity", String(params.quantity));
+      fetcher.submit(fd, { method: "post", action: "/trading" });
     }, debounceMs);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(t);
-    };
+    return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, debounceMs]);
 
-  return preview;
+  // When params goes null the fetcher's last data is stale; suppress.
+  if (!params) return null;
+  return fetcher.data?.preview ?? null;
 }

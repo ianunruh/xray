@@ -22,12 +22,29 @@ import {
 import type { Route } from "./+types/trading";
 import { fromJsonString } from "@bufbuild/protobuf";
 import {
+  ConnectError,
+  Code,
+} from "@connectrpc/connect";
+import {
   orderBookClient,
   portfolioClient,
   sagaClient,
 } from "~/lib/client.server";
 import { moneyToPrice } from "~/lib/format";
 import { PlaceSagaRequestSchema } from "../../src/gen/saga/v1/saga_pb";
+import {
+  MarketPhase,
+  type OrderType,
+  type PositionSide,
+  type Side,
+} from "../../src/gen/orderbook/v1/events_pb";
+import type { GetOfficialCloseResponse } from "../../src/gen/orderbook/v1/service_pb";
+import type {
+  GetMarginSnapshotResponse,
+  MarginCallRecord,
+  PreviewOrderImpactResponse,
+} from "../../src/gen/portfolio/v1/service_pb";
+import type { ReplayBounds } from "~/lib/replay";
 import { AccountDataProvider } from "~/hooks/accountData";
 import { MarketDepthProvider } from "~/hooks/marketDepth";
 import { useOrderStatusNotifications } from "~/hooks/useOrderStatusNotifications";
@@ -61,13 +78,76 @@ function parseTab(v: string | null): Tab {
   return "trade";
 }
 
+// loadSymbolData fans out the per-symbol reads (phase, official close,
+// replay bounds) that the trading view's MarketPanel needs. Each call is
+// wrapped in try/catch so a transient failure in one doesn't fail the
+// whole loader. Returns sentinel "empty" values that map cleanly onto
+// the panel's null-checks.
+async function loadSymbolData(symbol: string) {
+  const [phaseR, closeR, boundsR] = await Promise.allSettled([
+    orderBookClient.getOrderBook({ symbol }),
+    orderBookClient.getOfficialClose({ symbol, sessionDate: "" }),
+    orderBookClient.getReplayBounds({ symbol }),
+  ]);
+
+  const phase =
+    phaseR.status === "fulfilled" &&
+    phaseR.value.phase !== MarketPhase.UNSPECIFIED
+      ? phaseR.value.phase
+      : MarketPhase.CONTINUOUS;
+
+  let officialClose: GetOfficialCloseResponse | null = null;
+  if (closeR.status === "fulfilled") {
+    officialClose = closeR.value;
+  } else if (
+    closeR.reason instanceof ConnectError &&
+    (closeR.reason.code === Code.NotFound ||
+      closeR.reason.code === Code.Unimplemented)
+  ) {
+    officialClose = null;
+  }
+
+  let replayBounds: ReplayBounds | null = null;
+  if (boundsR.status === "fulfilled") {
+    const r = boundsR.value;
+    if (r.firstTimestamp && r.lastTimestamp && r.lastVersion > 0) {
+      replayBounds = {
+        firstVersion: r.firstVersion,
+        lastVersion: r.lastVersion,
+        firstDate: new Date(
+          Number(r.firstTimestamp.seconds) * 1000 +
+            Math.floor(r.firstTimestamp.nanos / 1_000_000),
+        ),
+        lastDate: new Date(
+          Number(r.lastTimestamp.seconds) * 1000 +
+            Math.floor(r.lastTimestamp.nanos / 1_000_000),
+        ),
+        currentPhase:
+          r.currentPhase === MarketPhase.UNSPECIFIED
+            ? MarketPhase.CONTINUOUS
+            : r.currentPhase,
+      };
+    }
+  }
+
+  return { phase, officialClose, replayBounds };
+}
+
 export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const account = url.searchParams.get("account") ?? "";
+  const symbol = url.searchParams.get("symbol") ?? "";
 
-  const [{ accountIds }, { symbols }] = await Promise.all([
+  const [{ accountIds }, { symbols }, symbolData] = await Promise.all([
     portfolioClient.listPortfolios({}),
     orderBookClient.listSymbols({}),
+    symbol
+      ? loadSymbolData(symbol)
+      : Promise.resolve({
+          phase: MarketPhase.CONTINUOUS,
+          officialClose: null as GetOfficialCloseResponse | null,
+          replayBounds: null as ReplayBounds | null,
+        }),
   ]);
 
   if (!account) {
@@ -78,27 +158,33 @@ export async function loader({ request }: Route.LoaderArgs) {
       ocos: [] as OcoRow[],
       twaps: [] as TwapRow[],
       closingPnl: [] as RealizedPnlRow[],
+      marginSnapshot: null as GetMarginSnapshotResponse | null,
+      marginCalls: [] as MarginCallRecord[],
+      ...symbolData,
     };
   }
 
-  const [bracketsResp, ocosResp, twapsResp, pnlResp] = await Promise.all([
-    sagaClient.list({
-      accountId: account,
-      kind: SagaKind.BRACKET,
-      status: SagaStatus.ACTIVE,
-    }),
-    sagaClient.list({
-      accountId: account,
-      kind: SagaKind.OCO,
-      status: SagaStatus.ACTIVE,
-    }),
-    sagaClient.list({
-      accountId: account,
-      kind: SagaKind.TWAP,
-      status: SagaStatus.ACTIVE,
-    }),
-    portfolioClient.getPnL({ accountId: account }),
-  ]);
+  const [bracketsResp, ocosResp, twapsResp, pnlResp, marginResp, marginCallsResp] =
+    await Promise.all([
+      sagaClient.list({
+        accountId: account,
+        kind: SagaKind.BRACKET,
+        status: SagaStatus.ACTIVE,
+      }),
+      sagaClient.list({
+        accountId: account,
+        kind: SagaKind.OCO,
+        status: SagaStatus.ACTIVE,
+      }),
+      sagaClient.list({
+        accountId: account,
+        kind: SagaKind.TWAP,
+        status: SagaStatus.ACTIVE,
+      }),
+      portfolioClient.getPnL({ accountId: account }),
+      portfolioClient.getMarginSnapshot({ accountId: account }),
+      portfolioClient.listMarginCalls({ accountId: account, limit: 20 }),
+    ]);
 
   const brackets: BracketRow[] = [];
   for (const s of bracketsResp.sagas) {
@@ -171,7 +257,21 @@ export async function loader({ request }: Route.LoaderArgs) {
         : 0,
     }));
 
-  return { accountIds, symbols, brackets, ocos, twaps, closingPnl };
+  return {
+    accountIds,
+    symbols,
+    brackets,
+    ocos,
+    twaps,
+    closingPnl,
+    // Proto messages flow through turbo-stream as structurally-identical
+    // plain objects. Cast back to the proto types so panel consumers
+    // (which import the proto types directly) don't have to worry about
+    // RR's deeply-readonly loader transforms.
+    marginSnapshot: marginResp as GetMarginSnapshotResponse,
+    marginCalls: marginCallsResp.calls as MarginCallRecord[],
+    ...symbolData,
+  };
 }
 
 // ActionResult mirrors the relevant inputs back to the client so
@@ -186,6 +286,7 @@ type ActionResult =
       symbol?: string;
       amount?: number;
       quantity?: number;
+      preview?: PreviewOrderImpactResponse;
     }
   | { ok: false; intent: string; error: string };
 
@@ -265,6 +366,23 @@ export async function action({
         await sagaClient.cancel({ sagaId });
         return { ok: true, intent };
       }
+      case "preview-impact": {
+        // Server-side preview of buying-power / margin impact before the
+        // user commits an order. Fired by the OrderForm on every
+        // (debounced) input change via useFetcher.
+        const preview = await portfolioClient.previewOrderImpact({
+          accountId: String(form.get("accountId") ?? ""),
+          symbol: String(form.get("symbol") ?? ""),
+          side: Number(form.get("side") ?? "0") as Side,
+          positionSide: Number(
+            form.get("positionSide") ?? "0",
+          ) as PositionSide,
+          orderType: Number(form.get("orderType") ?? "0") as OrderType,
+          price: BigInt(String(form.get("price") ?? "0")),
+          quantity: BigInt(String(form.get("quantity") ?? "0")),
+        });
+        return { ok: true, intent, preview };
+      }
       default:
         return { ok: false, intent, error: `unknown intent: ${intent}` };
     }
@@ -287,7 +405,26 @@ function OrderStatusNotifier() {
 }
 
 export default function Trading({ loaderData }: Route.ComponentProps) {
-  const { accountIds, symbols, brackets, ocos, twaps, closingPnl } = loaderData;
+  const {
+    accountIds,
+    symbols,
+    brackets,
+    ocos,
+    twaps,
+    closingPnl,
+    phase,
+    replayBounds,
+  } = loaderData;
+  // RR's loader serialization deeply-readonly-flattens proto message
+  // types in a way that doesn't structurally match the original
+  // Message<...>-branded shapes, even though the runtime data is
+  // identical. Cast through here so consumer panels keep their natural
+  // proto types instead of every prop needing a re-derived shape.
+  const marginSnapshot =
+    loaderData.marginSnapshot as GetMarginSnapshotResponse | null;
+  const marginCalls = loaderData.marginCalls as MarginCallRecord[];
+  const officialClose =
+    loaderData.officialClose as GetOfficialCloseResponse | null;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const createFetcher = useFetcher<typeof action>();
@@ -403,7 +540,11 @@ export default function Trading({ loaderData }: Route.ComponentProps) {
       </Group>
 
       {account ? (
-        <AccountDataProvider accountId={account}>
+        <AccountDataProvider
+          accountId={account}
+          margin={marginSnapshot}
+          marginCalls={marginCalls}
+        >
           <OrderStatusNotifier />
           <TradingBody
             symbol={symbol}
@@ -413,6 +554,10 @@ export default function Trading({ loaderData }: Route.ComponentProps) {
             ocos={ocos}
             twaps={twaps}
             closingPnl={closingPnl}
+            phase={phase}
+            officialClose={officialClose}
+            replayBounds={replayBounds}
+            onRefreshReplay={() => revalidator.revalidate()}
             onTabChange={(t) => updateParam("tab", t === "trade" ? "" : t)}
             orderPrefill={orderPrefill}
             onJumpToAggregate={jumpToAggregate}
@@ -461,6 +606,10 @@ function TradingBody({
   ocos,
   twaps,
   closingPnl,
+  phase,
+  officialClose,
+  replayBounds,
+  onRefreshReplay,
   onTabChange,
   orderPrefill,
   onJumpToAggregate,
@@ -473,6 +622,10 @@ function TradingBody({
   ocos: OcoRow[];
   twaps: TwapRow[];
   closingPnl: RealizedPnlRow[];
+  phase: MarketPhase;
+  officialClose: GetOfficialCloseResponse | null;
+  replayBounds: ReplayBounds | null;
+  onRefreshReplay: () => void;
   onTabChange: (t: Tab) => void;
   orderPrefill: OrderPrefill | null;
   onJumpToAggregate: (id: string) => void;
@@ -497,7 +650,13 @@ function TradingBody({
             <MarketDepthProvider symbol={symbol}>
               <Grid gutter="md">
                 <Grid.Col span={{ base: 12, md: 8 }}>
-                  <MarketPanel symbol={symbol} />
+                  <MarketPanel
+                    symbol={symbol}
+                    phase={phase}
+                    officialClose={officialClose}
+                    replayBounds={replayBounds}
+                    onRefreshReplay={onRefreshReplay}
+                  />
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 4 }}>
                   <OrderForm symbol={symbol} prefill={orderPrefill} />

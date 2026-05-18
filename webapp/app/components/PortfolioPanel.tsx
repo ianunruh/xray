@@ -25,7 +25,6 @@ import { OrderType, PositionSide, Side, TimeInForce } from "../../src/gen/orderb
 import { OrderStatus } from "../../src/gen/portfolio/v1/service_pb";
 import { useFetcher } from "react-router";
 import { useAccountData } from "../hooks/accountData";
-import { useMarginCalls } from "../hooks/useMarginCalls";
 
 function timestampToMillis(ts: Timestamp | undefined): number | null {
   if (!ts) return null;
@@ -566,8 +565,7 @@ export function PortfolioPositions({
   onJumpToAggregate?: (aggregateId: string) => void;
   onPrefillOrder?: (p: OrderPrefill) => void;
 }) {
-  const { accountId, portfolio, margin } = useAccountData();
-  const marginCalls = useMarginCalls(accountId);
+  const { portfolio, margin, marginCalls } = useAccountData();
   const [expandedCalls, setExpandedCalls] = useState<Set<string>>(new Set());
   const toggleCallExpanded = (callId: string) => {
     setExpandedCalls((prev) => {
