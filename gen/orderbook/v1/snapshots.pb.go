@@ -96,8 +96,19 @@ type OrderSnapshot struct {
 	TimeInForce       TimeInForce            `protobuf:"varint,8,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
 	StopPrice         int64                  `protobuf:"varint,9,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
 	AccountId         string                 `protobuf:"bytes,10,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// display_quantity > 0 marks an iceberg order; displayed_remaining
+	// tracks how much of the current slice is still visible to matching.
+	// Both default to 0 for non-iceberg orders (and for snapshots taken
+	// before iceberg support existed).
+	DisplayQuantity    int64 `protobuf:"varint,11,opt,name=display_quantity,json=displayQuantity,proto3" json:"display_quantity,omitempty"`
+	DisplayedRemaining int64 `protobuf:"varint,12,opt,name=displayed_remaining,json=displayedRemaining,proto3" json:"displayed_remaining,omitempty"`
+	// Trailing-stop state. trail_amount and trail_offset_bps mirror the
+	// OrderPlaced fields; limit_offset is the offset for TRAILING_STOP_LIMIT.
+	TrailAmount    int64 `protobuf:"varint,13,opt,name=trail_amount,json=trailAmount,proto3" json:"trail_amount,omitempty"`
+	TrailOffsetBps int32 `protobuf:"varint,14,opt,name=trail_offset_bps,json=trailOffsetBps,proto3" json:"trail_offset_bps,omitempty"`
+	LimitOffset    int64 `protobuf:"varint,15,opt,name=limit_offset,json=limitOffset,proto3" json:"limit_offset,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *OrderSnapshot) Reset() {
@@ -200,6 +211,41 @@ func (x *OrderSnapshot) GetAccountId() string {
 	return ""
 }
 
+func (x *OrderSnapshot) GetDisplayQuantity() int64 {
+	if x != nil {
+		return x.DisplayQuantity
+	}
+	return 0
+}
+
+func (x *OrderSnapshot) GetDisplayedRemaining() int64 {
+	if x != nil {
+		return x.DisplayedRemaining
+	}
+	return 0
+}
+
+func (x *OrderSnapshot) GetTrailAmount() int64 {
+	if x != nil {
+		return x.TrailAmount
+	}
+	return 0
+}
+
+func (x *OrderSnapshot) GetTrailOffsetBps() int32 {
+	if x != nil {
+		return x.TrailOffsetBps
+	}
+	return 0
+}
+
+func (x *OrderSnapshot) GetLimitOffset() int64 {
+	if x != nil {
+		return x.LimitOffset
+	}
+	return 0
+}
+
 var File_orderbook_v1_snapshots_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_snapshots_proto_rawDesc = "" +
@@ -208,7 +254,7 @@ const file_orderbook_v1_snapshots_proto_rawDesc = "" +
 	"\x11OrderBookSnapshot\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x123\n" +
 	"\x06orders\x18\x02 \x03(\v2\x1b.orderbook.v1.OrderSnapshotR\x06orders\x12/\n" +
-	"\x05phase\x18\x03 \x01(\x0e2\x19.orderbook.v1.MarketPhaseR\x05phase\"\xa1\x03\n" +
+	"\x05phase\x18\x03 \x01(\x0e2\x19.orderbook.v1.MarketPhaseR\x05phase\"\xed\x04\n" +
 	"\rOrderSnapshot\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +
@@ -223,7 +269,12 @@ const file_orderbook_v1_snapshots_proto_rawDesc = "" +
 	"stop_price\x18\t \x01(\x03R\tstopPrice\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\n" +
-	" \x01(\tR\taccountIdB7Z5github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1b\x06proto3"
+	" \x01(\tR\taccountId\x12)\n" +
+	"\x10display_quantity\x18\v \x01(\x03R\x0fdisplayQuantity\x12/\n" +
+	"\x13displayed_remaining\x18\f \x01(\x03R\x12displayedRemaining\x12!\n" +
+	"\ftrail_amount\x18\r \x01(\x03R\vtrailAmount\x12(\n" +
+	"\x10trail_offset_bps\x18\x0e \x01(\x05R\x0etrailOffsetBps\x12!\n" +
+	"\flimit_offset\x18\x0f \x01(\x03R\vlimitOffsetB7Z5github.com/ianunruh/xray/gen/orderbook/v1;orderbookv1b\x06proto3"
 
 var (
 	file_orderbook_v1_snapshots_proto_rawDescOnce sync.Once

@@ -94,6 +94,39 @@ export declare type OrderSnapshot = Message<"orderbook.v1.OrderSnapshot"> & {
    * @generated from field: string account_id = 10;
    */
   accountId: string;
+
+  /**
+   * display_quantity > 0 marks an iceberg order; displayed_remaining
+   * tracks how much of the current slice is still visible to matching.
+   * Both default to 0 for non-iceberg orders (and for snapshots taken
+   * before iceberg support existed).
+   *
+   * @generated from field: int64 display_quantity = 11;
+   */
+  displayQuantity: bigint;
+
+  /**
+   * @generated from field: int64 displayed_remaining = 12;
+   */
+  displayedRemaining: bigint;
+
+  /**
+   * Trailing-stop state. trail_amount and trail_offset_bps mirror the
+   * OrderPlaced fields; limit_offset is the offset for TRAILING_STOP_LIMIT.
+   *
+   * @generated from field: int64 trail_amount = 13;
+   */
+  trailAmount: bigint;
+
+  /**
+   * @generated from field: int32 trail_offset_bps = 14;
+   */
+  trailOffsetBps: number;
+
+  /**
+   * @generated from field: int64 limit_offset = 15;
+   */
+  limitOffset: bigint;
 };
 
 /**

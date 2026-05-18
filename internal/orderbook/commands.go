@@ -33,8 +33,16 @@ var (
 	ErrAtOpenOutsideAuction          = errors.New("AT_OPEN orders are only accepted during the opening auction")
 	ErrAtCloseOutsideAcceptanceWindow = errors.New("AT_CLOSE orders are only accepted in CONTINUOUS or CLOSING_AUCTION")
 	ErrAuctionStopNotAllowed         = errors.New("stop orders cannot be combined with AT_OPEN/AT_CLOSE")
-	ErrCannotBeginClosing            = errors.New("closing auction can only be entered from CONTINUOUS")
-	ErrClosingAuctionRejectsRegular  = errors.New("regular orders are not accepted during the closing auction (only AT_CLOSE)")
+	ErrCannotBeginClosing             = errors.New("closing auction can only be entered from CONTINUOUS")
+	ErrClosingAuctionRejectsRegular   = errors.New("regular orders are not accepted during the closing auction (only AT_CLOSE)")
+	ErrIcebergRequiresLimit           = errors.New("iceberg orders must be limit orders")
+	ErrIcebergRequiresRestingTIF      = errors.New("iceberg orders require a resting time-in-force (GTC or DAY)")
+	ErrIcebergDisplayExceedsQuantity  = errors.New("display_quantity must be <= quantity")
+	ErrIcebergNotAllowedWithReplace   = errors.New("iceberg orders cannot be used with ReplaceOrder")
+	ErrTrailingStopRequiresTrail      = errors.New("trailing stops require exactly one of trail_amount or trail_offset_bps (> 0)")
+	ErrTrailingStopAmbiguousTrail     = errors.New("trailing stops must specify trail_amount OR trail_offset_bps, not both")
+	ErrTrailingStopLimitRequiresOffset = errors.New("trailing-stop-limit orders require a positive limit_offset")
+	ErrTrailingStopRejectsLimitOffset = errors.New("trailing-stop-market orders must not specify limit_offset")
 )
 
 // PlaceOrder is a command to place a new order on the book.
@@ -49,6 +57,17 @@ type PlaceOrder struct {
 	OrderID     string
 	AccountID   string
 	OCOGroupID  string
+	// DisplayQty, when > 0, makes this an iceberg: only DisplayQty is
+	// exposed to matching at a time. Must be <= Quantity; requires
+	// Limit + GTC/DAY (no Market/IOC/FOK/Stop/auction-TIF).
+	DisplayQty int64
+	// Trailing-stop fields; required when OrderType is
+	// TrailingStopMarket / TrailingStopLimit. Exactly one of TrailAmount
+	// or TrailOffsetBps must be > 0. LimitOffset is only valid for
+	// TrailingStopLimit.
+	TrailAmount    int64
+	TrailOffsetBps int32
+	LimitOffset    int64
 }
 
 func (c PlaceOrder) AggregateID() string {
@@ -81,6 +100,7 @@ type ReplaceOrder struct {
 	OrderType   OrderType
 	TimeInForce TimeInForce
 	AccountID   string
+	DisplayQty  int64
 }
 
 func (c ReplaceOrder) AggregateID() string {
@@ -124,6 +144,28 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 		if cmd.Price <= 0 {
 			return nil, ErrStopLimitRequiresPrice
 		}
+	case TrailingStopMarket:
+		if cmd.StopPrice <= 0 {
+			return nil, ErrStopRequiresStopPrice
+		}
+		if cmd.Price != 0 {
+			return nil, ErrStopMarketRequiresZeroPrice
+		}
+		if err := validateTrailingParams(cmd, false); err != nil {
+			return nil, err
+		}
+	case TrailingStopLimit:
+		if cmd.StopPrice <= 0 {
+			return nil, ErrStopRequiresStopPrice
+		}
+		// Price is derived from StopPrice + LimitOffset at trigger time,
+		// so the caller should not pre-supply a limit price.
+		if cmd.Price != 0 {
+			return nil, ErrStopMarketRequiresZeroPrice
+		}
+		if err := validateTrailingParams(cmd, true); err != nil {
+			return nil, err
+		}
 	default: // Limit
 		if cmd.Price <= 0 {
 			return nil, ErrInvalidPrice
@@ -134,9 +176,20 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 
 	// Stop orders can't be auction-bound — they need a last-trade
 	// reference to trigger from, which doesn't exist mid-auction.
-	if (tif == AtOpen || tif == AtClose) &&
-		(cmd.OrderType == StopMarket || cmd.OrderType == StopLimit) {
+	if (tif == AtOpen || tif == AtClose) && cmd.OrderType.IsStop() {
 		return nil, ErrAuctionStopNotAllowed
+	}
+
+	if cmd.DisplayQty > 0 {
+		if cmd.OrderType != Limit {
+			return nil, ErrIcebergRequiresLimit
+		}
+		if tif != GTC && tif != Day {
+			return nil, ErrIcebergRequiresRestingTIF
+		}
+		if cmd.DisplayQty > cmd.Quantity {
+			return nil, ErrIcebergDisplayExceedsQuantity
+		}
 	}
 
 	// Phase-aware validation matrix. Each phase has a different set of
@@ -191,17 +244,21 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 		Type:        EventOrderPlaced,
 		Timestamp:   now,
 		Data: &orderbookv1.OrderPlaced{
-			OrderId:     orderID,
-			Symbol:      cmd.Symbol,
-			Side:        SideToProto(cmd.Side),
-			Price:       cmd.Price,
-			StopPrice:   cmd.StopPrice,
-			Quantity:    cmd.Quantity,
-			PlacedAt:    timestamppb.New(now),
-			OrderType:   OrderTypeToProto(cmd.OrderType),
-			TimeInForce: TimeInForceToProto(tif),
-			AccountId:   cmd.AccountID,
-			OcoGroupId:  cmd.OCOGroupID,
+			OrderId:         orderID,
+			Symbol:          cmd.Symbol,
+			Side:            SideToProto(cmd.Side),
+			Price:           cmd.Price,
+			StopPrice:       cmd.StopPrice,
+			Quantity:        cmd.Quantity,
+			PlacedAt:        timestamppb.New(now),
+			OrderType:       OrderTypeToProto(cmd.OrderType),
+			TimeInForce:     TimeInForceToProto(tif),
+			AccountId:       cmd.AccountID,
+			OcoGroupId:      cmd.OCOGroupID,
+			DisplayQuantity: cmd.DisplayQty,
+			TrailAmount:     cmd.TrailAmount,
+			TrailOffsetBps:  cmd.TrailOffsetBps,
+			LimitOffset:     cmd.LimitOffset,
 		},
 	}
 
@@ -218,7 +275,7 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 	}
 
 	// Stop orders rest until triggered — no immediate matching.
-	if cmd.OrderType == StopMarket || cmd.OrderType == StopLimit {
+	if cmd.OrderType.IsStop() {
 		return events, nil
 	}
 
@@ -240,34 +297,73 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 }
 
 func matchAndAppend(book *OrderBook, incoming *Order, events []es.Event, now time.Time) ([]es.Event, bool) {
-	result := Match(book, incoming, now)
-	for _, trade := range result.Trades {
-		// Identify the resting (non-incoming) order so we can fire OCO
-		// cancellations against its group before the next match cycle
-		// (or before triggerStops gets a chance to fire siblings).
-		restingID := trade.BuyOrderId
-		if restingID == incoming.ID {
-			restingID = trade.SellOrderId
-		}
-		resting := book.Orders[restingID]
+	// Iceberg orders only expose one slice at a time. When a slice fully
+	// fills the match loop will skip past the resting iceberg (its
+	// VisibleQty drops to 0); we then emit IcebergSliceReplenished,
+	// reseat the iceberg at the back of its price level, and retry
+	// matching so the incoming order can keep consuming liquidity at the
+	// same level if any was hidden behind that iceberg.
+	for {
+		result := Match(book, incoming, now)
+		replenished := false
+		for _, trade := range result.Trades {
+			restingID := trade.BuyOrderId
+			if restingID == incoming.ID {
+				restingID = trade.SellOrderId
+			}
+			resting := book.Orders[restingID]
 
-		tradeEvt := es.Event{
-			AggregateID: book.AggregateID(),
-			Type:        EventTradeExecuted,
-			Timestamp:   now,
-			Data:        trade,
-		}
-		book.Apply(tradeEvt)
-		events = append(events, tradeEvt)
+			tradeEvt := es.Event{
+				AggregateID: book.AggregateID(),
+				Type:        EventTradeExecuted,
+				Timestamp:   now,
+				Data:        trade,
+			}
+			book.Apply(tradeEvt)
+			events = append(events, tradeEvt)
 
-		if resting != nil && resting.OCOGroupID != "" {
-			events = cancelOCOSiblings(book, resting, events, now)
+			if resting != nil && resting.OCOGroupID != "" {
+				events = cancelOCOSiblings(book, resting, events, now)
+			}
+
+			if resting != nil && resting.DisplayQty > 0 && resting.Displayed <= 0 && resting.RemainingQty > 0 {
+				replenishEvt := makeIcebergReplenish(book, resting, now)
+				book.Apply(replenishEvt)
+				events = append(events, replenishEvt)
+				replenished = true
+			}
+
+			// Each trade is a new mark observation; ratchet any
+			// resting trailing stops before the next trigger pass.
+			events = ratchetTrailingStops(book, trade.Price, events, now)
+		}
+		if result.SelfTradePrevented {
+			events = cancelUnfilled(book, incoming, events, now, "self-trade prevention")
+			return events, true
+		}
+		if !replenished || incoming.RemainingQty <= 0 {
+			return events, false
 		}
 	}
-	if result.SelfTradePrevented {
-		events = cancelUnfilled(book, incoming, events, now, "self-trade prevention")
+}
+
+func makeIcebergReplenish(book *OrderBook, order *Order, now time.Time) es.Event {
+	newDisplay := min(order.DisplayQty, order.RemainingQty)
+	hidden := order.RemainingQty - newDisplay
+	return es.Event{
+		AggregateID: book.AggregateID(),
+		Type:        EventIcebergSliceReplenished,
+		Timestamp:   now,
+		Data: &orderbookv1.IcebergSliceReplenished{
+			OrderId:         order.ID,
+			Symbol:          book.Symbol,
+			Side:            SideToProto(order.Side),
+			Price:           order.Price,
+			NewDisplayedQty: newDisplay,
+			HiddenRemaining: hidden,
+			ReplenishedAt:   timestamppb.New(now),
+		},
 	}
-	return events, result.SelfTradePrevented
 }
 
 // cancelOCOSiblings emits OrderCancelled events for every other member
@@ -365,7 +461,7 @@ func triggerStops(book *OrderBook, events []es.Event, now time.Time) []es.Event 
 			var stp bool
 			events, stp = matchAndAppend(book, activated, events, now)
 
-			if stopOrder.OrderType == StopMarket || stp {
+			if stopOrder.OrderType == StopMarket || stopOrder.OrderType == TrailingStopMarket || stp {
 				reason := "no liquidity"
 				if stp {
 					reason = "self-trade prevention"
@@ -394,9 +490,9 @@ func collectTriggeredStops(book *OrderBook, tradePrice int64) []*Order {
 
 func activatedOrderType(ot OrderType) orderbookv1.OrderType {
 	switch ot {
-	case StopMarket:
+	case StopMarket, TrailingStopMarket:
 		return orderbookv1.OrderType_ORDER_TYPE_MARKET
-	case StopLimit:
+	case StopLimit, TrailingStopLimit:
 		return orderbookv1.OrderType_ORDER_TYPE_LIMIT
 	default:
 		return orderbookv1.OrderType_ORDER_TYPE_UNSPECIFIED
@@ -550,9 +646,7 @@ func ExecuteReplaceOrder(book *OrderBook, cmd ReplaceOrder) ([]es.Event, error) 
 		if cmd.Price != 0 {
 			return nil, ErrMarketRequiresZeroPrice
 		}
-	case StopMarket:
-		return nil, errors.New("stop orders cannot be used with replace")
-	case StopLimit:
+	case StopMarket, StopLimit, TrailingStopMarket, TrailingStopLimit:
 		return nil, errors.New("stop orders cannot be used with replace")
 	default: // Limit
 		if cmd.Price <= 0 {
@@ -569,6 +663,18 @@ func ExecuteReplaceOrder(book *OrderBook, cmd ReplaceOrder) ([]es.Event, error) 
 		}
 	}
 
+	if cmd.DisplayQty > 0 {
+		if cmd.OrderType != Limit {
+			return nil, ErrIcebergRequiresLimit
+		}
+		if tif != GTC && tif != Day {
+			return nil, ErrIcebergRequiresRestingTIF
+		}
+		if cmd.DisplayQty > cmd.Quantity {
+			return nil, ErrIcebergDisplayExceedsQuantity
+		}
+	}
+
 	orderID := cmd.NewOrderID
 	if orderID == "" {
 		orderID = uuid.New().String()
@@ -579,15 +685,16 @@ func ExecuteReplaceOrder(book *OrderBook, cmd ReplaceOrder) ([]es.Event, error) 
 		Type:        EventOrderPlaced,
 		Timestamp:   now,
 		Data: &orderbookv1.OrderPlaced{
-			OrderId:     orderID,
-			Symbol:      cmd.Symbol,
-			Side:        SideToProto(cmd.Side),
-			Price:       cmd.Price,
-			Quantity:    cmd.Quantity,
-			PlacedAt:    timestamppb.New(now),
-			OrderType:   OrderTypeToProto(cmd.OrderType),
-			TimeInForce: TimeInForceToProto(tif),
-			AccountId:   cmd.AccountID,
+			OrderId:         orderID,
+			Symbol:          cmd.Symbol,
+			Side:            SideToProto(cmd.Side),
+			Price:           cmd.Price,
+			Quantity:        cmd.Quantity,
+			PlacedAt:        timestamppb.New(now),
+			OrderType:       OrderTypeToProto(cmd.OrderType),
+			TimeInForce:     TimeInForceToProto(tif),
+			AccountId:       cmd.AccountID,
+			DisplayQuantity: cmd.DisplayQty,
 		},
 	}
 

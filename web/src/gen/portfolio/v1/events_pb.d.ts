@@ -980,6 +980,40 @@ export declare type OrderSagaStarted = Message<"portfolio.v1.OrderSagaStarted"> 
    * @generated from field: saga.v1.Initiator initiator = 13;
    */
   initiator: Initiator;
+
+  /**
+   * Iceberg slice size for the underlying orderbook order; 0 = non-iceberg.
+   * Held cash/collateral still covers the full quantity.
+   *
+   * @generated from field: int64 display_quantity = 14;
+   */
+  displayQuantity: bigint;
+
+  /**
+   * Trailing-stop params for the underlying orderbook order. stop_price
+   * on the orderbook order is the *initial* trigger; trail_amount or
+   * trail_offset_bps controls how it ratchets.
+   *
+   * @generated from field: int64 trail_amount = 15;
+   */
+  trailAmount: bigint;
+
+  /**
+   * @generated from field: int32 trail_offset_bps = 16;
+   */
+  trailOffsetBps: number;
+
+  /**
+   * @generated from field: int64 limit_offset = 17;
+   */
+  limitOffset: bigint;
+
+  /**
+   * Initial stop_price for any stop variant of the underlying order.
+   *
+   * @generated from field: int64 stop_price = 18;
+   */
+  stopPrice: bigint;
 };
 
 /**

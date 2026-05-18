@@ -73,6 +73,15 @@ message SingleOrderPlan {
   // validates legal combos (e.g. BUY+SHORT requires existing short
   // >= quantity in symbol).
   orderbook.v1.PositionSide position_side = 8;
+  // Iceberg slice size; 0 = normal order. Limit + GTC/Day only.
+  int64 display_quantity = 9;
+  // Trailing-stop params. Required when order_type is TRAILING_STOP_*.
+  int64 trail_amount = 10;
+  int32 trail_offset_bps = 11;
+  int64 limit_offset = 12;
+  // Initial stop_price; required for any stop variant (fixed or
+  // trailing). Trailing stops then ratchet from this baseline.
+  int64 stop_price = 13;
 }
 
 message BracketPlan {
@@ -174,6 +183,14 @@ message SingleOrderDetails {
   string order_id = 10;
   orderbook.v1.PositionSide position_side = 11;
   Initiator initiator = 12;
+  int64 display_quantity = 13;
+  int64 trail_amount = 14;
+  int32 trail_offset_bps = 15;
+  int64 limit_offset = 16;
+  // current_stop_price reflects the live (post-ratchet) stop for
+  // trailing stops, so the UI can show the actual trigger rather than
+  // the initial value the user placed.
+  int64 current_stop_price = 17;
 }
 
 // BracketPhase is the granular state for SAGA_KIND_BRACKET.

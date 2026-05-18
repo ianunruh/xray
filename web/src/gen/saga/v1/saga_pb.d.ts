@@ -107,6 +107,38 @@ export declare type SingleOrderPlan = Message<"saga.v1.SingleOrderPlan"> & {
    * @generated from field: orderbook.v1.PositionSide position_side = 8;
    */
   positionSide: PositionSide;
+
+  /**
+   * Iceberg slice size; 0 = normal order. Limit + GTC/Day only.
+   *
+   * @generated from field: int64 display_quantity = 9;
+   */
+  displayQuantity: bigint;
+
+  /**
+   * Trailing-stop params. Required when order_type is TRAILING_STOP_*.
+   *
+   * @generated from field: int64 trail_amount = 10;
+   */
+  trailAmount: bigint;
+
+  /**
+   * @generated from field: int32 trail_offset_bps = 11;
+   */
+  trailOffsetBps: number;
+
+  /**
+   * @generated from field: int64 limit_offset = 12;
+   */
+  limitOffset: bigint;
+
+  /**
+   * Initial stop_price; required for any stop variant (fixed or
+   * trailing). Trailing stops then ratchet from this baseline.
+   *
+   * @generated from field: int64 stop_price = 13;
+   */
+  stopPrice: bigint;
 };
 
 /**
@@ -446,6 +478,35 @@ export declare type SingleOrderDetails = Message<"saga.v1.SingleOrderDetails"> &
    * @generated from field: saga.v1.Initiator initiator = 12;
    */
   initiator: Initiator;
+
+  /**
+   * @generated from field: int64 display_quantity = 13;
+   */
+  displayQuantity: bigint;
+
+  /**
+   * @generated from field: int64 trail_amount = 14;
+   */
+  trailAmount: bigint;
+
+  /**
+   * @generated from field: int32 trail_offset_bps = 15;
+   */
+  trailOffsetBps: number;
+
+  /**
+   * @generated from field: int64 limit_offset = 16;
+   */
+  limitOffset: bigint;
+
+  /**
+   * current_stop_price reflects the live (post-ratchet) stop for
+   * trailing stops, so the UI can show the actual trigger rather than
+   * the initial value the user placed.
+   *
+   * @generated from field: int64 current_stop_price = 17;
+   */
+  currentStopPrice: bigint;
 };
 
 /**

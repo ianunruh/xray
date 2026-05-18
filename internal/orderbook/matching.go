@@ -44,7 +44,15 @@ func matchBuy(book *OrderBook, incoming *Order, now time.Time) MatchResult {
 			return MatchResult{Trades: trades, SelfTradePrevented: true}
 		}
 
-		qty := min(remainingQty, ask.RemainingQty)
+		// For iceberg resters, only the displayed slice is fillable.
+		// Once it's exhausted the matching loop must move on to the next
+		// resting order; the caller emits IcebergSliceReplenished and
+		// reseats the iceberg at the back of the queue.
+		askQty := ask.VisibleQty()
+		if askQty <= 0 {
+			continue
+		}
+		qty := min(remainingQty, askQty)
 		trades = append(trades, &orderbookv1.TradeExecuted{
 			TradeId:     uuid.New().String(),
 			BuyOrderId:  incoming.ID,
@@ -76,7 +84,11 @@ func matchSell(book *OrderBook, incoming *Order, now time.Time) MatchResult {
 			return MatchResult{Trades: trades, SelfTradePrevented: true}
 		}
 
-		qty := min(remainingQty, bid.RemainingQty)
+		bidQty := bid.VisibleQty()
+		if bidQty <= 0 {
+			continue
+		}
+		qty := min(remainingQty, bidQty)
 		trades = append(trades, &orderbookv1.TradeExecuted{
 			TradeId:     uuid.New().String(),
 			BuyOrderId:  bid.ID,

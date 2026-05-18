@@ -267,6 +267,17 @@ message OrderSagaStarted {
   // runs. Surfaces in the existing causation chain viewer.
   string cause_event_id = 12;
   saga.v1.Initiator initiator = 13;
+  // Iceberg slice size for the underlying orderbook order; 0 = non-iceberg.
+  // Held cash/collateral still covers the full quantity.
+  int64 display_quantity = 14;
+  // Trailing-stop params for the underlying orderbook order. stop_price
+  // on the orderbook order is the *initial* trigger; trail_amount or
+  // trail_offset_bps controls how it ratchets.
+  int64 trail_amount = 15;
+  int32 trail_offset_bps = 16;
+  int64 limit_offset = 17;
+  // Initial stop_price for any stop variant of the underlying order.
+  int64 stop_price = 18;
 }
 
 message OrderSagaCashHeld {

@@ -55,6 +55,33 @@ export declare type PlaceOrderRequest = Message<"orderbook.v1.PlaceOrderRequest"
    * @generated from field: string account_id = 8;
    */
   accountId: string;
+
+  /**
+   * Iceberg slice size; 0 = normal (non-iceberg) order. Limit + GTC/Day only.
+   *
+   * @generated from field: int64 display_quantity = 9;
+   */
+  displayQuantity: bigint;
+
+  /**
+   * Trailing-stop parameters; required when order_type is
+   * TRAILING_STOP_MARKET / _LIMIT. Exactly one of trail_amount /
+   * trail_offset_bps must be > 0. limit_offset only applies to
+   * TRAILING_STOP_LIMIT.
+   *
+   * @generated from field: int64 trail_amount = 10;
+   */
+  trailAmount: bigint;
+
+  /**
+   * @generated from field: int32 trail_offset_bps = 11;
+   */
+  trailOffsetBps: number;
+
+  /**
+   * @generated from field: int64 limit_offset = 12;
+   */
+  limitOffset: bigint;
 };
 
 /**
@@ -688,6 +715,31 @@ export declare type GetOrderResponse = Message<"orderbook.v1.GetOrderResponse"> 
    * @generated from field: int64 stop_price = 10;
    */
   stopPrice: bigint;
+
+  /**
+   * @generated from field: int64 display_quantity = 11;
+   */
+  displayQuantity: bigint;
+
+  /**
+   * @generated from field: int64 displayed_remaining = 12;
+   */
+  displayedRemaining: bigint;
+
+  /**
+   * @generated from field: int64 trail_amount = 13;
+   */
+  trailAmount: bigint;
+
+  /**
+   * @generated from field: int32 trail_offset_bps = 14;
+   */
+  trailOffsetBps: number;
+
+  /**
+   * @generated from field: int64 limit_offset = 15;
+   */
+  limitOffset: bigint;
 };
 
 /**
@@ -1053,6 +1105,31 @@ export declare type OrderSummary = Message<"orderbook.v1.OrderSummary"> & {
    * @generated from field: int64 stop_price = 11;
    */
   stopPrice: bigint;
+
+  /**
+   * @generated from field: int64 display_quantity = 12;
+   */
+  displayQuantity: bigint;
+
+  /**
+   * @generated from field: int64 displayed_remaining = 13;
+   */
+  displayedRemaining: bigint;
+
+  /**
+   * @generated from field: int64 trail_amount = 14;
+   */
+  trailAmount: bigint;
+
+  /**
+   * @generated from field: int32 trail_offset_bps = 15;
+   */
+  trailOffsetBps: number;
+
+  /**
+   * @generated from field: int64 limit_offset = 16;
+   */
+  limitOffset: bigint;
 };
 
 /**

@@ -53,14 +53,18 @@ func (s *Server) PlaceOrder(ctx context.Context, req *connect.Request[orderbookv
 	}
 
 	cmd := PlaceOrder{
-		Symbol:      msg.Symbol,
-		Side:        SideFromProto(msg.Side),
-		Price:       msg.Price,
-		StopPrice:   msg.StopPrice,
-		Quantity:    msg.Quantity,
-		OrderType:   OrderTypeFromProto(msg.OrderType),
-		TimeInForce: tif,
-		AccountID:   msg.AccountId,
+		Symbol:         msg.Symbol,
+		Side:           SideFromProto(msg.Side),
+		Price:          msg.Price,
+		StopPrice:      msg.StopPrice,
+		Quantity:       msg.Quantity,
+		OrderType:      OrderTypeFromProto(msg.OrderType),
+		TimeInForce:    tif,
+		AccountID:      msg.AccountId,
+		DisplayQty:     msg.DisplayQuantity,
+		TrailAmount:    msg.TrailAmount,
+		TrailOffsetBps: msg.TrailOffsetBps,
+		LimitOffset:    msg.LimitOffset,
 	}
 
 	var produced []es.Event
@@ -354,16 +358,21 @@ func (s *Server) GetOrder(ctx context.Context, req *connect.Request[orderbookv1.
 	}
 
 	resp := &orderbookv1.GetOrderResponse{
-		OrderId:           order.OrderId,
-		Symbol:            order.Symbol,
-		Side:              order.Side,
-		Price:             order.Price,
-		StopPrice:         order.StopPrice,
-		Quantity:          order.Quantity,
-		RemainingQuantity: order.RemainingQuantity,
-		PlacedAt:          order.PlacedAt,
-		OrderType:         order.OrderType,
-		TimeInForce:       order.TimeInForce,
+		OrderId:            order.OrderId,
+		Symbol:             order.Symbol,
+		Side:               order.Side,
+		Price:              order.Price,
+		StopPrice:          order.StopPrice,
+		Quantity:           order.Quantity,
+		RemainingQuantity:  order.RemainingQuantity,
+		DisplayQuantity:    order.DisplayQuantity,
+		DisplayedRemaining: order.DisplayedRemaining,
+		TrailAmount:        order.TrailAmount,
+		TrailOffsetBps:     order.TrailOffsetBps,
+		LimitOffset:        order.LimitOffset,
+		PlacedAt:           order.PlacedAt,
+		OrderType:          order.OrderType,
+		TimeInForce:        order.TimeInForce,
 	}
 
 	s.log.Info("GetOrder", "symbol", req.Msg.Symbol, "order_id", req.Msg.OrderId)
@@ -553,7 +562,11 @@ func mapError(err error) *connect.Error {
 
 	switch unwrapped {
 	case ErrInvalidPrice, ErrInvalidQuantity, ErrMarketGTC, ErrMarketRequiresZeroPrice,
-		ErrStopRequiresStopPrice, ErrStopMarketRequiresZeroPrice, ErrStopLimitRequiresPrice:
+		ErrStopRequiresStopPrice, ErrStopMarketRequiresZeroPrice, ErrStopLimitRequiresPrice,
+		ErrIcebergRequiresLimit, ErrIcebergRequiresRestingTIF,
+		ErrIcebergDisplayExceedsQuantity, ErrIcebergNotAllowedWithReplace,
+		ErrTrailingStopRequiresTrail, ErrTrailingStopAmbiguousTrail,
+		ErrTrailingStopLimitRequiresOffset, ErrTrailingStopRejectsLimitOffset:
 		return connect.NewError(connect.CodeInvalidArgument, unwrapped)
 	case ErrInsufficientLiquidity:
 		return connect.NewError(connect.CodeFailedPrecondition, unwrapped)

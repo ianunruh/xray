@@ -9,6 +9,7 @@ import {
   SegmentedControl,
   Select,
   Stack,
+  Switch,
   Text,
   Title,
 } from "@mantine/core";
@@ -23,6 +24,8 @@ import { usePreviewOrderImpact } from "../hooks/usePreviewOrderImpact";
 const ORDER_TYPES: Record<string, OrderType> = {
   LIMIT: OrderType.LIMIT,
   MARKET: OrderType.MARKET,
+  TRAILING_STOP_MARKET: OrderType.TRAILING_STOP_MARKET,
+  TRAILING_STOP_LIMIT: OrderType.TRAILING_STOP_LIMIT,
 };
 
 const TIME_IN_FORCE: Record<string, TimeInForce> = {
@@ -162,6 +165,12 @@ export function OrderForm({
   const [stopLoss, setStopLoss] = useState<number | string>("");
   const [sliceCount, setSliceCount] = useState<number | string>(5);
   const [sliceIntervalSec, setSliceIntervalSec] = useState<number | string>(10);
+  const [iceberg, setIceberg] = useState(false);
+  const [displayQty, setDisplayQty] = useState<number | string>(10);
+  const [stopPrice, setStopPrice] = useState<number | string>("");
+  const [trailAmount, setTrailAmount] = useState<number | string>("");
+  const [trailMode, setTrailMode] = useState<"AMOUNT" | "BPS">("AMOUNT");
+  const [trailLimitOffset, setTrailLimitOffset] = useState<number | string>("");
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
 
@@ -199,6 +208,9 @@ export function OrderForm({
   const isOCO = mode === "OCO";
   const isTwap = mode === "TWAP";
   const isMarket = orderType === "MARKET";
+  const isTrailingMarket = orderType === "TRAILING_STOP_MARKET";
+  const isTrailingLimit = orderType === "TRAILING_STOP_LIMIT";
+  const isTrailing = isTrailingMarket || isTrailingLimit;
 
   // Derive (side, position_side) from the user-friendly controls.
   // SINGLE and TWAP use the 4-way action; BRACKET/OCO use the 2-way
@@ -237,7 +249,7 @@ export function OrderForm({
   const qtyNum = Number(quantity);
   const prcNum = Number(price);
   const previewParams =
-    !isOCO && qtyNum > 0 && (isMarket || prcNum > 0)
+    !isOCO && !isTrailing && qtyNum > 0 && (isMarket || prcNum > 0)
       ? {
           accountId,
           symbol,
@@ -332,14 +344,102 @@ export function OrderForm({
       return;
     }
 
+    if (isSingle && isTrailing) {
+      const stop = typeof stopPrice === "number" ? stopPrice : parseFloat(stopPrice);
+      if (!stop || stop <= 0) {
+        notifications.show({ message: "Enter an initial stop price", color: "red" });
+        return;
+      }
+      const trail =
+        typeof trailAmount === "number" ? trailAmount : parseFloat(trailAmount);
+      if (!trail || trail <= 0) {
+        notifications.show({ message: "Enter a trail value > 0", color: "red" });
+        return;
+      }
+      let limOff = 0;
+      if (isTrailingLimit) {
+        limOff =
+          typeof trailLimitOffset === "number"
+            ? trailLimitOffset
+            : parseFloat(trailLimitOffset);
+        if (!limOff || limOff <= 0) {
+          notifications.show({
+            message: "Trailing-stop-limit requires a positive limit offset",
+            color: "red",
+          });
+          return;
+        }
+      }
+      const verb = ACTION_MAP[action].verb;
+      const trailLabel =
+        trailMode === "AMOUNT" ? `$${trail.toFixed(4)}` : `${Math.round(trail)} bps`;
+      const rows: { label: string; value: string }[] = [
+        { label: "Type", value: isTrailingLimit ? "Trailing stop (limit)" : "Trailing stop (market)" },
+        { label: "Stop", value: `$${stop.toFixed(4)}` },
+        { label: "Trail", value: trailLabel },
+      ];
+      if (isTrailingLimit) {
+        rows.push({ label: "Limit offset", value: `$${limOff.toFixed(4)}` });
+      }
+      setPending({
+        request: {
+          accountId,
+          plan: {
+            case: "singleOrder",
+            value: {
+              symbol,
+              side,
+              orderType: ORDER_TYPES[orderType] ?? OrderType.LIMIT,
+              price: 0n,
+              stopPrice: moneyToPrice(stop),
+              quantity: BigInt(qty),
+              trailAmount: trailMode === "AMOUNT" ? moneyToPrice(trail) : 0n,
+              trailOffsetBps: trailMode === "BPS" ? Math.round(trail) : 0,
+              limitOffset: isTrailingLimit ? moneyToPrice(limOff) : 0n,
+              timeInForce: TimeInForce.GTC,
+              positionSide: ps,
+            },
+          },
+        },
+        heading: `${verb} ${qty} ${symbol} (trailing)`,
+        color: ACTION_MAP[action].color,
+        rows,
+        successTitle: "Trailing stop placed",
+        successMessage: `${verb} trailing ${qty} ${symbol} @ stop $${stop}`,
+        failureTitle: "Trailing stop failed",
+      });
+      return;
+    }
+
     if (isSingle) {
       const prc = typeof price === "number" ? price : parseFloat(price);
       if (!isMarket && (!prc || prc <= 0)) {
         notifications.show({ message: "Enter a valid price", color: "red" });
         return;
       }
+      const useIceberg = iceberg && !isMarket && (tif === "GTC" || tif === "DAY");
+      let dq = 0;
+      if (useIceberg) {
+        dq = typeof displayQty === "number" ? displayQty : parseInt(displayQty, 10);
+        if (!dq || dq <= 0) {
+          notifications.show({ message: "Enter a valid display quantity", color: "red" });
+          return;
+        }
+        if (dq > qty) {
+          notifications.show({ message: "Display qty cannot exceed total quantity", color: "red" });
+          return;
+        }
+      }
       const verb = ACTION_MAP[action].verb;
       const priceLabel = isMarket ? "Market" : `$${prc.toFixed(4)}`;
+      const rows = [
+        { label: "Type", value: orderType },
+        { label: "TIF", value: tif },
+        { label: isMarket ? "Limit" : "Price", value: priceLabel },
+      ];
+      if (useIceberg) {
+        rows.push({ label: "Iceberg", value: `${dq} displayed of ${qty}` });
+      }
       setPending({
         request: {
           accountId,
@@ -351,18 +451,15 @@ export function OrderForm({
               orderType: ORDER_TYPES[orderType] ?? OrderType.MARKET,
               price: isMarket ? 0n : moneyToPrice(prc),
               quantity: BigInt(qty),
+              displayQuantity: useIceberg ? BigInt(dq) : 0n,
               timeInForce: TIME_IN_FORCE[tif] ?? TimeInForce.IOC,
               positionSide: ps,
             },
           },
         },
-        heading: `${verb} ${qty} ${symbol}`,
+        heading: `${verb} ${qty} ${symbol}${useIceberg ? " (iceberg)" : ""}`,
         color: ACTION_MAP[action].color,
-        rows: [
-          { label: "Type", value: orderType },
-          { label: "TIF", value: tif },
-          { label: isMarket ? "Limit" : "Price", value: priceLabel },
-        ],
+        rows,
         successTitle: "Order placed",
         successMessage: `${verb} ${qty} ${symbol}`,
         failureTitle: "Order failed",
@@ -601,6 +698,8 @@ export function OrderForm({
               data={[
                 { label: "Limit", value: "LIMIT" },
                 { label: "Market", value: "MARKET" },
+                { label: "Trailing stop (market)", value: "TRAILING_STOP_MARKET" },
+                { label: "Trailing stop (limit)", value: "TRAILING_STOP_LIMIT" },
               ]}
               checkIconPosition="right"
             />
@@ -611,10 +710,11 @@ export function OrderForm({
               onChange={(v) => setTif(v ?? "IOC")}
               data={isMarket ? MARKET_TIF_OPTIONS : LIMIT_TIF_OPTIONS}
               checkIconPosition="right"
+              disabled={isTrailing}
             />
           </Group>
         )}
-        {((isSingle && !isMarket) || isBracket || isTwap) && (
+        {((isSingle && !isMarket && !isTrailing) || isBracket || isTwap) && (
           <Stack gap={4}>
             <NumberInput
               label={isBracket ? "Entry Price" : isTwap ? "Limit Price" : "Price"}
@@ -664,6 +764,54 @@ export function OrderForm({
             )}
           </Stack>
         )}
+        {isSingle && isTrailing && (
+          <Stack gap={4}>
+            <NumberInput
+              label="Initial stop price"
+              description={
+                action === "BUY" || action === "COVER"
+                  ? "Trailing-stop BUY ratchets DOWN as mark falls."
+                  : "Trailing-stop SELL ratchets UP as mark rises."
+              }
+              size="xs"
+              placeholder="0.00"
+              min={0}
+              decimalScale={4}
+              value={stopPrice}
+              onChange={setStopPrice}
+            />
+            <SegmentedControl
+              size="xs"
+              value={trailMode}
+              onChange={(v) => setTrailMode(v as "AMOUNT" | "BPS")}
+              data={[
+                { label: "$ amount", value: "AMOUNT" },
+                { label: "bps", value: "BPS" },
+              ]}
+            />
+            <NumberInput
+              label={trailMode === "AMOUNT" ? "Trail amount ($)" : "Trail (bps)"}
+              size="xs"
+              placeholder={trailMode === "AMOUNT" ? "0.50" : "50"}
+              min={0}
+              decimalScale={trailMode === "AMOUNT" ? 4 : 0}
+              value={trailAmount}
+              onChange={setTrailAmount}
+            />
+            {isTrailingLimit && (
+              <NumberInput
+                label="Limit offset ($)"
+                description="Limit price = stop ± this offset at trigger."
+                size="xs"
+                placeholder="0.10"
+                min={0}
+                decimalScale={4}
+                value={trailLimitOffset}
+                onChange={setTrailLimitOffset}
+              />
+            )}
+          </Stack>
+        )}
         <NumberInput
           label={isTwap ? "Total Quantity" : "Quantity"}
           size="xs"
@@ -673,6 +821,28 @@ export function OrderForm({
           value={quantity}
           onChange={setQuantity}
         />
+        {isSingle && !isMarket && !isTrailing && (tif === "GTC" || tif === "DAY") && (
+          <Stack gap={4}>
+            <Switch
+              size="xs"
+              label="Iceberg (hide reserve)"
+              checked={iceberg}
+              onChange={(e) => setIceberg(e.currentTarget.checked)}
+            />
+            {iceberg && (
+              <NumberInput
+                label="Displayed quantity"
+                description="Slice exposed to the book; the rest stays hidden until each slice fills."
+                size="xs"
+                placeholder="10"
+                min={1}
+                allowDecimal={false}
+                value={displayQty}
+                onChange={setDisplayQty}
+              />
+            )}
+          </Stack>
+        )}
         {isTwap && (
           <Group grow>
             <NumberInput

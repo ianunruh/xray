@@ -28,7 +28,12 @@ type StartOrderSaga struct {
 	Symbol         string
 	Side           orderbookv1.Side
 	Price          int64
+	StopPrice      int64
 	Quantity       int64
+	DisplayQty     int64
+	TrailAmount    int64
+	TrailOffsetBps int32
+	LimitOffset    int64
 	OrderType      orderbookv1.OrderType
 	TimeInForce    orderbookv1.TimeInForce
 	ReplaceOrderID string
@@ -52,19 +57,24 @@ func ExecuteStartOrderSaga(saga *OrderSaga, cmd StartOrderSaga) ([]es.Event, err
 		Type:        EventOrderSagaStarted,
 		Timestamp:   now,
 		Data: &portfoliov1.OrderSagaStarted{
-			SagaId:         cmd.SagaID,
-			AccountId:      cmd.AccountID,
-			Symbol:         cmd.Symbol,
-			Side:           cmd.Side,
-			Price:          cmd.Price,
-			Quantity:       cmd.Quantity,
-			OrderType:      cmd.OrderType,
-			TimeInForce:    cmd.TimeInForce,
-			StartedAt:      timestamppb.New(now),
-			ReplaceOrderId: cmd.ReplaceOrderID,
-			PositionSide:   cmd.PositionSide,
-			CauseEventId:   cmd.CauseEventID,
-			Initiator:      cmd.Initiator,
+			SagaId:          cmd.SagaID,
+			AccountId:       cmd.AccountID,
+			Symbol:          cmd.Symbol,
+			Side:            cmd.Side,
+			Price:           cmd.Price,
+			StopPrice:       cmd.StopPrice,
+			Quantity:        cmd.Quantity,
+			DisplayQuantity: cmd.DisplayQty,
+			TrailAmount:     cmd.TrailAmount,
+			TrailOffsetBps:  cmd.TrailOffsetBps,
+			LimitOffset:     cmd.LimitOffset,
+			OrderType:       cmd.OrderType,
+			TimeInForce:     cmd.TimeInForce,
+			StartedAt:       timestamppb.New(now),
+			ReplaceOrderId:  cmd.ReplaceOrderID,
+			PositionSide:    cmd.PositionSide,
+			CauseEventId:    cmd.CauseEventID,
+			Initiator:       cmd.Initiator,
 		},
 	}
 

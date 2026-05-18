@@ -295,6 +295,13 @@ export declare type PendingOrder = Message<"portfolio.v1.PendingOrder"> & {
    * @generated from field: int64 last_fill_price = 13;
    */
   lastFillPrice: bigint;
+
+  /**
+   * Iceberg slice size for the underlying orderbook order; 0 = normal.
+   *
+   * @generated from field: int64 display_quantity = 14;
+   */
+  displayQuantity: bigint;
 };
 
 /**

@@ -85,6 +85,8 @@ message PendingOrder {
   // first fill. Useful for market orders where price (the limit) is
   // unset, so the actual execution price isn't otherwise visible.
   int64 last_fill_price = 13;
+  // Iceberg slice size for the underlying orderbook order; 0 = normal.
+  int64 display_quantity = 14;
 }
 
 // OrderStatus is kept for the PendingOrder field on GetPortfolioResponse,

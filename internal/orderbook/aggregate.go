@@ -127,6 +127,10 @@ func (ob *OrderBook) Apply(evt es.Event) error {
 		ob.applyOrderCancelled(data)
 	case *orderbookv1.StopTriggered:
 		ob.applyStopTriggered(data)
+	case *orderbookv1.TrailingStopAdjusted:
+		ob.applyTrailingStopAdjusted(data)
+	case *orderbookv1.IcebergSliceReplenished:
+		ob.applyIcebergSliceReplenished(data)
 	case *orderbookv1.MarketClosed:
 		// State changes are handled by the subsequent OrderCancelled events.
 	case *orderbookv1.MarketPhaseChanged:
@@ -149,17 +153,24 @@ func (ob *OrderBook) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 	ob.Symbol = data.Symbol
 
 	order := &Order{
-		ID:           data.OrderId,
-		AccountID:    data.AccountId,
-		Side:         SideFromProto(data.Side),
-		Price:        data.Price,
-		StopPrice:    data.StopPrice,
-		Quantity:     data.Quantity,
-		RemainingQty: data.Quantity,
-		PlacedAt:     data.PlacedAt.AsTime(),
-		OrderType:    OrderTypeFromProto(data.OrderType),
-		TimeInForce:  TimeInForceFromProto(data.TimeInForce),
-		OCOGroupID:   data.OcoGroupId,
+		ID:             data.OrderId,
+		AccountID:      data.AccountId,
+		Side:           SideFromProto(data.Side),
+		Price:          data.Price,
+		StopPrice:      data.StopPrice,
+		Quantity:       data.Quantity,
+		RemainingQty:   data.Quantity,
+		DisplayQty:     data.DisplayQuantity,
+		TrailAmount:    data.TrailAmount,
+		TrailOffsetBps: data.TrailOffsetBps,
+		LimitOffset:    data.LimitOffset,
+		PlacedAt:       data.PlacedAt.AsTime(),
+		OrderType:      OrderTypeFromProto(data.OrderType),
+		TimeInForce:    TimeInForceFromProto(data.TimeInForce),
+		OCOGroupID:     data.OcoGroupId,
+	}
+	if order.DisplayQty > 0 {
+		order.Displayed = min(order.DisplayQty, order.RemainingQty)
 	}
 
 	ob.Orders[order.ID] = order
@@ -183,7 +194,7 @@ func (ob *OrderBook) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 		return
 	}
 
-	if order.OrderType == StopMarket || order.OrderType == StopLimit {
+	if order.OrderType.IsStop() {
 		switch order.Side {
 		case Buy:
 			ob.BuyStops.Insert(order)
@@ -207,6 +218,9 @@ func (ob *OrderBook) applyTradeExecuted(data *orderbookv1.TradeExecuted) {
 
 	if buyOrder != nil {
 		buyOrder.RemainingQty -= data.Quantity
+		if buyOrder.DisplayQty > 0 {
+			buyOrder.Displayed -= data.Quantity
+		}
 		if buyOrder.RemainingQty <= 0 {
 			ob.Bids.Remove(buyOrder)
 		}
@@ -214,12 +228,39 @@ func (ob *OrderBook) applyTradeExecuted(data *orderbookv1.TradeExecuted) {
 
 	if sellOrder != nil {
 		sellOrder.RemainingQty -= data.Quantity
+		if sellOrder.DisplayQty > 0 {
+			sellOrder.Displayed -= data.Quantity
+		}
 		if sellOrder.RemainingQty <= 0 {
 			ob.Asks.Remove(sellOrder)
 		}
 	}
 
 	ob.LastTradePrice = data.Price
+}
+
+func (ob *OrderBook) applyIcebergSliceReplenished(data *orderbookv1.IcebergSliceReplenished) {
+	order, ok := ob.Orders[data.OrderId]
+	if !ok {
+		return
+	}
+	// Reseat the order at its price level to drop time priority: remove
+	// the entry then re-insert at the tail of the level's FIFO with a
+	// fresh PlacedAt.
+	switch order.Side {
+	case Buy:
+		ob.Bids.Remove(order)
+	case Sell:
+		ob.Asks.Remove(order)
+	}
+	order.Displayed = data.NewDisplayedQty
+	order.PlacedAt = data.ReplenishedAt.AsTime()
+	switch order.Side {
+	case Buy:
+		ob.Bids.Insert(order)
+	case Sell:
+		ob.Asks.Insert(order)
+	}
 }
 
 func (ob *OrderBook) applyOrderCancelled(data *orderbookv1.OrderCancelled) {
@@ -233,7 +274,7 @@ func (ob *OrderBook) applyOrderCancelled(data *orderbookv1.OrderCancelled) {
 		ob.OpeningBook.Remove(order.ID, order.Side)
 	case order.TimeInForce == AtClose:
 		ob.ClosingBook.Remove(order.ID, order.Side)
-	case order.OrderType == StopMarket || order.OrderType == StopLimit:
+	case order.OrderType.IsStop():
 		switch order.Side {
 		case Buy:
 			ob.BuyStops.Remove(order.ID)
@@ -275,11 +316,22 @@ func (ob *OrderBook) applyStopTriggered(data *orderbookv1.StopTriggered) {
 	}
 
 	switch order.OrderType {
-	case StopMarket:
+	case StopMarket, TrailingStopMarket:
 		order.OrderType = Market
 		order.Price = 0
 	case StopLimit:
 		order.OrderType = Limit
+	case TrailingStopLimit:
+		order.OrderType = Limit
+		// Anchor the limit at the ratcheted trigger ± limit_offset.
+		// SELL: limit = stop - offset (willing to sell down to this).
+		// BUY:  limit = stop + offset (willing to buy up to this).
+		switch order.Side {
+		case Sell:
+			order.Price = order.StopPrice - order.LimitOffset
+		case Buy:
+			order.Price = order.StopPrice + order.LimitOffset
+		}
 	}
 
 	switch order.Side {
@@ -287,5 +339,29 @@ func (ob *OrderBook) applyStopTriggered(data *orderbookv1.StopTriggered) {
 		ob.Bids.Insert(order)
 	case Sell:
 		ob.Asks.Insert(order)
+	}
+}
+
+func (ob *OrderBook) applyTrailingStopAdjusted(data *orderbookv1.TrailingStopAdjusted) {
+	order, ok := ob.Orders[data.OrderId]
+	if !ok {
+		return
+	}
+	if !order.OrderType.IsTrailingStop() {
+		return
+	}
+	// stopSide is keyed by stop price; reseat the order under the new key.
+	switch order.Side {
+	case Buy:
+		ob.BuyStops.Remove(order.ID)
+	case Sell:
+		ob.SellStops.Remove(order.ID)
+	}
+	order.StopPrice = data.NewStopPrice
+	switch order.Side {
+	case Buy:
+		ob.BuyStops.Insert(order)
+	case Sell:
+		ob.SellStops.Insert(order)
 	}
 }

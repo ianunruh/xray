@@ -17,16 +17,21 @@ func (ob *OrderBook) Snapshot() (proto.Message, error) {
 	}
 	for _, order := range ob.Orders {
 		snap.Orders = append(snap.Orders, &orderbookv1.OrderSnapshot{
-			OrderId:           order.ID,
-			AccountId:         order.AccountID,
-			Side:              SideToProto(order.Side),
-			Price:             order.Price,
-			StopPrice:         order.StopPrice,
-			Quantity:          order.Quantity,
-			RemainingQuantity: order.RemainingQty,
-			PlacedAt:          timestamppb.New(order.PlacedAt),
-			OrderType:         OrderTypeToProto(order.OrderType),
-			TimeInForce:       TimeInForceToProto(order.TimeInForce),
+			OrderId:            order.ID,
+			AccountId:          order.AccountID,
+			Side:               SideToProto(order.Side),
+			Price:              order.Price,
+			StopPrice:          order.StopPrice,
+			Quantity:           order.Quantity,
+			RemainingQuantity:  order.RemainingQty,
+			DisplayQuantity:    order.DisplayQty,
+			DisplayedRemaining: order.Displayed,
+			TrailAmount:        order.TrailAmount,
+			TrailOffsetBps:     order.TrailOffsetBps,
+			LimitOffset:        order.LimitOffset,
+			PlacedAt:           timestamppb.New(order.PlacedAt),
+			OrderType:          OrderTypeToProto(order.OrderType),
+			TimeInForce:        TimeInForceToProto(order.TimeInForce),
 		})
 	}
 	return snap, nil
@@ -59,16 +64,21 @@ func (ob *OrderBook) RestoreSnapshot(msg proto.Message) error {
 
 	for _, os := range snap.Orders {
 		order := &Order{
-			ID:           os.OrderId,
-			AccountID:    os.AccountId,
-			Side:         SideFromProto(os.Side),
-			Price:        os.Price,
-			StopPrice:    os.StopPrice,
-			Quantity:     os.Quantity,
-			RemainingQty: os.RemainingQuantity,
-			PlacedAt:     os.PlacedAt.AsTime(),
-			OrderType:    OrderTypeFromProto(os.OrderType),
-			TimeInForce:  TimeInForceFromProto(os.TimeInForce),
+			ID:             os.OrderId,
+			AccountID:      os.AccountId,
+			Side:           SideFromProto(os.Side),
+			Price:          os.Price,
+			StopPrice:      os.StopPrice,
+			Quantity:       os.Quantity,
+			RemainingQty:   os.RemainingQuantity,
+			DisplayQty:     os.DisplayQuantity,
+			Displayed:      os.DisplayedRemaining,
+			TrailAmount:    os.TrailAmount,
+			TrailOffsetBps: os.TrailOffsetBps,
+			LimitOffset:    os.LimitOffset,
+			PlacedAt:       os.PlacedAt.AsTime(),
+			OrderType:      OrderTypeFromProto(os.OrderType),
+			TimeInForce:    TimeInForceFromProto(os.TimeInForce),
 		}
 		ob.Orders[order.ID] = order
 
@@ -77,7 +87,7 @@ func (ob *OrderBook) RestoreSnapshot(msg proto.Message) error {
 			ob.OpeningBook.Insert(order)
 		case order.TimeInForce == AtClose:
 			ob.ClosingBook.Insert(order)
-		case order.OrderType == StopMarket || order.OrderType == StopLimit:
+		case order.OrderType.IsStop():
 			switch order.Side {
 			case Buy:
 				ob.BuyStops.Insert(order)

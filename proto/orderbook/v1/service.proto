@@ -48,6 +48,15 @@ message PlaceOrderRequest {
   TimeInForce time_in_force = 6;
   int64 stop_price = 7;
   string account_id = 8;
+  // Iceberg slice size; 0 = normal (non-iceberg) order. Limit + GTC/Day only.
+  int64 display_quantity = 9;
+  // Trailing-stop parameters; required when order_type is
+  // TRAILING_STOP_MARKET / _LIMIT. Exactly one of trail_amount /
+  // trail_offset_bps must be > 0. limit_offset only applies to
+  // TRAILING_STOP_LIMIT.
+  int64 trail_amount = 10;
+  int32 trail_offset_bps = 11;
+  int64 limit_offset = 12;
 }
 
 message PlaceOrderResponse {
@@ -193,6 +202,11 @@ message GetOrderResponse {
   OrderType order_type = 8;
   TimeInForce time_in_force = 9;
   int64 stop_price = 10;
+  int64 display_quantity = 11;
+  int64 displayed_remaining = 12;
+  int64 trail_amount = 13;
+  int32 trail_offset_bps = 14;
+  int64 limit_offset = 15;
 }
 
 message ListTradesRequest {
@@ -285,6 +299,11 @@ message OrderSummary {
   OrderType order_type = 9;
   TimeInForce time_in_force = 10;
   int64 stop_price = 11;
+  int64 display_quantity = 12;
+  int64 displayed_remaining = 13;
+  int64 trail_amount = 14;
+  int32 trail_offset_bps = 15;
+  int64 limit_offset = 16;
 }
 
 message GetReplayBoundsRequest {

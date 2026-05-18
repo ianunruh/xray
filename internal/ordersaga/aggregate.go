@@ -56,7 +56,12 @@ type OrderSaga struct {
 	Symbol         string
 	Side           orderbook.Side
 	Price          int64
+	StopPrice      int64
 	Quantity       int64
+	DisplayQty     int64
+	TrailAmount    int64
+	TrailOffsetBps int32
+	LimitOffset    int64
 	OrderType      orderbook.OrderType
 	TimeInForce    orderbook.TimeInForce
 	ReplaceOrderID string
@@ -108,7 +113,12 @@ func (s *OrderSaga) applyStarted(data *portfoliov1.OrderSagaStarted) {
 	s.Symbol = data.Symbol
 	s.Side = orderbook.SideFromProto(data.Side)
 	s.Price = data.Price
+	s.StopPrice = data.StopPrice
 	s.Quantity = data.Quantity
+	s.DisplayQty = data.DisplayQuantity
+	s.TrailAmount = data.TrailAmount
+	s.TrailOffsetBps = data.TrailOffsetBps
+	s.LimitOffset = data.LimitOffset
 	s.OrderType = orderbook.OrderTypeFromProto(data.OrderType)
 	s.TimeInForce = orderbook.TimeInForceFromProto(data.TimeInForce)
 	s.ReplaceOrderID = data.ReplaceOrderId

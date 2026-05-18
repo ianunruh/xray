@@ -550,7 +550,16 @@ type SingleOrderPlan struct {
 	// SELL+SHORT = sell-to-open; BUY+SHORT = buy-to-cover. Server
 	// validates legal combos (e.g. BUY+SHORT requires existing short
 	// >= quantity in symbol).
-	PositionSide  v1.PositionSide `protobuf:"varint,8,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
+	PositionSide v1.PositionSide `protobuf:"varint,8,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
+	// Iceberg slice size; 0 = normal order. Limit + GTC/Day only.
+	DisplayQuantity int64 `protobuf:"varint,9,opt,name=display_quantity,json=displayQuantity,proto3" json:"display_quantity,omitempty"`
+	// Trailing-stop params. Required when order_type is TRAILING_STOP_*.
+	TrailAmount    int64 `protobuf:"varint,10,opt,name=trail_amount,json=trailAmount,proto3" json:"trail_amount,omitempty"`
+	TrailOffsetBps int32 `protobuf:"varint,11,opt,name=trail_offset_bps,json=trailOffsetBps,proto3" json:"trail_offset_bps,omitempty"`
+	LimitOffset    int64 `protobuf:"varint,12,opt,name=limit_offset,json=limitOffset,proto3" json:"limit_offset,omitempty"`
+	// Initial stop_price; required for any stop variant (fixed or
+	// trailing). Trailing stops then ratchet from this baseline.
+	StopPrice     int64 `protobuf:"varint,13,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -639,6 +648,41 @@ func (x *SingleOrderPlan) GetPositionSide() v1.PositionSide {
 		return x.PositionSide
 	}
 	return v1.PositionSide(0)
+}
+
+func (x *SingleOrderPlan) GetDisplayQuantity() int64 {
+	if x != nil {
+		return x.DisplayQuantity
+	}
+	return 0
+}
+
+func (x *SingleOrderPlan) GetTrailAmount() int64 {
+	if x != nil {
+		return x.TrailAmount
+	}
+	return 0
+}
+
+func (x *SingleOrderPlan) GetTrailOffsetBps() int32 {
+	if x != nil {
+		return x.TrailOffsetBps
+	}
+	return 0
+}
+
+func (x *SingleOrderPlan) GetLimitOffset() int64 {
+	if x != nil {
+		return x.LimitOffset
+	}
+	return 0
+}
+
+func (x *SingleOrderPlan) GetStopPrice() int64 {
+	if x != nil {
+		return x.StopPrice
+	}
+	return 0
 }
 
 type BracketPlan struct {
@@ -1194,21 +1238,29 @@ func (*GetSagaResponse_Oco) isGetSagaResponse_Details() {}
 func (*GetSagaResponse_Twap) isGetSagaResponse_Details() {}
 
 type SingleOrderDetails struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Phase          SingleOrderPhase       `protobuf:"varint,1,opt,name=phase,proto3,enum=saga.v1.SingleOrderPhase" json:"phase,omitempty"`
-	Side           v1.Side                `protobuf:"varint,2,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
-	Price          int64                  `protobuf:"varint,3,opt,name=price,proto3" json:"price,omitempty"`
-	Quantity       int64                  `protobuf:"varint,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	OrderType      v1.OrderType           `protobuf:"varint,5,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
-	TimeInForce    v1.TimeInForce         `protobuf:"varint,6,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
-	FilledQuantity int64                  `protobuf:"varint,7,opt,name=filled_quantity,json=filledQuantity,proto3" json:"filled_quantity,omitempty"`
-	AmountHeld     int64                  `protobuf:"varint,8,opt,name=amount_held,json=amountHeld,proto3" json:"amount_held,omitempty"`
-	CashSettled    int64                  `protobuf:"varint,9,opt,name=cash_settled,json=cashSettled,proto3" json:"cash_settled,omitempty"`
-	OrderId        string                 `protobuf:"bytes,10,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
-	PositionSide   v1.PositionSide        `protobuf:"varint,11,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
-	Initiator      Initiator              `protobuf:"varint,12,opt,name=initiator,proto3,enum=saga.v1.Initiator" json:"initiator,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Phase           SingleOrderPhase       `protobuf:"varint,1,opt,name=phase,proto3,enum=saga.v1.SingleOrderPhase" json:"phase,omitempty"`
+	Side            v1.Side                `protobuf:"varint,2,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
+	Price           int64                  `protobuf:"varint,3,opt,name=price,proto3" json:"price,omitempty"`
+	Quantity        int64                  `protobuf:"varint,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	OrderType       v1.OrderType           `protobuf:"varint,5,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
+	TimeInForce     v1.TimeInForce         `protobuf:"varint,6,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
+	FilledQuantity  int64                  `protobuf:"varint,7,opt,name=filled_quantity,json=filledQuantity,proto3" json:"filled_quantity,omitempty"`
+	AmountHeld      int64                  `protobuf:"varint,8,opt,name=amount_held,json=amountHeld,proto3" json:"amount_held,omitempty"`
+	CashSettled     int64                  `protobuf:"varint,9,opt,name=cash_settled,json=cashSettled,proto3" json:"cash_settled,omitempty"`
+	OrderId         string                 `protobuf:"bytes,10,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	PositionSide    v1.PositionSide        `protobuf:"varint,11,opt,name=position_side,json=positionSide,proto3,enum=orderbook.v1.PositionSide" json:"position_side,omitempty"`
+	Initiator       Initiator              `protobuf:"varint,12,opt,name=initiator,proto3,enum=saga.v1.Initiator" json:"initiator,omitempty"`
+	DisplayQuantity int64                  `protobuf:"varint,13,opt,name=display_quantity,json=displayQuantity,proto3" json:"display_quantity,omitempty"`
+	TrailAmount     int64                  `protobuf:"varint,14,opt,name=trail_amount,json=trailAmount,proto3" json:"trail_amount,omitempty"`
+	TrailOffsetBps  int32                  `protobuf:"varint,15,opt,name=trail_offset_bps,json=trailOffsetBps,proto3" json:"trail_offset_bps,omitempty"`
+	LimitOffset     int64                  `protobuf:"varint,16,opt,name=limit_offset,json=limitOffset,proto3" json:"limit_offset,omitempty"`
+	// current_stop_price reflects the live (post-ratchet) stop for
+	// trailing stops, so the UI can show the actual trigger rather than
+	// the initial value the user placed.
+	CurrentStopPrice int64 `protobuf:"varint,17,opt,name=current_stop_price,json=currentStopPrice,proto3" json:"current_stop_price,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SingleOrderDetails) Reset() {
@@ -1323,6 +1375,41 @@ func (x *SingleOrderDetails) GetInitiator() Initiator {
 		return x.Initiator
 	}
 	return Initiator_INITIATOR_UNSPECIFIED
+}
+
+func (x *SingleOrderDetails) GetDisplayQuantity() int64 {
+	if x != nil {
+		return x.DisplayQuantity
+	}
+	return 0
+}
+
+func (x *SingleOrderDetails) GetTrailAmount() int64 {
+	if x != nil {
+		return x.TrailAmount
+	}
+	return 0
+}
+
+func (x *SingleOrderDetails) GetTrailOffsetBps() int32 {
+	if x != nil {
+		return x.TrailOffsetBps
+	}
+	return 0
+}
+
+func (x *SingleOrderDetails) GetLimitOffset() int64 {
+	if x != nil {
+		return x.LimitOffset
+	}
+	return 0
+}
+
+func (x *SingleOrderDetails) GetCurrentStopPrice() int64 {
+	if x != nil {
+		return x.CurrentStopPrice
+	}
+	return 0
 }
 
 type BracketDetails struct {
@@ -2013,7 +2100,7 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"\abracket\x18\x03 \x01(\v2\x14.saga.v1.BracketPlanH\x00R\abracket\x12$\n" +
 	"\x03oco\x18\x04 \x01(\v2\x10.saga.v1.OCOPlanH\x00R\x03oco\x12'\n" +
 	"\x04twap\x18\x05 \x01(\v2\x11.saga.v1.TWAPPlanH\x00R\x04twapB\x06\n" +
-	"\x04plan\"\xe5\x02\n" +
+	"\x04plan\"\x9f\x04\n" +
 	"\x0fSingleOrderPlan\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +
@@ -2023,7 +2110,14 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"order_type\x18\x05 \x01(\x0e2\x17.orderbook.v1.OrderTypeR\torderType\x12=\n" +
 	"\rtime_in_force\x18\x06 \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\x12(\n" +
 	"\x10replace_order_id\x18\a \x01(\tR\x0ereplaceOrderId\x12?\n" +
-	"\rposition_side\x18\b \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\"\xb5\x02\n" +
+	"\rposition_side\x18\b \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\x12)\n" +
+	"\x10display_quantity\x18\t \x01(\x03R\x0fdisplayQuantity\x12!\n" +
+	"\ftrail_amount\x18\n" +
+	" \x01(\x03R\vtrailAmount\x12(\n" +
+	"\x10trail_offset_bps\x18\v \x01(\x05R\x0etrailOffsetBps\x12!\n" +
+	"\flimit_offset\x18\f \x01(\x03R\vlimitOffset\x12\x1d\n" +
+	"\n" +
+	"stop_price\x18\r \x01(\x03R\tstopPrice\"\xb5\x02\n" +
 	"\vBracketPlan\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x121\n" +
 	"\n" +
@@ -2072,7 +2166,7 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	" \x01(\v2\x17.saga.v1.BracketDetailsH\x00R\abracket\x12'\n" +
 	"\x03oco\x18\v \x01(\v2\x13.saga.v1.OCODetailsH\x00R\x03oco\x12*\n" +
 	"\x04twap\x18\f \x01(\v2\x14.saga.v1.TWAPDetailsH\x00R\x04twapB\t\n" +
-	"\adetails\"\x91\x04\n" +
+	"\adetails\"\xda\x05\n" +
 	"\x12SingleOrderDetails\x12/\n" +
 	"\x05phase\x18\x01 \x01(\x0e2\x19.saga.v1.SingleOrderPhaseR\x05phase\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +
@@ -2088,7 +2182,12 @@ const file_saga_v1_saga_proto_rawDesc = "" +
 	"\border_id\x18\n" +
 	" \x01(\tR\aorderId\x12?\n" +
 	"\rposition_side\x18\v \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\x120\n" +
-	"\tinitiator\x18\f \x01(\x0e2\x12.saga.v1.InitiatorR\tinitiator\"\x83\x04\n" +
+	"\tinitiator\x18\f \x01(\x0e2\x12.saga.v1.InitiatorR\tinitiator\x12)\n" +
+	"\x10display_quantity\x18\r \x01(\x03R\x0fdisplayQuantity\x12!\n" +
+	"\ftrail_amount\x18\x0e \x01(\x03R\vtrailAmount\x12(\n" +
+	"\x10trail_offset_bps\x18\x0f \x01(\x05R\x0etrailOffsetBps\x12!\n" +
+	"\flimit_offset\x18\x10 \x01(\x03R\vlimitOffset\x12,\n" +
+	"\x12current_stop_price\x18\x11 \x01(\x03R\x10currentStopPrice\"\x83\x04\n" +
 	"\x0eBracketDetails\x12+\n" +
 	"\x05phase\x18\x01 \x01(\x0e2\x15.saga.v1.BracketPhaseR\x05phase\x121\n" +
 	"\n" +

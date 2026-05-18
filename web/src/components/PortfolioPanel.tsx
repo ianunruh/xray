@@ -1030,6 +1030,11 @@ export function PortfolioOrders({
                       <Table.Td ta="right">{formatPrice(o.price)}</Table.Td>
                       <Table.Td ta="right">
                         {formatQuantity(o.quantity)}
+                        {o.displayQuantity > 0n && (
+                          <Text component="span" size="xs" c="dimmed" ml={4}>
+                            ({o.displayQuantity.toString()} shown)
+                          </Text>
+                        )}
                       </Table.Td>
                       <Table.Td ta="right">
                         {formatQuantity(o.filledQuantity)}

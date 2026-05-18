@@ -340,14 +340,19 @@ func (r *Reactor) placeOrder(ctx context.Context, sagaID string) error {
 		})
 	} else {
 		placeCmd := orderbook.PlaceOrder{
-			Symbol:      saga.Symbol,
-			Side:        saga.Side,
-			Price:       saga.Price,
-			Quantity:    saga.Quantity,
-			OrderType:   saga.OrderType,
-			TimeInForce: saga.TimeInForce,
-			AccountID:   saga.AccountID,
-			OrderID:     orderID,
+			Symbol:         saga.Symbol,
+			Side:           saga.Side,
+			Price:          saga.Price,
+			StopPrice:      saga.StopPrice,
+			Quantity:       saga.Quantity,
+			OrderType:      saga.OrderType,
+			TimeInForce:    saga.TimeInForce,
+			AccountID:      saga.AccountID,
+			OrderID:        orderID,
+			DisplayQty:     saga.DisplayQty,
+			TrailAmount:    saga.TrailAmount,
+			TrailOffsetBps: saga.TrailOffsetBps,
+			LimitOffset:    saga.LimitOffset,
 		}
 		err = r.orderbookHandler.Handle(ctx, placeCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
 			return orderbook.ExecutePlaceOrder(book, placeCmd)

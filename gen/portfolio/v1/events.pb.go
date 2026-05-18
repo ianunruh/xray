@@ -1777,8 +1777,19 @@ type OrderSagaStarted struct {
 	// cause_event_id, if set, points at the upstream event that triggered
 	// this saga — e.g. a MarginCallIssued event for forced-liquidation
 	// runs. Surfaces in the existing causation chain viewer.
-	CauseEventId  string        `protobuf:"bytes,12,opt,name=cause_event_id,json=causeEventId,proto3" json:"cause_event_id,omitempty"`
-	Initiator     v11.Initiator `protobuf:"varint,13,opt,name=initiator,proto3,enum=saga.v1.Initiator" json:"initiator,omitempty"`
+	CauseEventId string        `protobuf:"bytes,12,opt,name=cause_event_id,json=causeEventId,proto3" json:"cause_event_id,omitempty"`
+	Initiator    v11.Initiator `protobuf:"varint,13,opt,name=initiator,proto3,enum=saga.v1.Initiator" json:"initiator,omitempty"`
+	// Iceberg slice size for the underlying orderbook order; 0 = non-iceberg.
+	// Held cash/collateral still covers the full quantity.
+	DisplayQuantity int64 `protobuf:"varint,14,opt,name=display_quantity,json=displayQuantity,proto3" json:"display_quantity,omitempty"`
+	// Trailing-stop params for the underlying orderbook order. stop_price
+	// on the orderbook order is the *initial* trigger; trail_amount or
+	// trail_offset_bps controls how it ratchets.
+	TrailAmount    int64 `protobuf:"varint,15,opt,name=trail_amount,json=trailAmount,proto3" json:"trail_amount,omitempty"`
+	TrailOffsetBps int32 `protobuf:"varint,16,opt,name=trail_offset_bps,json=trailOffsetBps,proto3" json:"trail_offset_bps,omitempty"`
+	LimitOffset    int64 `protobuf:"varint,17,opt,name=limit_offset,json=limitOffset,proto3" json:"limit_offset,omitempty"`
+	// Initial stop_price for any stop variant of the underlying order.
+	StopPrice     int64 `protobuf:"varint,18,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1902,6 +1913,41 @@ func (x *OrderSagaStarted) GetInitiator() v11.Initiator {
 		return x.Initiator
 	}
 	return v11.Initiator(0)
+}
+
+func (x *OrderSagaStarted) GetDisplayQuantity() int64 {
+	if x != nil {
+		return x.DisplayQuantity
+	}
+	return 0
+}
+
+func (x *OrderSagaStarted) GetTrailAmount() int64 {
+	if x != nil {
+		return x.TrailAmount
+	}
+	return 0
+}
+
+func (x *OrderSagaStarted) GetTrailOffsetBps() int32 {
+	if x != nil {
+		return x.TrailOffsetBps
+	}
+	return 0
+}
+
+func (x *OrderSagaStarted) GetLimitOffset() int64 {
+	if x != nil {
+		return x.LimitOffset
+	}
+	return 0
+}
+
+func (x *OrderSagaStarted) GetStopPrice() int64 {
+	if x != nil {
+		return x.StopPrice
+	}
+	return 0
 }
 
 type OrderSagaCashHeld struct {
@@ -2532,7 +2578,7 @@ const file_portfolio_v1_events_proto_rawDesc = "" +
 	"mark_price\x18\x05 \x01(\x03R\tmarkPrice\x12\x10\n" +
 	"\x03qty\x18\x06 \x01(\x03R\x03qty\x12\x19\n" +
 	"\brate_bps\x18\a \x01(\x03R\arateBps\x12\x16\n" +
-	"\x06amount\x18\b \x01(\x03R\x06amount\"\xb1\x04\n" +
+	"\x06amount\x18\b \x01(\x03R\x06amount\"\xeb\x05\n" +
 	"\x10OrderSagaStarted\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x1d\n" +
 	"\n" +
@@ -2550,7 +2596,13 @@ const file_portfolio_v1_events_proto_rawDesc = "" +
 	" \x01(\tR\x0ereplaceOrderId\x12?\n" +
 	"\rposition_side\x18\v \x01(\x0e2\x1a.orderbook.v1.PositionSideR\fpositionSide\x12$\n" +
 	"\x0ecause_event_id\x18\f \x01(\tR\fcauseEventId\x120\n" +
-	"\tinitiator\x18\r \x01(\x0e2\x12.saga.v1.InitiatorR\tinitiator\"\x82\x01\n" +
+	"\tinitiator\x18\r \x01(\x0e2\x12.saga.v1.InitiatorR\tinitiator\x12)\n" +
+	"\x10display_quantity\x18\x0e \x01(\x03R\x0fdisplayQuantity\x12!\n" +
+	"\ftrail_amount\x18\x0f \x01(\x03R\vtrailAmount\x12(\n" +
+	"\x10trail_offset_bps\x18\x10 \x01(\x05R\x0etrailOffsetBps\x12!\n" +
+	"\flimit_offset\x18\x11 \x01(\x03R\vlimitOffset\x12\x1d\n" +
+	"\n" +
+	"stop_price\x18\x12 \x01(\x03R\tstopPrice\"\x82\x01\n" +
 	"\x11OrderSagaCashHeld\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x1f\n" +
 	"\vamount_held\x18\x02 \x01(\x03R\n" +

@@ -253,7 +253,12 @@ func (s *Server) placeSingleOrder(ctx context.Context, accountID string, plan *s
 		Symbol:         plan.Symbol,
 		Side:           plan.Side,
 		Price:          plan.Price,
+		StopPrice:      plan.StopPrice,
 		Quantity:       plan.Quantity,
+		DisplayQty:     plan.DisplayQuantity,
+		TrailAmount:    plan.TrailAmount,
+		TrailOffsetBps: plan.TrailOffsetBps,
+		LimitOffset:    plan.LimitOffset,
 		OrderType:      plan.OrderType,
 		TimeInForce:    plan.TimeInForce,
 		ReplaceOrderID: plan.ReplaceOrderId,
@@ -637,20 +642,35 @@ func (s *Server) singleOrderDetails(ctx context.Context, sagaID string) (*sagav1
 	if err != nil {
 		return nil, fmt.Errorf("load order saga: %w", err)
 	}
-	return &sagav1.SingleOrderDetails{
-		Phase:          orderSagaPhase(saga.Status),
-		Side:           orderbook.SideToProto(saga.Side),
-		Price:          saga.Price,
-		Quantity:       saga.Quantity,
-		OrderType:      orderbook.OrderTypeToProto(saga.OrderType),
-		TimeInForce:    orderbook.TimeInForceToProto(saga.TimeInForce),
-		FilledQuantity: saga.FilledQty,
-		AmountHeld:     saga.AmountHeld,
-		CashSettled:    saga.CashSettled,
-		OrderId:        saga.OrderID,
-		PositionSide:   saga.PositionSide,
-		Initiator:      saga.Initiator,
-	}, nil
+	details := &sagav1.SingleOrderDetails{
+		Phase:           orderSagaPhase(saga.Status),
+		Side:            orderbook.SideToProto(saga.Side),
+		Price:           saga.Price,
+		Quantity:        saga.Quantity,
+		DisplayQuantity: saga.DisplayQty,
+		TrailAmount:     saga.TrailAmount,
+		TrailOffsetBps:  saga.TrailOffsetBps,
+		LimitOffset:     saga.LimitOffset,
+		OrderType:       orderbook.OrderTypeToProto(saga.OrderType),
+		TimeInForce:     orderbook.TimeInForceToProto(saga.TimeInForce),
+		FilledQuantity:  saga.FilledQty,
+		AmountHeld:      saga.AmountHeld,
+		CashSettled:     saga.CashSettled,
+		OrderId:         saga.OrderID,
+		PositionSide:    saga.PositionSide,
+		Initiator:       saga.Initiator,
+	}
+	// Surface the live (post-ratchet) stop price for trailing stops by
+	// loading the orderbook aggregate. Lazy — only on Get, only when the
+	// caller actually cares about a trailing stop.
+	if saga.OrderID != "" && saga.OrderType.IsTrailingStop() {
+		if book, err := s.orderbookHandler.Load(ctx, orderbook.AggregateID(saga.Symbol)); err == nil {
+			if o := book.Orders[saga.OrderID]; o != nil {
+				details.CurrentStopPrice = o.StopPrice
+			}
+		}
+	}
+	return details, nil
 }
 
 func (s *Server) bracketDetails(ctx context.Context, sagaID string) (*sagav1.BracketDetails, error) {

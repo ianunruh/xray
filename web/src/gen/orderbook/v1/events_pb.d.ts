@@ -73,6 +73,39 @@ export declare type OrderPlaced = Message<"orderbook.v1.OrderPlaced"> & {
    * @generated from field: string oco_group_id = 11;
    */
   ocoGroupId: string;
+
+  /**
+   * display_quantity, when > 0, makes this an iceberg order: only
+   * display_quantity is exposed to matching at any time, the rest is
+   * hidden reserve. When the displayed slice fills, the engine emits
+   * IcebergSliceReplenished and re-inserts the order with a fresh
+   * placed_at — the new slice loses time priority at its price level.
+   * Must be <= quantity. Only valid with Limit + GTC/Day (no Market,
+   * IOC, FOK, stop, or auction TIF).
+   *
+   * @generated from field: int64 display_quantity = 12;
+   */
+  displayQuantity: bigint;
+
+  /**
+   * Trailing-stop fields. Exactly one of trail_amount / trail_offset_bps
+   * must be > 0 when order_type is TRAILING_STOP_MARKET / _LIMIT.
+   * limit_offset is the gap between the activated stop price and the
+   * limit price for TRAILING_STOP_LIMIT only.
+   *
+   * @generated from field: int64 trail_amount = 13;
+   */
+  trailAmount: bigint;
+
+  /**
+   * @generated from field: int32 trail_offset_bps = 14;
+   */
+  trailOffsetBps: number;
+
+  /**
+   * @generated from field: int64 limit_offset = 15;
+   */
+  limitOffset: bigint;
 };
 
 /**
@@ -163,6 +196,62 @@ export declare type TradeExecuted = Message<"orderbook.v1.TradeExecuted"> & {
 export declare const TradeExecutedSchema: GenMessage<TradeExecuted>;
 
 /**
+ * IcebergSliceReplenished is emitted when an iceberg order's displayed
+ * slice has fully filled and the engine is exposing the next slice
+ * from the hidden reserve. new_displayed_qty is the size of the new
+ * slice (min(display_quantity, hidden_remaining)); hidden_remaining
+ * is what's left after this replenish. The order is re-inserted at
+ * the same price with replenished_at as its new placed_at — it loses
+ * time priority to anyone else already resting at that level. side
+ * and price are carried so projections don't have to look the order
+ * back up against the aggregate.
+ *
+ * @generated from message orderbook.v1.IcebergSliceReplenished
+ */
+export declare type IcebergSliceReplenished = Message<"orderbook.v1.IcebergSliceReplenished"> & {
+  /**
+   * @generated from field: string order_id = 1;
+   */
+  orderId: string;
+
+  /**
+   * @generated from field: string symbol = 2;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: int64 new_displayed_qty = 3;
+   */
+  newDisplayedQty: bigint;
+
+  /**
+   * @generated from field: int64 hidden_remaining = 4;
+   */
+  hiddenRemaining: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp replenished_at = 5;
+   */
+  replenishedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: orderbook.v1.Side side = 6;
+   */
+  side: Side;
+
+  /**
+   * @generated from field: int64 price = 7;
+   */
+  price: bigint;
+};
+
+/**
+ * Describes the message orderbook.v1.IcebergSliceReplenished.
+ * Use `create(IcebergSliceReplenishedSchema)` to create a new message.
+ */
+export declare const IcebergSliceReplenishedSchema: GenMessage<IcebergSliceReplenished>;
+
+/**
  * @generated from message orderbook.v1.StopTriggered
  */
 export declare type StopTriggered = Message<"orderbook.v1.StopTriggered"> & {
@@ -197,6 +286,53 @@ export declare type StopTriggered = Message<"orderbook.v1.StopTriggered"> & {
  * Use `create(StopTriggeredSchema)` to create a new message.
  */
 export declare const StopTriggeredSchema: GenMessage<StopTriggered>;
+
+/**
+ * TrailingStopAdjusted is emitted when a trailing stop's trigger price
+ * ratchets tighter in response to a favorable mark move. SELL stops
+ * ratchet up as the mark rises; BUY stops ratchet down as the mark
+ * falls. The new stop_price replaces the previous trigger; mark_price
+ * is the trade price that caused the adjustment.
+ *
+ * @generated from message orderbook.v1.TrailingStopAdjusted
+ */
+export declare type TrailingStopAdjusted = Message<"orderbook.v1.TrailingStopAdjusted"> & {
+  /**
+   * @generated from field: string order_id = 1;
+   */
+  orderId: string;
+
+  /**
+   * @generated from field: string symbol = 2;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: int64 previous_stop_price = 3;
+   */
+  previousStopPrice: bigint;
+
+  /**
+   * @generated from field: int64 new_stop_price = 4;
+   */
+  newStopPrice: bigint;
+
+  /**
+   * @generated from field: int64 mark_price = 5;
+   */
+  markPrice: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp adjusted_at = 6;
+   */
+  adjustedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.TrailingStopAdjusted.
+ * Use `create(TrailingStopAdjustedSchema)` to create a new message.
+ */
+export declare const TrailingStopAdjustedSchema: GenMessage<TrailingStopAdjusted>;
 
 /**
  * @generated from message orderbook.v1.MarketClosed
@@ -888,6 +1024,25 @@ export enum OrderType {
    * @generated from enum value: ORDER_TYPE_STOP_LIMIT = 4;
    */
   STOP_LIMIT = 4,
+
+  /**
+   * Trailing-stop variants. The stop_price on OrderPlaced is the
+   * initial trigger; trail_amount or trail_offset_bps (exactly one
+   * must be > 0) defines how much the stop "ratchets" as the mark
+   * moves favorably. A trailing-stop SELL's stop rises as the mark
+   * rises; a trailing-stop BUY's stop falls as the mark falls. When
+   * activated, TRAILING_STOP_MARKET behaves as a market IOC and
+   * TRAILING_STOP_LIMIT as a limit with limit_offset added (sell) or
+   * subtracted (buy) from the activated stop price.
+   *
+   * @generated from enum value: ORDER_TYPE_TRAILING_STOP_MARKET = 5;
+   */
+  TRAILING_STOP_MARKET = 5,
+
+  /**
+   * @generated from enum value: ORDER_TYPE_TRAILING_STOP_LIMIT = 6;
+   */
+  TRAILING_STOP_LIMIT = 6,
 }
 
 /**

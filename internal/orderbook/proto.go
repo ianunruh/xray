@@ -32,6 +32,10 @@ func OrderTypeFromProto(ot orderbookv1.OrderType) OrderType {
 		return StopMarket
 	case orderbookv1.OrderType_ORDER_TYPE_STOP_LIMIT:
 		return StopLimit
+	case orderbookv1.OrderType_ORDER_TYPE_TRAILING_STOP_MARKET:
+		return TrailingStopMarket
+	case orderbookv1.OrderType_ORDER_TYPE_TRAILING_STOP_LIMIT:
+		return TrailingStopLimit
 	default:
 		return Limit
 	}
@@ -45,6 +49,10 @@ func OrderTypeToProto(ot OrderType) orderbookv1.OrderType {
 		return orderbookv1.OrderType_ORDER_TYPE_STOP_MARKET
 	case StopLimit:
 		return orderbookv1.OrderType_ORDER_TYPE_STOP_LIMIT
+	case TrailingStopMarket:
+		return orderbookv1.OrderType_ORDER_TYPE_TRAILING_STOP_MARKET
+	case TrailingStopLimit:
+		return orderbookv1.OrderType_ORDER_TYPE_TRAILING_STOP_LIMIT
 	case Limit:
 		return orderbookv1.OrderType_ORDER_TYPE_LIMIT
 	default:

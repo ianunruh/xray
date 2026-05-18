@@ -63,6 +63,8 @@ func (p *DepthProjection) HandleEvents(_ context.Context, events []es.Event) err
 			p.applyOrderCancelled(data)
 		case *orderbookv1.StopTriggered:
 			p.applyStopTriggered(data)
+		case *orderbookv1.IcebergSliceReplenished:
+			p.applyIcebergSliceReplenished(data)
 		}
 	}
 
@@ -81,12 +83,20 @@ func (p *DepthProjection) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 		return
 	}
 
+	// Iceberg orders only expose display_quantity to the book at a time;
+	// depth must reflect what's visible, not the hidden reserve. Each
+	// IcebergSliceReplenished event re-injects the next slice.
+	visible := data.Quantity
+	if data.DisplayQuantity > 0 && data.DisplayQuantity < visible {
+		visible = data.DisplayQuantity
+	}
+
 	price := depthPrice(data.Price)
 	p.orders[data.OrderId] = &depthOrder{
 		symbol:       data.Symbol,
 		side:         data.Side,
 		price:        price,
-		remainingQty: data.Quantity,
+		remainingQty: visible,
 	}
 
 	levels := p.levelsFor(data.Symbol, data.Side)
@@ -95,7 +105,7 @@ func (p *DepthProjection) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 		lvl = &depthLevel{}
 		levels[price] = lvl
 	}
-	lvl.quantity += data.Quantity
+	lvl.quantity += visible
 	lvl.orderCount++
 }
 
@@ -147,6 +157,28 @@ func (p *DepthProjection) applyOrderCancelled(data *orderbookv1.OrderCancelled) 
 	}
 
 	delete(p.orders, data.OrderId)
+}
+
+func (p *DepthProjection) applyIcebergSliceReplenished(data *orderbookv1.IcebergSliceReplenished) {
+	// The preceding TradeExecuted handler drained the iceberg's last
+	// slice — the depthOrder was deleted and orderCount decremented.
+	// Re-create it at the same price level so the new slice shows up in
+	// the depth response.
+	price := depthPrice(data.Price)
+	p.orders[data.OrderId] = &depthOrder{
+		symbol:       data.Symbol,
+		side:         data.Side,
+		price:        price,
+		remainingQty: data.NewDisplayedQty,
+	}
+	levels := p.levelsFor(data.Symbol, data.Side)
+	lvl := levels[price]
+	if lvl == nil {
+		lvl = &depthLevel{}
+		levels[price] = lvl
+	}
+	lvl.quantity += data.NewDisplayedQty
+	lvl.orderCount++
 }
 
 func (p *DepthProjection) applyStopTriggered(data *orderbookv1.StopTriggered) {

@@ -104,11 +104,11 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 			)
 		case *portfoliov1.OrderSagaStarted:
 			batch.Queue(
-				`INSERT INTO projection_pending_orders (saga_id, account_id, symbol, side, price, quantity, order_type, time_in_force, status, started_at)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				`INSERT INTO projection_pending_orders (saga_id, account_id, symbol, side, price, quantity, display_quantity, order_type, time_in_force, status, started_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 				ON CONFLICT DO NOTHING`,
 				data.SagaId, data.AccountId, data.Symbol,
-				int32(data.Side), data.Price, data.Quantity,
+				int32(data.Side), data.Price, data.Quantity, data.DisplayQuantity,
 				int32(data.OrderType), int32(data.TimeInForce),
 				int32(portfoliov1.OrderStatus_ORDER_STATUS_STARTED),
 				data.StartedAt.AsTime(),
@@ -265,7 +265,7 @@ func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID stri
 
 	terminalCutoff := time.Now().Add(-5 * time.Minute)
 	orderRows, err := p.pool.Query(ctx,
-		`SELECT saga_id, symbol, side, price, quantity, order_type, time_in_force, filled_qty, status, started_at, reason, ended_at, last_fill_price
+		`SELECT saga_id, symbol, side, price, quantity, display_quantity, order_type, time_in_force, filled_qty, status, started_at, reason, ended_at, last_fill_price
 		FROM projection_pending_orders
 		WHERE account_id = $1 AND (status < $2 OR ended_at > $3)
 		ORDER BY started_at DESC`,
@@ -288,7 +288,7 @@ func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID stri
 			endedAt     *time.Time
 		)
 		if err := orderRows.Scan(
-			&o.SagaId, &o.Symbol, &side, &o.Price, &o.Quantity,
+			&o.SagaId, &o.Symbol, &side, &o.Price, &o.Quantity, &o.DisplayQuantity,
 			&orderType, &timeInForce, &o.FilledQuantity, &status, &startedAt, &reason, &endedAt,
 			&o.LastFillPrice,
 		); err != nil {

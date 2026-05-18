@@ -136,17 +136,26 @@ func (CandleInterval) EnumDescriptor() ([]byte, []int) {
 }
 
 type PlaceOrderRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
-	Side          Side                   `protobuf:"varint,2,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
-	Price         int64                  `protobuf:"varint,3,opt,name=price,proto3" json:"price,omitempty"`
-	Quantity      int64                  `protobuf:"varint,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	OrderType     OrderType              `protobuf:"varint,5,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
-	TimeInForce   TimeInForce            `protobuf:"varint,6,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
-	StopPrice     int64                  `protobuf:"varint,7,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
-	AccountId     string                 `protobuf:"bytes,8,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Symbol      string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Side        Side                   `protobuf:"varint,2,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
+	Price       int64                  `protobuf:"varint,3,opt,name=price,proto3" json:"price,omitempty"`
+	Quantity    int64                  `protobuf:"varint,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	OrderType   OrderType              `protobuf:"varint,5,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
+	TimeInForce TimeInForce            `protobuf:"varint,6,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
+	StopPrice   int64                  `protobuf:"varint,7,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
+	AccountId   string                 `protobuf:"bytes,8,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	// Iceberg slice size; 0 = normal (non-iceberg) order. Limit + GTC/Day only.
+	DisplayQuantity int64 `protobuf:"varint,9,opt,name=display_quantity,json=displayQuantity,proto3" json:"display_quantity,omitempty"`
+	// Trailing-stop parameters; required when order_type is
+	// TRAILING_STOP_MARKET / _LIMIT. Exactly one of trail_amount /
+	// trail_offset_bps must be > 0. limit_offset only applies to
+	// TRAILING_STOP_LIMIT.
+	TrailAmount    int64 `protobuf:"varint,10,opt,name=trail_amount,json=trailAmount,proto3" json:"trail_amount,omitempty"`
+	TrailOffsetBps int32 `protobuf:"varint,11,opt,name=trail_offset_bps,json=trailOffsetBps,proto3" json:"trail_offset_bps,omitempty"`
+	LimitOffset    int64 `protobuf:"varint,12,opt,name=limit_offset,json=limitOffset,proto3" json:"limit_offset,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *PlaceOrderRequest) Reset() {
@@ -233,6 +242,34 @@ func (x *PlaceOrderRequest) GetAccountId() string {
 		return x.AccountId
 	}
 	return ""
+}
+
+func (x *PlaceOrderRequest) GetDisplayQuantity() int64 {
+	if x != nil {
+		return x.DisplayQuantity
+	}
+	return 0
+}
+
+func (x *PlaceOrderRequest) GetTrailAmount() int64 {
+	if x != nil {
+		return x.TrailAmount
+	}
+	return 0
+}
+
+func (x *PlaceOrderRequest) GetTrailOffsetBps() int32 {
+	if x != nil {
+		return x.TrailOffsetBps
+	}
+	return 0
+}
+
+func (x *PlaceOrderRequest) GetLimitOffset() int64 {
+	if x != nil {
+		return x.LimitOffset
+	}
+	return 0
 }
 
 type PlaceOrderResponse struct {
@@ -1576,19 +1613,24 @@ func (x *GetOrderRequest) GetOrderId() string {
 }
 
 type GetOrderResponse struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	OrderId           string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
-	Symbol            string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
-	Side              Side                   `protobuf:"varint,3,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
-	Price             int64                  `protobuf:"varint,4,opt,name=price,proto3" json:"price,omitempty"`
-	Quantity          int64                  `protobuf:"varint,5,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	RemainingQuantity int64                  `protobuf:"varint,6,opt,name=remaining_quantity,json=remainingQuantity,proto3" json:"remaining_quantity,omitempty"`
-	PlacedAt          *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=placed_at,json=placedAt,proto3" json:"placed_at,omitempty"`
-	OrderType         OrderType              `protobuf:"varint,8,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
-	TimeInForce       TimeInForce            `protobuf:"varint,9,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
-	StopPrice         int64                  `protobuf:"varint,10,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	OrderId            string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	Symbol             string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Side               Side                   `protobuf:"varint,3,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
+	Price              int64                  `protobuf:"varint,4,opt,name=price,proto3" json:"price,omitempty"`
+	Quantity           int64                  `protobuf:"varint,5,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	RemainingQuantity  int64                  `protobuf:"varint,6,opt,name=remaining_quantity,json=remainingQuantity,proto3" json:"remaining_quantity,omitempty"`
+	PlacedAt           *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=placed_at,json=placedAt,proto3" json:"placed_at,omitempty"`
+	OrderType          OrderType              `protobuf:"varint,8,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
+	TimeInForce        TimeInForce            `protobuf:"varint,9,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
+	StopPrice          int64                  `protobuf:"varint,10,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
+	DisplayQuantity    int64                  `protobuf:"varint,11,opt,name=display_quantity,json=displayQuantity,proto3" json:"display_quantity,omitempty"`
+	DisplayedRemaining int64                  `protobuf:"varint,12,opt,name=displayed_remaining,json=displayedRemaining,proto3" json:"displayed_remaining,omitempty"`
+	TrailAmount        int64                  `protobuf:"varint,13,opt,name=trail_amount,json=trailAmount,proto3" json:"trail_amount,omitempty"`
+	TrailOffsetBps     int32                  `protobuf:"varint,14,opt,name=trail_offset_bps,json=trailOffsetBps,proto3" json:"trail_offset_bps,omitempty"`
+	LimitOffset        int64                  `protobuf:"varint,15,opt,name=limit_offset,json=limitOffset,proto3" json:"limit_offset,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *GetOrderResponse) Reset() {
@@ -1687,6 +1729,41 @@ func (x *GetOrderResponse) GetTimeInForce() TimeInForce {
 func (x *GetOrderResponse) GetStopPrice() int64 {
 	if x != nil {
 		return x.StopPrice
+	}
+	return 0
+}
+
+func (x *GetOrderResponse) GetDisplayQuantity() int64 {
+	if x != nil {
+		return x.DisplayQuantity
+	}
+	return 0
+}
+
+func (x *GetOrderResponse) GetDisplayedRemaining() int64 {
+	if x != nil {
+		return x.DisplayedRemaining
+	}
+	return 0
+}
+
+func (x *GetOrderResponse) GetTrailAmount() int64 {
+	if x != nil {
+		return x.TrailAmount
+	}
+	return 0
+}
+
+func (x *GetOrderResponse) GetTrailOffsetBps() int32 {
+	if x != nil {
+		return x.TrailOffsetBps
+	}
+	return 0
+}
+
+func (x *GetOrderResponse) GetLimitOffset() int64 {
+	if x != nil {
+		return x.LimitOffset
 	}
 	return 0
 }
@@ -2408,20 +2485,25 @@ func (x *ListSymbolsResponse) GetSymbols() []string {
 }
 
 type OrderSummary struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	OrderId           string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
-	Symbol            string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
-	Side              Side                   `protobuf:"varint,3,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
-	Price             int64                  `protobuf:"varint,4,opt,name=price,proto3" json:"price,omitempty"`
-	Quantity          int64                  `protobuf:"varint,5,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	RemainingQuantity int64                  `protobuf:"varint,6,opt,name=remaining_quantity,json=remainingQuantity,proto3" json:"remaining_quantity,omitempty"`
-	Status            OrderStatus            `protobuf:"varint,7,opt,name=status,proto3,enum=orderbook.v1.OrderStatus" json:"status,omitempty"`
-	PlacedAt          *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=placed_at,json=placedAt,proto3" json:"placed_at,omitempty"`
-	OrderType         OrderType              `protobuf:"varint,9,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
-	TimeInForce       TimeInForce            `protobuf:"varint,10,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
-	StopPrice         int64                  `protobuf:"varint,11,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	OrderId            string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	Symbol             string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Side               Side                   `protobuf:"varint,3,opt,name=side,proto3,enum=orderbook.v1.Side" json:"side,omitempty"`
+	Price              int64                  `protobuf:"varint,4,opt,name=price,proto3" json:"price,omitempty"`
+	Quantity           int64                  `protobuf:"varint,5,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	RemainingQuantity  int64                  `protobuf:"varint,6,opt,name=remaining_quantity,json=remainingQuantity,proto3" json:"remaining_quantity,omitempty"`
+	Status             OrderStatus            `protobuf:"varint,7,opt,name=status,proto3,enum=orderbook.v1.OrderStatus" json:"status,omitempty"`
+	PlacedAt           *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=placed_at,json=placedAt,proto3" json:"placed_at,omitempty"`
+	OrderType          OrderType              `protobuf:"varint,9,opt,name=order_type,json=orderType,proto3,enum=orderbook.v1.OrderType" json:"order_type,omitempty"`
+	TimeInForce        TimeInForce            `protobuf:"varint,10,opt,name=time_in_force,json=timeInForce,proto3,enum=orderbook.v1.TimeInForce" json:"time_in_force,omitempty"`
+	StopPrice          int64                  `protobuf:"varint,11,opt,name=stop_price,json=stopPrice,proto3" json:"stop_price,omitempty"`
+	DisplayQuantity    int64                  `protobuf:"varint,12,opt,name=display_quantity,json=displayQuantity,proto3" json:"display_quantity,omitempty"`
+	DisplayedRemaining int64                  `protobuf:"varint,13,opt,name=displayed_remaining,json=displayedRemaining,proto3" json:"displayed_remaining,omitempty"`
+	TrailAmount        int64                  `protobuf:"varint,14,opt,name=trail_amount,json=trailAmount,proto3" json:"trail_amount,omitempty"`
+	TrailOffsetBps     int32                  `protobuf:"varint,15,opt,name=trail_offset_bps,json=trailOffsetBps,proto3" json:"trail_offset_bps,omitempty"`
+	LimitOffset        int64                  `protobuf:"varint,16,opt,name=limit_offset,json=limitOffset,proto3" json:"limit_offset,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *OrderSummary) Reset() {
@@ -2527,6 +2609,41 @@ func (x *OrderSummary) GetTimeInForce() TimeInForce {
 func (x *OrderSummary) GetStopPrice() int64 {
 	if x != nil {
 		return x.StopPrice
+	}
+	return 0
+}
+
+func (x *OrderSummary) GetDisplayQuantity() int64 {
+	if x != nil {
+		return x.DisplayQuantity
+	}
+	return 0
+}
+
+func (x *OrderSummary) GetDisplayedRemaining() int64 {
+	if x != nil {
+		return x.DisplayedRemaining
+	}
+	return 0
+}
+
+func (x *OrderSummary) GetTrailAmount() int64 {
+	if x != nil {
+		return x.TrailAmount
+	}
+	return 0
+}
+
+func (x *OrderSummary) GetTrailOffsetBps() int32 {
+	if x != nil {
+		return x.TrailOffsetBps
+	}
+	return 0
+}
+
+func (x *OrderSummary) GetLimitOffset() int64 {
+	if x != nil {
+		return x.LimitOffset
 	}
 	return 0
 }
@@ -2873,7 +2990,7 @@ var File_orderbook_v1_service_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1aorderbook/v1/service.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"\xba\x02\n" +
+	"\x1aorderbook/v1/service.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"\xd5\x03\n" +
 	"\x11PlaceOrderRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +
@@ -2885,7 +3002,12 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\n" +
 	"stop_price\x18\a \x01(\x03R\tstopPrice\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\b \x01(\tR\taccountId\"d\n" +
+	"account_id\x18\b \x01(\tR\taccountId\x12)\n" +
+	"\x10display_quantity\x18\t \x01(\x03R\x0fdisplayQuantity\x12!\n" +
+	"\ftrail_amount\x18\n" +
+	" \x01(\x03R\vtrailAmount\x12(\n" +
+	"\x10trail_offset_bps\x18\v \x01(\x05R\x0etrailOffsetBps\x12!\n" +
+	"\flimit_offset\x18\f \x01(\x03R\vlimitOffset\"d\n" +
 	"\x12PlaceOrderResponse\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x123\n" +
 	"\x06trades\x18\x02 \x03(\v2\x1b.orderbook.v1.TradeExecutedR\x06trades\"G\n" +
@@ -2978,7 +3100,7 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"orderCount\"D\n" +
 	"\x0fGetOrderRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x19\n" +
-	"\border_id\x18\x02 \x01(\tR\aorderId\"\x9d\x03\n" +
+	"\border_id\x18\x02 \x01(\tR\aorderId\"\xe9\x04\n" +
 	"\x10GetOrderResponse\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12&\n" +
@@ -2992,7 +3114,12 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\rtime_in_force\x18\t \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\x12\x1d\n" +
 	"\n" +
 	"stop_price\x18\n" +
-	" \x01(\x03R\tstopPrice\"+\n" +
+	" \x01(\x03R\tstopPrice\x12)\n" +
+	"\x10display_quantity\x18\v \x01(\x03R\x0fdisplayQuantity\x12/\n" +
+	"\x13displayed_remaining\x18\f \x01(\x03R\x12displayedRemaining\x12!\n" +
+	"\ftrail_amount\x18\r \x01(\x03R\vtrailAmount\x12(\n" +
+	"\x10trail_offset_bps\x18\x0e \x01(\x05R\x0etrailOffsetBps\x12!\n" +
+	"\flimit_offset\x18\x0f \x01(\x03R\vlimitOffset\"+\n" +
 	"\x11ListTradesRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"A\n" +
 	"\x12ListTradesResponse\x12+\n" +
@@ -3039,7 +3166,7 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\x06orders\x18\x01 \x03(\v2\x1a.orderbook.v1.OrderSummaryR\x06orders\"\x14\n" +
 	"\x12ListSymbolsRequest\"/\n" +
 	"\x13ListSymbolsResponse\x12\x18\n" +
-	"\asymbols\x18\x01 \x03(\tR\asymbols\"\xcc\x03\n" +
+	"\asymbols\x18\x01 \x03(\tR\asymbols\"\x98\x05\n" +
 	"\fOrderSummary\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12&\n" +
@@ -3054,7 +3181,12 @@ const file_orderbook_v1_service_proto_rawDesc = "" +
 	"\rtime_in_force\x18\n" +
 	" \x01(\x0e2\x19.orderbook.v1.TimeInForceR\vtimeInForce\x12\x1d\n" +
 	"\n" +
-	"stop_price\x18\v \x01(\x03R\tstopPrice\"0\n" +
+	"stop_price\x18\v \x01(\x03R\tstopPrice\x12)\n" +
+	"\x10display_quantity\x18\f \x01(\x03R\x0fdisplayQuantity\x12/\n" +
+	"\x13displayed_remaining\x18\r \x01(\x03R\x12displayedRemaining\x12!\n" +
+	"\ftrail_amount\x18\x0e \x01(\x03R\vtrailAmount\x12(\n" +
+	"\x10trail_offset_bps\x18\x0f \x01(\x05R\x0etrailOffsetBps\x12!\n" +
+	"\flimit_offset\x18\x10 \x01(\x03R\vlimitOffset\"0\n" +
 	"\x16GetReplayBoundsRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"\xc1\x02\n" +
 	"\x17GetReplayBoundsResponse\x12\x16\n" +

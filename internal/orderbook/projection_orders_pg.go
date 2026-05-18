@@ -31,11 +31,20 @@ func (p *PgOrderProjection) HandleEvents(ctx context.Context, events []es.Event)
 	for _, evt := range events {
 		switch data := evt.Data.(type) {
 		case *orderbookv1.OrderPlaced:
+			displayed := int64(0)
+			if data.DisplayQuantity > 0 {
+				displayed = data.DisplayQuantity
+				if displayed > data.Quantity {
+					displayed = data.Quantity
+				}
+			}
 			batch.Queue(
-				`INSERT INTO projection_orders (symbol, order_id, side, price, stop_price, quantity, remaining_quantity, status, placed_at, order_type, time_in_force)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+				`INSERT INTO projection_orders (symbol, order_id, side, price, stop_price, quantity, remaining_quantity, display_quantity, displayed_remaining, trail_amount, trail_offset_bps, limit_offset, status, placed_at, order_type, time_in_force)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 				ON CONFLICT DO NOTHING`,
 				data.Symbol, data.OrderId, int32(data.Side), data.Price, data.StopPrice, data.Quantity, data.Quantity,
+				data.DisplayQuantity, displayed,
+				data.TrailAmount, int32(data.TrailOffsetBps), data.LimitOffset,
 				int32(orderbookv1.OrderStatus_ORDER_STATUS_OPEN), data.PlacedAt.AsTime(),
 				int32(data.OrderType), int32(data.TimeInForce),
 			)
@@ -44,6 +53,7 @@ func (p *PgOrderProjection) HandleEvents(ctx context.Context, events []es.Event)
 				batch.Queue(
 					`UPDATE projection_orders
 					SET remaining_quantity = remaining_quantity - $1,
+						displayed_remaining = CASE WHEN display_quantity > 0 THEN displayed_remaining - $1 ELSE 0 END,
 						status = CASE WHEN remaining_quantity - $1 <= 0 THEN $2::INT ELSE $3::INT END
 					WHERE symbol = $4 AND order_id = $5 AND status != $6::INT`,
 					data.Quantity,
@@ -57,6 +67,18 @@ func (p *PgOrderProjection) HandleEvents(ctx context.Context, events []es.Event)
 			batch.Queue(
 				`UPDATE projection_orders SET status = $1::INT WHERE symbol = $2 AND order_id = $3`,
 				int32(orderbookv1.OrderStatus_ORDER_STATUS_CANCELLED), data.Symbol, data.OrderId,
+			)
+		case *orderbookv1.IcebergSliceReplenished:
+			batch.Queue(
+				`UPDATE projection_orders
+				SET displayed_remaining = $1, placed_at = $2
+				WHERE symbol = $3 AND order_id = $4`,
+				data.NewDisplayedQty, data.ReplenishedAt.AsTime(), data.Symbol, data.OrderId,
+			)
+		case *orderbookv1.TrailingStopAdjusted:
+			batch.Queue(
+				`UPDATE projection_orders SET stop_price = $1 WHERE symbol = $2 AND order_id = $3`,
+				data.NewStopPrice, data.Symbol, data.OrderId,
 			)
 		}
 	}
@@ -79,7 +101,7 @@ func (p *PgOrderProjection) HandleEvents(ctx context.Context, events []es.Event)
 
 func (p *PgOrderProjection) GetOrder(symbol, orderID string) (*orderbookv1.OrderSummary, bool) {
 	row := p.pool.QueryRow(context.Background(),
-		`SELECT order_id, symbol, side, price, stop_price, quantity, remaining_quantity, status, placed_at, order_type, time_in_force
+		`SELECT order_id, symbol, side, price, stop_price, quantity, remaining_quantity, display_quantity, displayed_remaining, trail_amount, trail_offset_bps, limit_offset, status, placed_at, order_type, time_in_force
 		FROM projection_orders WHERE symbol = $1 AND order_id = $2`,
 		symbol, orderID,
 	)
@@ -96,7 +118,7 @@ func (p *PgOrderProjection) GetOrder(symbol, orderID string) (*orderbookv1.Order
 
 func (p *PgOrderProjection) ListOrders(symbol string) []*orderbookv1.OrderSummary {
 	rows, err := p.pool.Query(context.Background(),
-		`SELECT order_id, symbol, side, price, stop_price, quantity, remaining_quantity, status, placed_at, order_type, time_in_force
+		`SELECT order_id, symbol, side, price, stop_price, quantity, remaining_quantity, display_quantity, displayed_remaining, trail_amount, trail_offset_bps, limit_offset, status, placed_at, order_type, time_in_force
 		FROM projection_orders WHERE symbol = $1`,
 		symbol,
 	)
@@ -152,6 +174,8 @@ func scanOrderSummary(s orderScannable) (*orderbookv1.OrderSummary, error) {
 
 	if err := s.Scan(
 		&o.OrderId, &o.Symbol, &side, &o.Price, &o.StopPrice, &o.Quantity, &o.RemainingQuantity,
+		&o.DisplayQuantity, &o.DisplayedRemaining,
+		&o.TrailAmount, &o.TrailOffsetBps, &o.LimitOffset,
 		&status, &placedAt, &orderType, &timeInForce,
 	); err != nil {
 		return nil, err

@@ -36,6 +36,10 @@ func (p *OrderProjection) HandleEvents(_ context.Context, events []es.Event) err
 			p.applyTradeExecuted(data)
 		case *orderbookv1.OrderCancelled:
 			p.applyOrderCancelled(data)
+		case *orderbookv1.IcebergSliceReplenished:
+			p.applyIcebergSliceReplenished(data)
+		case *orderbookv1.TrailingStopAdjusted:
+			p.applyTrailingStopAdjusted(data)
 		}
 	}
 
@@ -49,19 +53,54 @@ func (p *OrderProjection) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 		p.orders[data.Symbol] = byID
 	}
 
-	byID[data.OrderId] = &orderbookv1.OrderSummary{
-		OrderId:           data.OrderId,
-		Symbol:            data.Symbol,
-		Side:              data.Side,
-		Price:             data.Price,
-		StopPrice:         data.StopPrice,
-		Quantity:          data.Quantity,
-		RemainingQuantity: data.Quantity,
-		Status:            orderbookv1.OrderStatus_ORDER_STATUS_OPEN,
-		PlacedAt:          timestamppb.New(data.PlacedAt.AsTime()),
-		OrderType:         data.OrderType,
-		TimeInForce:       data.TimeInForce,
+	displayed := int64(0)
+	if data.DisplayQuantity > 0 {
+		displayed = data.DisplayQuantity
+		if displayed > data.Quantity {
+			displayed = data.Quantity
+		}
 	}
+	byID[data.OrderId] = &orderbookv1.OrderSummary{
+		OrderId:            data.OrderId,
+		Symbol:             data.Symbol,
+		Side:               data.Side,
+		Price:              data.Price,
+		StopPrice:          data.StopPrice,
+		Quantity:           data.Quantity,
+		RemainingQuantity:  data.Quantity,
+		DisplayQuantity:    data.DisplayQuantity,
+		DisplayedRemaining: displayed,
+		TrailAmount:        data.TrailAmount,
+		TrailOffsetBps:     data.TrailOffsetBps,
+		LimitOffset:        data.LimitOffset,
+		Status:             orderbookv1.OrderStatus_ORDER_STATUS_OPEN,
+		PlacedAt:           timestamppb.New(data.PlacedAt.AsTime()),
+		OrderType:          data.OrderType,
+		TimeInForce:        data.TimeInForce,
+	}
+}
+
+func (p *OrderProjection) applyTrailingStopAdjusted(data *orderbookv1.TrailingStopAdjusted) {
+	byID := p.orders[data.Symbol]
+	if byID == nil {
+		return
+	}
+	if summary := byID[data.OrderId]; summary != nil {
+		summary.StopPrice = data.NewStopPrice
+	}
+}
+
+func (p *OrderProjection) applyIcebergSliceReplenished(data *orderbookv1.IcebergSliceReplenished) {
+	byID := p.orders[data.Symbol]
+	if byID == nil {
+		return
+	}
+	summary := byID[data.OrderId]
+	if summary == nil {
+		return
+	}
+	summary.DisplayedRemaining = data.NewDisplayedQty
+	summary.PlacedAt = timestamppb.New(data.ReplenishedAt.AsTime())
 }
 
 func (p *OrderProjection) applyTradeExecuted(data *orderbookv1.TradeExecuted) {

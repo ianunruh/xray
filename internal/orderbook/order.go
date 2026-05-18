@@ -14,11 +14,25 @@ const (
 type OrderType int
 
 const (
-	Limit      OrderType = 0
-	Market     OrderType = 1
-	StopMarket OrderType = 2
-	StopLimit  OrderType = 3
+	Limit              OrderType = 0
+	Market             OrderType = 1
+	StopMarket         OrderType = 2
+	StopLimit          OrderType = 3
+	TrailingStopMarket OrderType = 4
+	TrailingStopLimit  OrderType = 5
 )
+
+// IsStop reports whether the order rests as a stop order until
+// triggered. Covers both fixed stops and trailing stops.
+func (ot OrderType) IsStop() bool {
+	return ot == StopMarket || ot == StopLimit || ot == TrailingStopMarket || ot == TrailingStopLimit
+}
+
+// IsTrailingStop reports whether the order's stop price ratchets with
+// the mark.
+func (ot OrderType) IsTrailingStop() bool {
+	return ot == TrailingStopMarket || ot == TrailingStopLimit
+}
 
 // TimeInForce controls how long an order remains active.
 type TimeInForce int
@@ -56,16 +70,46 @@ const (
 )
 
 // Order represents an order on the book.
+//
+// Iceberg orders carry DisplayQty > 0 and track Displayed separately
+// from RemainingQty: Displayed is the visible slice the matching engine
+// can fill, RemainingQty is the total (visible + hidden) unfilled qty.
+// When Displayed reaches 0 with RemainingQty > 0, the engine emits
+// IcebergSliceReplenished and re-inserts the order with a fresh PlacedAt
+// (loses time priority at the same price level). For non-iceberg orders
+// DisplayQty is 0 and Displayed mirrors RemainingQty.
+//
+// Trailing stops carry exactly one of TrailAmount or TrailOffsetBps;
+// after every trade the engine ratchets StopPrice tighter when the
+// mark has moved favorably (up for sells, down for buys), emitting
+// TrailingStopAdjusted so replay reproduces the ratchet path. LimitOffset
+// only applies to TrailingStopLimit and is the gap between the trigger
+// and the placed limit price at activation time.
 type Order struct {
-	ID           string
-	AccountID    string
-	Side         Side
-	Price        int64
-	StopPrice    int64
-	Quantity     int64
-	RemainingQty int64
-	PlacedAt     time.Time
-	OrderType    OrderType
-	TimeInForce  TimeInForce
-	OCOGroupID   string
+	ID             string
+	AccountID      string
+	Side           Side
+	Price          int64
+	StopPrice      int64
+	Quantity       int64
+	RemainingQty   int64
+	DisplayQty     int64
+	Displayed      int64
+	TrailAmount    int64
+	TrailOffsetBps int32
+	LimitOffset    int64
+	PlacedAt       time.Time
+	OrderType      OrderType
+	TimeInForce    TimeInForce
+	OCOGroupID     string
+}
+
+// VisibleQty returns the quantity the matching engine may fill against
+// this order right now. For non-iceberg orders that's RemainingQty; for
+// icebergs it's the current Displayed slice.
+func (o *Order) VisibleQty() int64 {
+	if o.DisplayQty > 0 {
+		return o.Displayed
+	}
+	return o.RemainingQty
 }

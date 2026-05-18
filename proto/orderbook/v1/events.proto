@@ -30,6 +30,16 @@ enum OrderType {
   ORDER_TYPE_MARKET = 2;
   ORDER_TYPE_STOP_MARKET = 3;
   ORDER_TYPE_STOP_LIMIT = 4;
+  // Trailing-stop variants. The stop_price on OrderPlaced is the
+  // initial trigger; trail_amount or trail_offset_bps (exactly one
+  // must be > 0) defines how much the stop "ratchets" as the mark
+  // moves favorably. A trailing-stop SELL's stop rises as the mark
+  // rises; a trailing-stop BUY's stop falls as the mark falls. When
+  // activated, TRAILING_STOP_MARKET behaves as a market IOC and
+  // TRAILING_STOP_LIMIT as a limit with limit_offset added (sell) or
+  // subtracted (buy) from the activated stop price.
+  ORDER_TYPE_TRAILING_STOP_MARKET = 5;
+  ORDER_TYPE_TRAILING_STOP_LIMIT = 6;
 }
 
 enum TimeInForce {
@@ -85,6 +95,21 @@ message OrderPlaced {
   // atomically cancels every other order in the group, before further
   // matching or stop-trigger passes. Empty = not in a group.
   string oco_group_id = 11;
+  // display_quantity, when > 0, makes this an iceberg order: only
+  // display_quantity is exposed to matching at any time, the rest is
+  // hidden reserve. When the displayed slice fills, the engine emits
+  // IcebergSliceReplenished and re-inserts the order with a fresh
+  // placed_at — the new slice loses time priority at its price level.
+  // Must be <= quantity. Only valid with Limit + GTC/Day (no Market,
+  // IOC, FOK, stop, or auction TIF).
+  int64 display_quantity = 12;
+  // Trailing-stop fields. Exactly one of trail_amount / trail_offset_bps
+  // must be > 0 when order_type is TRAILING_STOP_MARKET / _LIMIT.
+  // limit_offset is the gap between the activated stop price and the
+  // limit price for TRAILING_STOP_LIMIT only.
+  int64 trail_amount = 13;
+  int32 trail_offset_bps = 14;
+  int64 limit_offset = 15;
 }
 
 message OrderCancelled {
@@ -107,12 +132,45 @@ message TradeExecuted {
   CrossType cross_type = 8;
 }
 
+// IcebergSliceReplenished is emitted when an iceberg order's displayed
+// slice has fully filled and the engine is exposing the next slice
+// from the hidden reserve. new_displayed_qty is the size of the new
+// slice (min(display_quantity, hidden_remaining)); hidden_remaining
+// is what's left after this replenish. The order is re-inserted at
+// the same price with replenished_at as its new placed_at — it loses
+// time priority to anyone else already resting at that level. side
+// and price are carried so projections don't have to look the order
+// back up against the aggregate.
+message IcebergSliceReplenished {
+  string order_id = 1;
+  string symbol = 2;
+  int64 new_displayed_qty = 3;
+  int64 hidden_remaining = 4;
+  google.protobuf.Timestamp replenished_at = 5;
+  Side side = 6;
+  int64 price = 7;
+}
+
 message StopTriggered {
   string order_id = 1;
   string symbol = 2;
   int64 stop_price = 3;
   int64 trigger_price = 4;
   OrderType activated_as = 5;
+}
+
+// TrailingStopAdjusted is emitted when a trailing stop's trigger price
+// ratchets tighter in response to a favorable mark move. SELL stops
+// ratchet up as the mark rises; BUY stops ratchet down as the mark
+// falls. The new stop_price replaces the previous trigger; mark_price
+// is the trade price that caused the adjustment.
+message TrailingStopAdjusted {
+  string order_id = 1;
+  string symbol = 2;
+  int64 previous_stop_price = 3;
+  int64 new_stop_price = 4;
+  int64 mark_price = 5;
+  google.protobuf.Timestamp adjusted_at = 6;
 }
 
 message MarketClosed {
