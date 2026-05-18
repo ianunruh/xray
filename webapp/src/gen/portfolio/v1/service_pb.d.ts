@@ -921,6 +921,66 @@ export declare type ListFeeHistoryResponse = Message<"portfolio.v1.ListFeeHistor
 export declare const ListFeeHistoryResponseSchema: GenMessage<ListFeeHistoryResponse>;
 
 /**
+ * SymbolShortInterest is the venue-wide aggregate for one symbol —
+ * total open short quantity across all accounts plus the count of
+ * accounts contributing. Source: projection_shorts_by_symbol.
+ *
+ * @generated from message portfolio.v1.SymbolShortInterest
+ */
+export declare type SymbolShortInterest = Message<"portfolio.v1.SymbolShortInterest"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: int64 total_quantity = 2;
+   */
+  totalQuantity: bigint;
+
+  /**
+   * @generated from field: int32 account_count = 3;
+   */
+  accountCount: number;
+};
+
+/**
+ * Describes the message portfolio.v1.SymbolShortInterest.
+ * Use `create(SymbolShortInterestSchema)` to create a new message.
+ */
+export declare const SymbolShortInterestSchema: GenMessage<SymbolShortInterest>;
+
+/**
+ * @generated from message portfolio.v1.ListShortInterestRequest
+ */
+export declare type ListShortInterestRequest = Message<"portfolio.v1.ListShortInterestRequest"> & {
+};
+
+/**
+ * Describes the message portfolio.v1.ListShortInterestRequest.
+ * Use `create(ListShortInterestRequestSchema)` to create a new message.
+ */
+export declare const ListShortInterestRequestSchema: GenMessage<ListShortInterestRequest>;
+
+/**
+ * @generated from message portfolio.v1.ListShortInterestResponse
+ */
+export declare type ListShortInterestResponse = Message<"portfolio.v1.ListShortInterestResponse"> & {
+  /**
+   * One entry per symbol with at least one open short, sorted by symbol.
+   *
+   * @generated from field: repeated portfolio.v1.SymbolShortInterest entries = 1;
+   */
+  entries: SymbolShortInterest[];
+};
+
+/**
+ * Describes the message portfolio.v1.ListShortInterestResponse.
+ * Use `create(ListShortInterestResponseSchema)` to create a new message.
+ */
+export declare const ListShortInterestResponseSchema: GenMessage<ListShortInterestResponse>;
+
+/**
  * PreviewOrderImpact simulates the hold + fill an order would create
  * and returns the resulting margin state. Used by the UI to surface
  * "would this put me in margin call" before the user submits.
@@ -1277,6 +1337,14 @@ export declare const PortfolioService: GenService<{
     methodKind: "unary";
     input: typeof ListFeeHistoryRequestSchema;
     output: typeof ListFeeHistoryResponseSchema;
+  },
+  /**
+   * @generated from rpc portfolio.v1.PortfolioService.ListShortInterest
+   */
+  listShortInterest: {
+    methodKind: "unary";
+    input: typeof ListShortInterestRequestSchema;
+    output: typeof ListShortInterestResponseSchema;
   },
 }>;
 

@@ -39,15 +39,16 @@ type Marker interface {
 type Server struct {
 	portfoliov1connect.UnimplementedPortfolioServiceHandler
 
-	portfolioHandler  *es.Handler[*Portfolio]
-	orderbookHandler  *es.Handler[*orderbook.OrderBook]
-	reader            PortfolioReader
-	pnlReader         PnLReader
-	marker            Marker
-	marginCallsReader MarginCallsReader
-	feesReader        FeesReader
-	broker            *PortfolioBroker
-	log               *slog.Logger
+	portfolioHandler    *es.Handler[*Portfolio]
+	orderbookHandler    *es.Handler[*orderbook.OrderBook]
+	reader              PortfolioReader
+	pnlReader           PnLReader
+	marker              Marker
+	marginCallsReader   MarginCallsReader
+	feesReader          FeesReader
+	shortInterestReader ShortInterestReader
+	broker              *PortfolioBroker
+	log                 *slog.Logger
 }
 
 func NewServer(
@@ -58,20 +59,28 @@ func NewServer(
 	marker Marker,
 	marginCallsReader MarginCallsReader,
 	feesReader FeesReader,
+	shortInterestReader ShortInterestReader,
 	broker *PortfolioBroker,
 	log *slog.Logger,
 ) *Server {
 	return &Server{
-		portfolioHandler:  portfolioHandler,
-		orderbookHandler:  orderbookHandler,
-		reader:            reader,
-		pnlReader:         pnlReader,
-		marker:            marker,
-		marginCallsReader: marginCallsReader,
-		feesReader:        feesReader,
-		broker:            broker,
-		log:               log,
+		portfolioHandler:    portfolioHandler,
+		orderbookHandler:    orderbookHandler,
+		reader:              reader,
+		pnlReader:           pnlReader,
+		marker:              marker,
+		marginCallsReader:   marginCallsReader,
+		feesReader:          feesReader,
+		shortInterestReader: shortInterestReader,
+		broker:              broker,
+		log:                 log,
 	}
+}
+
+// ShortInterestReader exposes the venue-wide short-interest aggregate.
+// Satisfied by PgShortsBySymbolProjection.
+type ShortInterestReader interface {
+	ListShortInterest(ctx context.Context) ([]*SymbolShortInterest, error)
 }
 
 func (s *Server) Deposit(ctx context.Context, req *connect.Request[portfoliov1.DepositRequest]) (*connect.Response[portfoliov1.DepositResponse], error) {
@@ -236,6 +245,26 @@ func (s *Server) ListFeeHistory(ctx context.Context, req *connect.Request[portfo
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&portfoliov1.ListFeeHistoryResponse{Records: records}), nil
+}
+
+func (s *Server) ListShortInterest(ctx context.Context, _ *connect.Request[portfoliov1.ListShortInterestRequest]) (*connect.Response[portfoliov1.ListShortInterestResponse], error) {
+	if s.shortInterestReader == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("short interest reader not configured"))
+	}
+	entries, err := s.shortInterestReader.ListShortInterest(ctx)
+	if err != nil {
+		s.log.Error("ListShortInterest failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	out := make([]*portfoliov1.SymbolShortInterest, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, &portfoliov1.SymbolShortInterest{
+			Symbol:        e.Symbol,
+			TotalQuantity: e.TotalQty,
+			AccountCount:  e.AccountCount,
+		})
+	}
+	return connect.NewResponse(&portfoliov1.ListShortInterestResponse{Entries: out}), nil
 }
 
 func (s *Server) PreviewOrderImpact(ctx context.Context, req *connect.Request[portfoliov1.PreviewOrderImpactRequest]) (*connect.Response[portfoliov1.PreviewOrderImpactResponse], error) {

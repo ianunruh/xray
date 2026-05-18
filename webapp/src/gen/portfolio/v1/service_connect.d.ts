@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CreditSharesRequest, CreditSharesResponse, DepositRequest, DepositResponse, GetMarginSnapshotRequest, GetMarginSnapshotResponse, GetPnLRequest, GetPnLResponse, GetPortfolioRequest, GetPortfolioResponse, ListFeeHistoryRequest, ListFeeHistoryResponse, ListMarginCallsRequest, ListMarginCallsResponse, ListPortfoliosRequest, ListPortfoliosResponse, PreviewOrderImpactRequest, PreviewOrderImpactResponse, StreamPortfolioRequest, WithdrawRequest, WithdrawResponse } from "./service_pb.js";
+import { CreditSharesRequest, CreditSharesResponse, DepositRequest, DepositResponse, GetMarginSnapshotRequest, GetMarginSnapshotResponse, GetPnLRequest, GetPnLResponse, GetPortfolioRequest, GetPortfolioResponse, ListFeeHistoryRequest, ListFeeHistoryResponse, ListMarginCallsRequest, ListMarginCallsResponse, ListPortfoliosRequest, ListPortfoliosResponse, ListShortInterestRequest, ListShortInterestResponse, PreviewOrderImpactRequest, PreviewOrderImpactResponse, StreamPortfolioRequest, WithdrawRequest, WithdrawResponse } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -109,6 +109,15 @@ export declare const PortfolioService: {
       readonly name: "ListFeeHistory",
       readonly I: typeof ListFeeHistoryRequest,
       readonly O: typeof ListFeeHistoryResponse,
+      readonly kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc portfolio.v1.PortfolioService.ListShortInterest
+     */
+    readonly listShortInterest: {
+      readonly name: "ListShortInterest",
+      readonly I: typeof ListShortInterestRequest,
+      readonly O: typeof ListShortInterestResponse,
       readonly kind: MethodKind.Unary,
     },
   }

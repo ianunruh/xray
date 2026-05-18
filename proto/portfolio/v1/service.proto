@@ -19,6 +19,7 @@ service PortfolioService {
   rpc PreviewOrderImpact(PreviewOrderImpactRequest) returns (PreviewOrderImpactResponse);
   rpc ListMarginCalls(ListMarginCallsRequest) returns (ListMarginCallsResponse);
   rpc ListFeeHistory(ListFeeHistoryRequest) returns (ListFeeHistoryResponse);
+  rpc ListShortInterest(ListShortInterestRequest) returns (ListShortInterestResponse);
 }
 
 message DepositRequest {
@@ -302,6 +303,22 @@ message ListFeeHistoryRequest {
 message ListFeeHistoryResponse {
   // Newest-first.
   repeated FeeRecord records = 1;
+}
+
+// SymbolShortInterest is the venue-wide aggregate for one symbol —
+// total open short quantity across all accounts plus the count of
+// accounts contributing. Source: projection_shorts_by_symbol.
+message SymbolShortInterest {
+  string symbol         = 1;
+  int64  total_quantity = 2;
+  int32  account_count  = 3;
+}
+
+message ListShortInterestRequest {}
+
+message ListShortInterestResponse {
+  // One entry per symbol with at least one open short, sorted by symbol.
+  repeated SymbolShortInterest entries = 1;
 }
 
 // PreviewOrderImpact simulates the hold + fill an order would create

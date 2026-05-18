@@ -17,7 +17,7 @@ import { notifications } from "@mantine/notifications";
 import { useFetcher, useRevalidator } from "react-router";
 import { Code, ConnectError } from "@connectrpc/connect";
 import type { Route } from "./+types/markets";
-import { orderBookClient } from "~/lib/client.server";
+import { orderBookClient, portfolioClient } from "~/lib/client.server";
 import { formatPrice, formatQuantity } from "~/lib/format";
 import { phaseColor, phaseLabel } from "~/lib/marketPhase";
 import { MarketPhase, Side } from "../../src/gen/orderbook/v1/events_pb";
@@ -45,10 +45,24 @@ type MarketRow = {
   // Most recent official close price; 0 means no close on record yet.
   lastClosePrice: bigint;
   lastCloseDate: string;
+  // Venue-wide short interest joined from ListShortInterest; defaults
+  // to zero when no account holds an open short in this symbol.
+  shortQty: bigint;
+  shortAccountCount: number;
 };
 
 export async function loader() {
-  const { symbols } = await orderBookClient.listSymbols({});
+  const [{ symbols }, shortInterestResp] = await Promise.all([
+    orderBookClient.listSymbols({}),
+    portfolioClient.listShortInterest({}),
+  ]);
+  const shortBySymbol = new Map(
+    shortInterestResp.entries.map((e) => [
+      e.symbol,
+      { qty: e.totalQuantity, accounts: e.accountCount },
+    ]),
+  );
+
   const rows: MarketRow[] = await Promise.all(
     symbols.map(async (s) => {
       const [bookR, closeR] = await Promise.allSettled([
@@ -80,7 +94,16 @@ export async function loader() {
         console.error(`getOfficialClose(${s}) failed`, closeR.reason);
       }
 
-      return { symbol: s, phase, lastTradePrice, lastClosePrice, lastCloseDate };
+      const si = shortBySymbol.get(s);
+      return {
+        symbol: s,
+        phase,
+        lastTradePrice,
+        lastClosePrice,
+        lastCloseDate,
+        shortQty: si?.qty ?? 0n,
+        shortAccountCount: si?.accounts ?? 0,
+      };
     }),
   );
   return { rows };
@@ -301,6 +324,9 @@ export default function Markets({ loaderData }: Route.ComponentProps) {
               <Table.Th>Phase</Table.Th>
               <Table.Th ta="right">Last</Table.Th>
               <Table.Th ta="right">Change vs Close</Table.Th>
+              <Table.Th ta="right" title="Open short interest across all accounts">
+                Short Interest
+              </Table.Th>
               <Table.Th>Last Uncross</Table.Th>
               <Table.Th ta="right">Actions</Table.Th>
             </Table.Tr>
@@ -308,7 +334,7 @@ export default function Markets({ loaderData }: Route.ComponentProps) {
           <Table.Tbody>
             {rows.length === 0 && !loading && (
               <Table.Tr>
-                <Table.Td colSpan={6}>
+                <Table.Td colSpan={7}>
                   <Text size="sm" c="dimmed">
                     No symbols yet — place an order to bootstrap one.
                   </Text>
@@ -323,6 +349,8 @@ export default function Markets({ loaderData }: Route.ComponentProps) {
                 lastTradePrice={r.lastTradePrice}
                 lastClosePrice={r.lastClosePrice}
                 lastCloseDate={r.lastCloseDate}
+                shortQty={r.shortQty}
+                shortAccountCount={r.shortAccountCount}
                 lastUncross={lastUncross[r.symbol]}
                 onAction={(k) => startAction(r.symbol, r.phase, k)}
               />
@@ -373,6 +401,8 @@ function Row({
   lastTradePrice,
   lastClosePrice,
   lastCloseDate,
+  shortQty,
+  shortAccountCount,
   lastUncross,
   onAction,
 }: {
@@ -381,6 +411,8 @@ function Row({
   lastTradePrice: bigint;
   lastClosePrice: bigint;
   lastCloseDate: string;
+  shortQty: bigint;
+  shortAccountCount: number;
   lastUncross: UncrossSummary | undefined;
   onAction: (kind: ActionKind) => void;
 }) {
@@ -413,6 +445,22 @@ function Row({
           lastClosePrice={lastClosePrice}
           lastCloseDate={lastCloseDate}
         />
+      </Table.Td>
+      <Table.Td ta="right">
+        {shortQty > 0n ? (
+          <Stack gap={0} align="flex-end">
+            <Text size="sm" ff="monospace">
+              {formatQuantity(shortQty)}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {shortAccountCount} {shortAccountCount === 1 ? "acct" : "accts"}
+            </Text>
+          </Stack>
+        ) : (
+          <Text size="xs" c="dimmed">
+            —
+          </Text>
+        )}
       </Table.Td>
       <Table.Td>
         {lastUncross ? (
