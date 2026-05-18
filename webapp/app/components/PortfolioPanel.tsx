@@ -25,6 +25,7 @@ import { OrderType, PositionSide, Side, TimeInForce } from "../../src/gen/orderb
 import { OrderStatus } from "../../src/gen/portfolio/v1/service_pb";
 import { useFetcher } from "react-router";
 import { useAccountData } from "../hooks/accountData";
+import { sagaClient } from "~/lib/client";
 
 function timestampToMillis(ts: Timestamp | undefined): number | null {
   if (!ts) return null;
@@ -97,6 +98,41 @@ function tifAbbrev(tif: TimeInForce): string {
     default:
       return "?";
   }
+}
+
+// tifName converts a TimeInForce enum back to the string key the
+// OrderForm uses in its TIME_IN_FORCE map ("GTC", "AT_OPEN", etc.).
+// Distinct from tifAbbrev — tifAbbrev produces display-friendly forms
+// like "OPG"/"CLS" for the orders table.
+function tifName(tif: TimeInForce): string {
+  switch (tif) {
+    case TimeInForce.GTC:
+      return "GTC";
+    case TimeInForce.IOC:
+      return "IOC";
+    case TimeInForce.FOK:
+      return "FOK";
+    case TimeInForce.DAY:
+      return "DAY";
+    case TimeInForce.AT_OPEN:
+      return "AT_OPEN";
+    case TimeInForce.AT_CLOSE:
+      return "AT_CLOSE";
+    default:
+      return "GTC";
+  }
+}
+
+// actionFromSidePosition maps the wire-level (side, position_side) pair
+// back to the 4-way broker action the OrderForm's prefill expects.
+function actionFromSidePosition(
+  side: Side,
+  position: PositionSide,
+): "BUY" | "SELL" | "SHORT" | "COVER" {
+  if (position === PositionSide.SHORT) {
+    return side === Side.SELL ? "SHORT" : "COVER";
+  }
+  return side === Side.BUY ? "BUY" : "SELL";
 }
 
 function isMarketOrderType(type: OrderType): boolean {
@@ -988,11 +1024,16 @@ export function PortfolioPositions({
 }
 
 // PortfolioOrders renders the pending and recent orders tables for the
-// account. Cancel actions submit to /trading's cancel-saga action.
+// account. Cancel actions submit to /trading's cancel-saga action; the
+// Replace action fetches the saga's current details and pushes them
+// into the OrderForm via onPrefillOrder with replaceOrderId set so the
+// saga reactor atomically cancels the original and places the new one.
 export function PortfolioOrders({
   onJumpToAggregate,
+  onPrefillOrder,
 }: {
   onJumpToAggregate?: (aggregateId: string) => void;
+  onPrefillOrder?: (p: OrderPrefill) => void;
 }) {
   const { portfolio } = useAccountData();
   const fetcher = useFetcher<ModalResult>();
@@ -1025,6 +1066,68 @@ export function PortfolioOrders({
     fd.set("intent", "cancel-saga");
     fd.set("sagaId", sagaId);
     fetcher.submit(fd, { method: "post", action: "/trading" });
+  }
+
+  // handleReplace fetches the saga's live details (we need orderId +
+  // positionSide, which the PendingOrder projection doesn't carry) then
+  // pushes them into the OrderForm via the prefill mechanism. The form
+  // will pre-fill quantity as the remaining qty (original - filled) and
+  // preserve TIF and iceberg slice; the user can edit before confirming.
+  async function handleReplace(sagaId: string) {
+    if (!onPrefillOrder) return;
+    try {
+      const resp = await sagaClient.get({ sagaId });
+      if (resp.details?.case !== "singleOrder") {
+        notifications.show({
+          message: "Only single orders can be replaced",
+          color: "red",
+        });
+        return;
+      }
+      const d = resp.details.value;
+      if (!d.orderId) {
+        notifications.show({
+          message: "Order not yet on the book — try again in a moment",
+          color: "red",
+        });
+        return;
+      }
+      const isMarket = d.orderType === OrderType.MARKET;
+      const isLimit = d.orderType === OrderType.LIMIT;
+      if (!isMarket && !isLimit) {
+        notifications.show({
+          message: "Replace is only supported for plain limit and market orders",
+          color: "red",
+        });
+        return;
+      }
+      const remaining = d.quantity - d.filledQuantity;
+      if (remaining <= 0n) {
+        notifications.show({
+          message: "Order is already fully filled",
+          color: "red",
+        });
+        return;
+      }
+      onPrefillOrder({
+        symbol: resp.symbol,
+        action: actionFromSidePosition(d.side, d.positionSide),
+        quantity: Number(remaining),
+        orderType: isMarket ? "MARKET" : "LIMIT",
+        price: isLimit ? priceToNumber(d.price) : undefined,
+        tif: tifName(d.timeInForce),
+        displayQuantity:
+          d.displayQuantity > 0n ? Number(d.displayQuantity) : undefined,
+        replaceOrderId: d.orderId,
+        nonce: Date.now(),
+      });
+    } catch (e) {
+      notifications.show({
+        title: "Replace failed",
+        message: String(e),
+        color: "red",
+      });
+    }
   }
 
   if (!portfolio) {
@@ -1119,6 +1222,15 @@ export function PortfolioOrders({
                               </ActionIcon>
                             </Menu.Target>
                             <Menu.Dropdown>
+                              {onPrefillOrder &&
+                                (o.orderType === OrderType.LIMIT ||
+                                  o.orderType === OrderType.MARKET) && (
+                                <Menu.Item
+                                  onClick={() => handleReplace(o.sagaId)}
+                                >
+                                  Replace
+                                </Menu.Item>
+                              )}
                               <Menu.Item
                                 color="red"
                                 disabled={cancellingId === o.sagaId}

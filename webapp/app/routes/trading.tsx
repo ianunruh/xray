@@ -678,7 +678,10 @@ function TradingBody({
 
         <Tabs.Panel value="orders" pt="md">
           <Stack gap="md">
-            <PortfolioOrders onJumpToAggregate={onJumpToAggregate} />
+            <PortfolioOrders
+              onJumpToAggregate={onJumpToAggregate}
+              onPrefillOrder={onPrefillOrder}
+            />
             <BracketsPanel
               rows={brackets}
               onJumpToAggregate={onJumpToAggregate}
