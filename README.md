@@ -246,7 +246,7 @@ from `FAILED`) so the UI and audit log can attribute them correctly.
 - `cmd/xray/` — HTTP/gRPC server entry point (registers all services, projections, reactors, reconciler, fees accruer)
 - `cmd/xray-mm/`, `cmd/xray-noise/`, `cmd/xray-trend/` — Strategy client binaries
 - `cmd/loadtest/` — Synthetic-traffic generator for orderbook benchmarking
-- `web/` — React + Mantine front-end (Vite); embedded into the Go binary at build time
+- `webapp/` — React Router v7 framework-mode front-end (Mantine + Vite); runs as a separate Node server, proxies Connect calls to the Go backend
 
 ## Key design decisions
 
@@ -263,10 +263,11 @@ from `FAILED`) so the UI and audit log can attribute them correctly.
 
 ```sh
 docker compose up -d      # start Postgres + NATS JetStream
-go run ./cmd/xray         # starts HTTP/gRPC server on :8080, serves web UI at /
+go run ./cmd/xray         # starts HTTP/Connect server on :8080
+cd webapp && npm run dev  # starts the web UI on :5174 (proxies Connect calls to :8080)
 ```
 
-Open <http://localhost:8080> in a browser for the web UI.
+Open <http://localhost:5174> in a browser for the web UI.
 
 Environment variables:
 
@@ -758,7 +759,7 @@ Vite + React + Mantine, embedded into the Go binary at build time. Three top-lev
   preview, portfolio panel (cash, holdings, shorts, margin metrics), tabs for
   Orders (resting orders, active brackets, OCOs, TWAPs with slice progress
   bars) and Positions (with close-position prefills)
-- **Diagnostics** — paginated aggregate browser; per-aggregate event log with
+- **Events** — paginated aggregate browser; per-aggregate event log with
   decoded JSON; ⇢ jump-to-chain shortcuts
 - **Chain** — full causation chain for any correlation_id, ordered by event time
 
@@ -766,20 +767,21 @@ Across all views: live order-status notifications, audible chime on fills,
 replay scrubber for time-travel through orderbook history, and a margin-call
 banner when an account is in breach.
 
-Build the front-end and run the dev server:
+Install and run the front-end (separate process from the Go server):
 
 ```sh
-cd web && npm install
-cd web && npm run dev    # Vite dev server, proxies API to :8080
-cd web && npm run build  # production build (output in web/dist/, embedded by Go)
+cd webapp && npm install
+cd webapp && npm run dev    # React Router dev server on :5174, proxies API to :8080
+cd webapp && npm run build  # production build (SSR bundle in webapp/build/)
 ```
 
 ## Development
 
 ```sh
 buf generate              # regenerate protobuf Go code
-cd web && buf generate    # regenerate protobuf TypeScript code
+cd webapp && buf generate # regenerate protobuf TypeScript code
 go build ./...            # compile everything
 go test ./...             # run all tests (memstore-backed, no Postgres required)
-cd web && npm run build   # type-check and bundle the web UI
+cd webapp && npm run typecheck  # type-check the webapp
+cd webapp && npm run build      # bundle the web UI
 ```

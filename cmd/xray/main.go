@@ -38,7 +38,6 @@ import (
 	"github.com/ianunruh/xray/pkg/es"
 	"github.com/ianunruh/xray/pkg/es/natsstore"
 	"github.com/ianunruh/xray/pkg/es/pgstore"
-	"github.com/ianunruh/xray/web"
 )
 
 func main() {
@@ -286,7 +285,6 @@ func main() {
 	mux.Handle(diagnosticsPath, diagnosticsH)
 	traderPath, traderH := traderv1connect.NewTraderServiceHandler(traderSrv)
 	mux.Handle(traderPath, traderH)
-	mux.Handle("/", web.Handler())
 
 	httpServer := &http.Server{
 		Addr:      listenAddr,
