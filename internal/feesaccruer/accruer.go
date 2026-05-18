@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/ianunruh/xray/internal/margin"
@@ -47,6 +48,20 @@ type Accruer struct {
 	clock    Clock
 	cfg      Config
 	log      *slog.Logger
+
+	mu     sync.Mutex
+	status Status
+}
+
+// Status is a point-in-time snapshot of the accruer for diagnostics.
+// LastTickAt is zero before the first tick completes.
+type Status struct {
+	Interval         time.Duration
+	MinElapsed       time.Duration
+	LastTickAt       time.Time
+	LastTickDuration time.Duration
+	LastTickAccounts int
+	LastTickFailed   int
 }
 
 func NewAccruer(
@@ -70,7 +85,19 @@ func NewAccruer(
 		clock:    clock,
 		cfg:      cfg,
 		log:      log,
+		status: Status{
+			Interval:   cfg.Interval,
+			MinElapsed: cfg.MinElapsed,
+		},
 	}
+}
+
+// Status returns a snapshot of the accruer's current configuration
+// and last-tick stats. Safe to call from any goroutine.
+func (a *Accruer) Status() Status {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.status
 }
 
 // Run starts a ticker loop that calls Tick at the configured
@@ -99,6 +126,7 @@ func (a *Accruer) Run(ctx context.Context) {
 // Tick processes one accrual cycle at the given wall-clock time.
 // Exported so tests can step through cycles deterministically.
 func (a *Accruer) Tick(ctx context.Context, now time.Time) error {
+	start := a.clock()
 	ids, err := a.accounts.AccruableAccounts(ctx)
 	if err != nil {
 		return fmt.Errorf("list accruable accounts: %w", err)
@@ -110,7 +138,17 @@ func (a *Accruer) Tick(ctx context.Context, now time.Time) error {
 			errs = append(errs, err)
 		}
 	}
+	a.recordTick(start, len(ids), len(errs))
 	return errors.Join(errs...)
+}
+
+func (a *Accruer) recordTick(start time.Time, accounts, failed int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.status.LastTickAt = start
+	a.status.LastTickDuration = a.clock().Sub(start)
+	a.status.LastTickAccounts = accounts
+	a.status.LastTickFailed = failed
 }
 
 func (a *Accruer) accrueOne(ctx context.Context, accountID string, now time.Time) error {
