@@ -134,8 +134,8 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 			)
 		case *portfoliov1.OrderSagaFillRecorded:
 			batch.Queue(
-				`UPDATE projection_pending_orders SET filled_qty = filled_qty + $1, last_fill_price = $2 WHERE saga_id = $3`,
-				data.FillQuantity, data.FillPrice, data.SagaId,
+				`UPDATE projection_pending_orders SET filled_qty = filled_qty + $1, cash_settled = cash_settled + $2, last_fill_price = $3 WHERE saga_id = $4`,
+				data.FillQuantity, data.CashSettled, data.FillPrice, data.SagaId,
 			)
 		case *portfoliov1.OrderSagaCompleted:
 			batch.Queue(
@@ -283,7 +283,8 @@ func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID stri
 
 	terminalCutoff := time.Now().Add(-5 * time.Minute)
 	orderRows, err := p.pool.Query(ctx,
-		`SELECT saga_id, symbol, side, price, quantity, display_quantity, order_type, time_in_force, filled_qty, status, started_at, reason, ended_at, last_fill_price, fees_paid
+		`SELECT saga_id, symbol, side, price, quantity, display_quantity, order_type, time_in_force, filled_qty, status, started_at, reason, ended_at, last_fill_price, fees_paid,
+			CASE WHEN filled_qty > 0 THEN cash_settled / filled_qty ELSE 0 END
 		FROM projection_pending_orders
 		WHERE account_id = $1 AND (status < $2 OR ended_at > $3)
 		ORDER BY started_at DESC`,
@@ -308,7 +309,7 @@ func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID stri
 		if err := orderRows.Scan(
 			&o.SagaId, &o.Symbol, &side, &o.Price, &o.Quantity, &o.DisplayQuantity,
 			&orderType, &timeInForce, &o.FilledQuantity, &status, &startedAt, &reason, &endedAt,
-			&o.LastFillPrice, &o.FeesPaid,
+			&o.LastFillPrice, &o.FeesPaid, &o.VwapFillPrice,
 		); err != nil {
 			return nil, fmt.Errorf("scan pending order: %w", err)
 		}

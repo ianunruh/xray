@@ -99,6 +99,14 @@ function tifAbbrev(tif: TimeInForce): string {
   }
 }
 
+function isMarketOrderType(type: OrderType): boolean {
+  return (
+    type === OrderType.MARKET ||
+    type === OrderType.STOP_MARKET ||
+    type === OrderType.TRAILING_STOP_MARKET
+  );
+}
+
 // orderTypeLabel collapses common (type, tif) pairs to broker-standard
 // abbreviations (MOO/MOC/LOO/LOC) and falls back to "TYPE · TIF".
 function orderTypeLabel(type: OrderType, tif: TimeInForce): string {
@@ -1147,7 +1155,22 @@ export function PortfolioOrders({
                         {orderTypeLabel(o.orderType, o.timeInForce)}
                       </Text>
                     </Table.Td>
-                    <Table.Td ta="right">{formatPrice(o.price)}</Table.Td>
+                    <Table.Td ta="right">
+                      {isMarketOrderType(o.orderType) ? (
+                        o.vwapFillPrice > 0n ? (
+                          <Text component="span" size="sm" title="Volume-weighted average fill price">
+                            {formatPrice(o.vwapFillPrice)}
+                            <Text component="span" size="xs" c="dimmed" ml={4}>
+                              avg
+                            </Text>
+                          </Text>
+                        ) : (
+                          <Text component="span" size="xs" c="dimmed">—</Text>
+                        )
+                      ) : (
+                        formatPrice(o.price)
+                      )}
+                    </Table.Td>
                     <Table.Td ta="right">
                       {formatQuantity(o.quantity)}
                     </Table.Td>

@@ -311,6 +311,16 @@ export declare type PendingOrder = Message<"portfolio.v1.PendingOrder"> & {
    * @generated from field: int64 fees_paid = 15;
    */
   feesPaid: bigint;
+
+  /**
+   * Volume-weighted average fill price across every fill on this
+   * order: sum(cash_settled) / sum(fill_quantity). Zero before the
+   * first fill. Useful for market orders where price (the limit) is
+   * unset and last_fill_price only shows the most recent slice.
+   *
+   * @generated from field: int64 vwap_fill_price = 16;
+   */
+  vwapFillPrice: bigint;
 };
 
 /**

@@ -602,7 +602,12 @@ type PendingOrder struct {
 	// Cumulative transaction fees paid on this order's fills (this
 	// account's side only). Sum of TransactionFeeCharged.amount across
 	// every fill.
-	FeesPaid      int64 `protobuf:"varint,15,opt,name=fees_paid,json=feesPaid,proto3" json:"fees_paid,omitempty"`
+	FeesPaid int64 `protobuf:"varint,15,opt,name=fees_paid,json=feesPaid,proto3" json:"fees_paid,omitempty"`
+	// Volume-weighted average fill price across every fill on this
+	// order: sum(cash_settled) / sum(fill_quantity). Zero before the
+	// first fill. Useful for market orders where price (the limit) is
+	// unset and last_fill_price only shows the most recent slice.
+	VwapFillPrice int64 `protobuf:"varint,16,opt,name=vwap_fill_price,json=vwapFillPrice,proto3" json:"vwap_fill_price,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -738,6 +743,13 @@ func (x *PendingOrder) GetDisplayQuantity() int64 {
 func (x *PendingOrder) GetFeesPaid() int64 {
 	if x != nil {
 		return x.FeesPaid
+	}
+	return 0
+}
+
+func (x *PendingOrder) GetVwapFillPrice() int64 {
+	if x != nil {
+		return x.VwapFillPrice
 	}
 	return 0
 }
@@ -2031,7 +2043,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\faverage_cost\x18\x04 \x01(\x03R\vaverageCost\x12\x1f\n" +
 	"\vshares_held\x18\x05 \x01(\x03R\n" +
 	"sharesHeld\x12!\n" +
-	"\frealized_pnl\x18\x06 \x01(\x03R\vrealizedPnl\"\xef\x04\n" +
+	"\frealized_pnl\x18\x06 \x01(\x03R\vrealizedPnl\"\x97\x05\n" +
 	"\fPendingOrder\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12&\n" +
@@ -2051,7 +2063,8 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\bended_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\aendedAt\x12&\n" +
 	"\x0flast_fill_price\x18\r \x01(\x03R\rlastFillPrice\x12)\n" +
 	"\x10display_quantity\x18\x0e \x01(\x03R\x0fdisplayQuantity\x12\x1b\n" +
-	"\tfees_paid\x18\x0f \x01(\x03R\bfeesPaid\"7\n" +
+	"\tfees_paid\x18\x0f \x01(\x03R\bfeesPaid\x12&\n" +
+	"\x0fvwap_fill_price\x18\x10 \x01(\x03R\rvwapFillPrice\"7\n" +
 	"\x16StreamPortfolioRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\".\n" +
