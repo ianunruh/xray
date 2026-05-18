@@ -32,7 +32,7 @@ const NAV = [
   { to: "/trading", label: "Trading" },
   { to: "/traders", label: "Traders" },
   { to: "/markets", label: "Markets" },
-  { to: "/diagnostics", label: "Diagnostics" },
+  { to: "/events", label: "Events" },
   { to: "/chain", label: "Chain" },
   { to: "/projections", label: "Projections" },
 ];

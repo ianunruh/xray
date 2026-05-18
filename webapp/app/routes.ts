@@ -5,7 +5,7 @@ export default [
   route("trading", "routes/trading.tsx"),
   route("traders", "routes/traders.tsx"),
   route("markets", "routes/markets.tsx"),
-  route("diagnostics", "routes/diagnostics.tsx"),
+  route("events", "routes/events.tsx"),
   route("chain", "routes/chain.tsx"),
   route("projections", "routes/projections.tsx"),
 ] satisfies RouteConfig;
