@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	portfoliov1 "github.com/ianunruh/xray/gen/portfolio/v1"
@@ -26,6 +27,7 @@ type Reactor struct {
 	portfolioHandler *es.Handler[*portfolio.Portfolio]
 	orderbookHandler *es.Handler[*orderbook.OrderBook]
 	marker           portfolio.Marker
+	settlement       portfolio.SettlementPolicy
 	log              *slog.Logger
 }
 
@@ -43,6 +45,16 @@ func NewReactor(
 		marker:           marker,
 		log:              log,
 	}
+}
+
+// WithSettlementPolicy returns the reactor with the given settlement
+// policy installed. Builder-style so existing call sites (including
+// every test in this package) keep working with instant-settlement
+// semantics by default. cmd/xray opts into T+1 by calling this on
+// startup.
+func (r *Reactor) WithSettlementPolicy(p portfolio.SettlementPolicy) *Reactor {
+	r.settlement = p
+	return r
 }
 
 func (r *Reactor) HandleEvents(ctx context.Context, events []es.Event) error {
@@ -617,12 +629,14 @@ func isHeldStatus(s Status) bool {
 // settlement command based on (Side, PositionSide).
 func (r *Reactor) applySettlement(ctx context.Context, saga *OrderSaga, data *orderbookv1.TradeExecuted, cashAmount int64) error {
 	isShort := saga.PositionSide == orderbookv1.PositionSide_POSITION_SIDE_SHORT
+	settlesAt := r.settlement.SettlesAt(time.Now())
 	switch {
 	case saga.Side == orderbook.Sell && !isShort:
 		cmd := portfolio.SettleSale{
 			AccountID: saga.AccountID, OrderSagaID: saga.SagaID, TradeID: data.TradeId,
 			Symbol: saga.Symbol, Quantity: data.Quantity,
 			PricePerShare: data.Price, Proceeds: cashAmount,
+			SettlesAt: settlesAt,
 		}
 		return r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
 			return portfolio.ExecuteSettleSale(p, cmd)
@@ -632,6 +646,7 @@ func (r *Reactor) applySettlement(ctx context.Context, saga *OrderSaga, data *or
 			AccountID: saga.AccountID, OrderSagaID: saga.SagaID, TradeID: data.TradeId,
 			Amount: cashAmount, Symbol: saga.Symbol, Quantity: data.Quantity,
 			CostPerShare: data.Price,
+			SettlesAt:    settlesAt,
 		}
 		return r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
 			return portfolio.ExecuteSettleTrade(p, cmd)
@@ -640,6 +655,7 @@ func (r *Reactor) applySettlement(ctx context.Context, saga *OrderSaga, data *or
 		cmd := portfolio.OpenShort{
 			AccountID: saga.AccountID, OrderSagaID: saga.SagaID, TradeID: data.TradeId,
 			Symbol: saga.Symbol, Quantity: data.Quantity, PricePerShare: data.Price,
+			SettlesAt: settlesAt,
 		}
 		return r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
 			return portfolio.ExecuteOpenShort(p, cmd)
@@ -648,6 +664,7 @@ func (r *Reactor) applySettlement(ctx context.Context, saga *OrderSaga, data *or
 		cmd := portfolio.CoverShort{
 			AccountID: saga.AccountID, OrderSagaID: saga.SagaID, TradeID: data.TradeId,
 			Symbol: saga.Symbol, Quantity: data.Quantity, CostPerShare: data.Price,
+			SettlesAt: settlesAt,
 		}
 		return r.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
 			return portfolio.ExecuteCoverShort(p, cmd)

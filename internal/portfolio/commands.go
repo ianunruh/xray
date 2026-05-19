@@ -55,6 +55,31 @@ var (
 	ErrSettlementNotDue     = errors.New("pending settlement leg is not yet due")
 )
 
+// SettlementPolicy controls whether trade-settlement events defer
+// their cash leg to a later SettlementCleared event (T+1 settlement)
+// or apply it immediately (today's instant behavior). Caller-side
+// concern: the aggregate consumes only the stamped SettlesAt on each
+// event — see isInstantSettlement in aggregate.go.
+type SettlementPolicy struct {
+	// Enabled toggles deferred settlement. When false, SettlesAt is
+	// always zero and the aggregate takes the instant path.
+	Enabled bool
+	// Window is the gap from trade date to settlement date when
+	// Enabled. Typical real-world value: 24h (T+1).
+	Window time.Duration
+}
+
+// SettlesAt computes the settlement date for a trade executed at
+// tradeDate. Returns the zero time when the policy is disabled or the
+// window is non-positive — both encode "instant" on the wire. Callers
+// stamp the result onto the settlement event's settles_at field.
+func (p SettlementPolicy) SettlesAt(tradeDate time.Time) time.Time {
+	if !p.Enabled || p.Window <= 0 {
+		return time.Time{}
+	}
+	return tradeDate.Add(p.Window)
+}
+
 type DepositCash struct {
 	AccountID string
 	Amount    int64
@@ -217,6 +242,10 @@ type SettleTrade struct {
 	Symbol       string
 	Quantity     int64
 	CostPerShare int64
+	// SettlesAt, when non-zero and after the trade date, marks this
+	// settlement as T+N and routes it through PendingLegs. Zero =
+	// instant settlement (today's behavior).
+	SettlesAt time.Time
 }
 
 func (c SettleTrade) AggregateID() string {
@@ -228,20 +257,24 @@ func ExecuteSettleTrade(p *Portfolio, cmd SettleTrade) ([]es.Event, error) {
 		return nil, nil
 	}
 	now := time.Now()
+	data := &portfoliov1.CashSettled{
+		AccountId:    cmd.AccountID,
+		OrderSagaId:  cmd.OrderSagaID,
+		TradeId:      cmd.TradeID,
+		Amount:       cmd.Amount,
+		Symbol:       cmd.Symbol,
+		Quantity:     cmd.Quantity,
+		CostPerShare: cmd.CostPerShare,
+		SettledAt:    timestamppb.New(now),
+	}
+	if !cmd.SettlesAt.IsZero() {
+		data.SettlesAt = timestamppb.New(cmd.SettlesAt)
+	}
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
 		Type:        EventCashSettled,
 		Timestamp:   now,
-		Data: &portfoliov1.CashSettled{
-			AccountId:    cmd.AccountID,
-			OrderSagaId:  cmd.OrderSagaID,
-			TradeId:      cmd.TradeID,
-			Amount:       cmd.Amount,
-			Symbol:       cmd.Symbol,
-			Quantity:     cmd.Quantity,
-			CostPerShare: cmd.CostPerShare,
-			SettledAt:    timestamppb.New(now),
-		},
+		Data:        data,
 	}
 
 	if err := p.Apply(evt); err != nil {
@@ -386,6 +419,8 @@ type SettleSale struct {
 	Quantity      int64
 	PricePerShare int64
 	Proceeds      int64
+	// SettlesAt — see SettleTrade.SettlesAt.
+	SettlesAt time.Time
 }
 
 func (c SettleSale) AggregateID() string {
@@ -397,20 +432,24 @@ func ExecuteSettleSale(p *Portfolio, cmd SettleSale) ([]es.Event, error) {
 		return nil, nil
 	}
 	now := time.Now()
+	data := &portfoliov1.SharesSettled{
+		AccountId:     cmd.AccountID,
+		OrderSagaId:   cmd.OrderSagaID,
+		TradeId:       cmd.TradeID,
+		Symbol:        cmd.Symbol,
+		Quantity:      cmd.Quantity,
+		PricePerShare: cmd.PricePerShare,
+		Proceeds:      cmd.Proceeds,
+		SettledAt:     timestamppb.New(now),
+	}
+	if !cmd.SettlesAt.IsZero() {
+		data.SettlesAt = timestamppb.New(cmd.SettlesAt)
+	}
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
 		Type:        EventSharesSettled,
 		Timestamp:   now,
-		Data: &portfoliov1.SharesSettled{
-			AccountId:     cmd.AccountID,
-			OrderSagaId:   cmd.OrderSagaID,
-			TradeId:       cmd.TradeID,
-			Symbol:        cmd.Symbol,
-			Quantity:      cmd.Quantity,
-			PricePerShare: cmd.PricePerShare,
-			Proceeds:      cmd.Proceeds,
-			SettledAt:     timestamppb.New(now),
-		},
+		Data:        data,
 	}
 
 	if err := p.Apply(evt); err != nil {
@@ -518,6 +557,8 @@ type OpenShort struct {
 	Symbol        string
 	Quantity      int64
 	PricePerShare int64
+	// SettlesAt — see SettleTrade.SettlesAt.
+	SettlesAt time.Time
 }
 
 func (c OpenShort) AggregateID() string {
@@ -553,22 +594,26 @@ func ExecuteOpenShort(p *Portfolio, cmd OpenShort) ([]es.Event, error) {
 	}
 
 	now := time.Now()
+	data := &portfoliov1.ShortOpened{
+		AccountId:       cmd.AccountID,
+		OrderSagaId:     cmd.OrderSagaID,
+		TradeId:         cmd.TradeID,
+		Symbol:          cmd.Symbol,
+		Quantity:        cmd.Quantity,
+		PricePerShare:   cmd.PricePerShare,
+		ProceedsHeld:    proceeds,
+		CollateralHeld:  collateralHeld,
+		NewAvgOpenPrice: newAvg,
+		OpenedAt:        timestamppb.New(now),
+	}
+	if !cmd.SettlesAt.IsZero() {
+		data.SettlesAt = timestamppb.New(cmd.SettlesAt)
+	}
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
 		Type:        EventShortOpened,
 		Timestamp:   now,
-		Data: &portfoliov1.ShortOpened{
-			AccountId:       cmd.AccountID,
-			OrderSagaId:     cmd.OrderSagaID,
-			TradeId:         cmd.TradeID,
-			Symbol:          cmd.Symbol,
-			Quantity:        cmd.Quantity,
-			PricePerShare:   cmd.PricePerShare,
-			ProceedsHeld:    proceeds,
-			CollateralHeld:  collateralHeld,
-			NewAvgOpenPrice: newAvg,
-			OpenedAt:        timestamppb.New(now),
-		},
+		Data:        data,
 	}
 	if err := p.Apply(evt); err != nil {
 		return nil, err
@@ -673,6 +718,8 @@ type CoverShort struct {
 	Symbol       string
 	Quantity     int64
 	CostPerShare int64
+	// SettlesAt — see SettleTrade.SettlesAt.
+	SettlesAt time.Time
 }
 
 func (c CoverShort) AggregateID() string {
@@ -699,23 +746,27 @@ func ExecuteCoverShort(p *Portfolio, cmd CoverShort) ([]es.Event, error) {
 	realizedPnL := (short.AvgOpenPrice - cmd.CostPerShare) * cmd.Quantity
 
 	now := time.Now()
+	data := &portfoliov1.ShortCovered{
+		AccountId:          cmd.AccountID,
+		OrderSagaId:        cmd.OrderSagaID,
+		TradeId:            cmd.TradeID,
+		Symbol:             cmd.Symbol,
+		Quantity:           cmd.Quantity,
+		CostPerShare:       cmd.CostPerShare,
+		Cost:               cost,
+		ProceedsReleased:   proceedsReleased,
+		CollateralReleased: collateralReleased,
+		RealizedPnl:        realizedPnL,
+		CoveredAt:          timestamppb.New(now),
+	}
+	if !cmd.SettlesAt.IsZero() {
+		data.SettlesAt = timestamppb.New(cmd.SettlesAt)
+	}
 	evt := es.Event{
 		AggregateID: p.AggregateID(),
 		Type:        EventShortCovered,
 		Timestamp:   now,
-		Data: &portfoliov1.ShortCovered{
-			AccountId:          cmd.AccountID,
-			OrderSagaId:        cmd.OrderSagaID,
-			TradeId:            cmd.TradeID,
-			Symbol:             cmd.Symbol,
-			Quantity:           cmd.Quantity,
-			CostPerShare:       cmd.CostPerShare,
-			Cost:               cost,
-			ProceedsReleased:   proceedsReleased,
-			CollateralReleased: collateralReleased,
-			RealizedPnl:        realizedPnL,
-			CoveredAt:          timestamppb.New(now),
-		},
+		Data:        data,
 	}
 	if err := p.Apply(evt); err != nil {
 		return nil, err

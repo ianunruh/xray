@@ -283,6 +283,48 @@ func TestSettlement_Invariant_HoldsRespectSettledCash(t *testing.T) {
 	assert.Equal(t, int64(100_000_000), p.SettledCash, "release returns to settled cash")
 }
 
+func TestSettlement_Policy_StampsSettlesAt(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+	fund(t, handler, "acct-1", 100_000_000)
+
+	policy := portfolio.SettlementPolicy{Enabled: true, Window: 24 * time.Hour}
+	cmd := portfolio.SettleTrade{
+		AccountID:    "acct-1",
+		OrderSagaID:  "saga-1",
+		TradeID:      "trade-1",
+		Amount:       10_000_000,
+		Symbol:       "AAPL",
+		Quantity:     100,
+		CostPerShare: 100_000,
+		SettlesAt:    policy.SettlesAt(time.Now()),
+	}
+	require.NoError(t, handler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteSettleTrade(p, cmd)
+	}))
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(90_000_000), p.CashBalance)
+	assert.Equal(t, int64(100_000_000), p.SettledCash, "policy-enabled command defers settled cash")
+	require.Len(t, p.PendingLegs, 1)
+}
+
+func TestSettlement_Policy_DisabledStaysInstant(t *testing.T) {
+	policy := portfolio.SettlementPolicy{} // zero = disabled
+	assert.True(t, policy.SettlesAt(time.Now()).IsZero(), "disabled policy returns zero time")
+
+	policy = portfolio.SettlementPolicy{Enabled: true} // window=0 too
+	assert.True(t, policy.SettlesAt(time.Now()).IsZero(), "zero window returns zero time")
+
+	policy = portfolio.SettlementPolicy{Enabled: true, Window: 24 * time.Hour}
+	tradeDate := time.Now()
+	got := policy.SettlesAt(tradeDate)
+	assert.WithinDuration(t, tradeDate.Add(24*time.Hour), got, time.Second)
+}
+
 func TestSettlement_Replay_DeterministicAcrossLoads(t *testing.T) {
 	registry := newTestRegistry()
 	store := memstore.New()
