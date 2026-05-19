@@ -574,6 +574,36 @@ function OperationsCard({ ops }: { ops: GetOperationsStatusResponse }) {
             </Text>
           )}
         </OpsBlock>
+        <OpsBlock
+          title="Corporate Actions"
+          subtitle={
+            ops.corpactionReactor?.enabled
+              ? fmtInterval(ops.corpactionReactor?.intervalMs)
+              : "disabled"
+          }
+        >
+          {ops.corpactionReactor?.enabled === false ? (
+            <Text size="xs" c="dimmed">
+              Reactor disabled (declares queue without applying)
+            </Text>
+          ) : ops.corpactionReactor?.lastTickAt ? (
+            <Stack gap={2}>
+              <Text size="xs">
+                Last tick {fmtRelative(ops.corpactionReactor.lastTickAt)} —{" "}
+                {fmtDurMs(ops.corpactionReactor.lastTickMs)}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {ops.corpactionReactor.lastTickApplied} applied ·{" "}
+                {ops.corpactionReactor.lastTickSnapshotted} snapshotted ·{" "}
+                {ops.corpactionReactor.lastTickFailed} failed
+              </Text>
+            </Stack>
+          ) : (
+            <Text size="xs" c="dimmed">
+              Awaiting first tick…
+            </Text>
+          )}
+        </OpsBlock>
       </Group>
     </Stack>
   );

@@ -1,5 +1,6 @@
 import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
+import { CorporateActionService } from "../../src/gen/corpaction/v1/service_pb";
 import { DiagnosticsService } from "../../src/gen/diagnostics/v1/service_pb";
 import { OrderBookService } from "../../src/gen/orderbook/v1/service_pb";
 import { PortfolioService } from "../../src/gen/portfolio/v1/service_pb";
@@ -22,3 +23,4 @@ export const portfolioClient = createClient(PortfolioService, transport);
 export const diagnosticsClient = createClient(DiagnosticsService, transport);
 export const sagaClient = createClient(SagaService, transport);
 export const traderClient = createClient(TraderService, transport);
+export const corpactionClient = createClient(CorporateActionService, transport);

@@ -34,6 +34,7 @@ const NAV = [
   { to: "/markets", label: "Markets" },
   { to: "/events", label: "Events" },
   { to: "/chain", label: "Chain" },
+  { to: "/corporate-actions", label: "Corporate Actions" },
   { to: "/projections", label: "Projections" },
 ];
 
