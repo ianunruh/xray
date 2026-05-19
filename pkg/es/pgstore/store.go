@@ -11,7 +11,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
+	"github.com/ianunruh/xray/internal/metrics"
 	"github.com/ianunruh/xray/pkg/es"
 )
 
@@ -227,6 +230,13 @@ func (s *Store) queryEvents(ctx context.Context, query string, args ...any) ([]e
 // Append inserts new events using a batch INSERT. A unique constraint
 // violation on (aggregate_id, version) is mapped to ErrOptimisticConcurrency.
 func (s *Store) Append(ctx context.Context, aggregateID string, expectedVersion int, events []es.RawEvent) error {
+	start := time.Now()
+	typeAttr := metric.WithAttributes(attribute.String("aggregate_type", metrics.AggregateType(aggregateID)))
+
+	if metrics.StoreAppendEvents != nil {
+		metrics.StoreAppendEvents.Record(ctx, int64(len(events)), typeAttr)
+	}
+
 	batch := &pgx.Batch{}
 	for i, evt := range events {
 		version := expectedVersion + i + 1
@@ -240,12 +250,21 @@ func (s *Store) Append(ctx context.Context, aggregateID string, expectedVersion 
 		if _, err := br.Exec(); err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				if metrics.StoreAppendConflictTotal != nil {
+					metrics.StoreAppendConflictTotal.Add(ctx, 1, typeAttr)
+				}
 				return es.ErrOptimisticConcurrency
+			}
+			if metrics.StoreAppendErrorsTotal != nil {
+				metrics.StoreAppendErrorsTotal.Add(ctx, 1, typeAttr)
 			}
 			return fmt.Errorf("insert events: %w", err)
 		}
 	}
 
+	if metrics.StoreAppendSeconds != nil {
+		metrics.StoreAppendSeconds.Record(ctx, time.Since(start).Seconds(), typeAttr)
+	}
 	return nil
 }
 
