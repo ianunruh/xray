@@ -107,7 +107,7 @@ func TestSettlement_CashSettled_Deferred(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(90_000_000), p.CashBalance, "cash balance moves on trade date as today")
 	assert.Equal(t, int64(100_000_000), p.SettledCash, "settled cash unchanged until clearing")
-	require.Len(t, p.PendingLegs, 1)
+	require.Len(t, p.PendingLegs, 2, "deferred buy emits both cash + share legs")
 	key := portfolio.PendingLegKey{TradeID: "trade-1", Kind: portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_CASH_DEBIT}
 	leg := p.PendingLegs[key]
 	require.NotNil(t, leg)
@@ -312,7 +312,7 @@ func TestSettlement_Policy_StampsSettlesAt(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(90_000_000), p.CashBalance)
 	assert.Equal(t, int64(100_000_000), p.SettledCash, "policy-enabled command defers settled cash")
-	require.Len(t, p.PendingLegs, 1)
+	require.Len(t, p.PendingLegs, 2, "buy emits both cash + share legs")
 }
 
 func TestSettlement_Policy_DisabledStaysInstant(t *testing.T) {
@@ -326,6 +326,90 @@ func TestSettlement_Policy_DisabledStaysInstant(t *testing.T) {
 	tradeDate := time.Now()
 	got := policy.SettlesAt(tradeDate)
 	assert.WithinDuration(t, tradeDate.Add(24*time.Hour), got, time.Second)
+}
+
+func TestSettlement_ShareCreditLeg_OnDeferredBuy(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	fund(t, handler, "acct-1", 100_000_000)
+
+	tradeDate := time.Now()
+	settlesAt := tradeDate.Add(24 * time.Hour)
+	appendEvent(t, handler, es.Event{
+		AggregateID: portfolio.AggregateID("acct-1"),
+		Type:        portfolio.EventCashSettled,
+		Timestamp:   tradeDate,
+		Data: &portfoliov1.CashSettled{
+			AccountId:    "acct-1",
+			OrderSagaId:  "saga-1",
+			TradeId:      "trade-1",
+			Amount:       10_000_000,
+			Symbol:       "AAPL",
+			Quantity:     100,
+			CostPerShare: 100_000,
+			SettledAt:    timestamppb.New(tradeDate),
+			SettlesAt:    timestamppb.New(settlesAt),
+		},
+	})
+
+	p, err := handler.Load(context.Background(), portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(100), p.Holdings["AAPL"].Quantity, "Holdings updates on trade date (margin-account model)")
+	assert.Equal(t, int64(100), p.PendingShareCredits["AAPL"], "100 shares marked pending settlement")
+	assert.Len(t, p.PendingLegs, 2, "deferred buy emits both a cash and a share leg")
+
+	cashKey := portfolio.PendingLegKey{TradeID: "trade-1", Kind: portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_CASH_DEBIT}
+	shareKey := portfolio.PendingLegKey{TradeID: "trade-1", Kind: portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_SHARE_CREDIT}
+	require.NotNil(t, p.PendingLegs[cashKey])
+	require.NotNil(t, p.PendingLegs[shareKey])
+	assert.Equal(t, int64(100), p.PendingLegs[shareKey].Quantity, "share leg carries the share count")
+	assert.Equal(t, int64(0), p.PendingLegs[shareKey].CashAmount, "share leg has no cash side")
+}
+
+func TestSettlement_ShareCreditLeg_ClearsPendingShares(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+	fund(t, handler, "acct-1", 100_000_000)
+
+	past := time.Now().Add(-48 * time.Hour)
+	settlesAt := past.Add(24 * time.Hour) // also past — leg is due
+	appendEvent(t, handler, es.Event{
+		AggregateID: portfolio.AggregateID("acct-1"),
+		Type:        portfolio.EventCashSettled,
+		Timestamp:   past,
+		Data: &portfoliov1.CashSettled{
+			AccountId:    "acct-1",
+			OrderSagaId:  "saga-1",
+			TradeId:      "trade-1",
+			Amount:       10_000_000,
+			Symbol:       "AAPL",
+			Quantity:     100,
+			CostPerShare: 100_000,
+			SettledAt:    timestamppb.New(past),
+			SettlesAt:    timestamppb.New(settlesAt),
+		},
+	})
+
+	// Clear the SHARE_CREDIT leg.
+	cmd := portfolio.ClearSettlement{
+		AccountID: "acct-1",
+		TradeID:   "trade-1",
+		Kind:      portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_SHARE_CREDIT,
+	}
+	require.NoError(t, handler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteClearSettlement(p, cmd)
+	}))
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Empty(t, p.PendingShareCredits, "clearing the share leg drains the pending shares map")
+	assert.Equal(t, int64(100), p.Holdings["AAPL"].Quantity, "Holdings unchanged by clearing the share leg")
+	// Cash leg still pending.
+	cashKey := portfolio.PendingLegKey{TradeID: "trade-1", Kind: portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_CASH_DEBIT}
+	assert.NotNil(t, p.PendingLegs[cashKey], "cash leg clears independently")
 }
 
 func TestSettlement_Withdraw_GatedOnSettledCash(t *testing.T) {

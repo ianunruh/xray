@@ -55,7 +55,8 @@ type PendingLeg struct {
 	OrderSagaID string
 	Kind        portfoliov1.SettlementLegKind
 	Symbol      string
-	CashAmount  int64 // signed: + = credit, - = debit
+	CashAmount  int64 // signed: + = credit, - = debit. Zero for share-only legs.
+	Quantity    int64 // share count for SHARE_CREDIT legs; zero for cash-only legs.
 	SettlesAt   time.Time
 	EmittedAt   time.Time
 }
@@ -135,6 +136,14 @@ type Portfolio struct {
 	// lookup and idempotent.
 	PendingLegs map[PendingLegKey]*PendingLeg
 
+	// PendingShareCredits tracks shares from long buys awaiting
+	// settlement. Holdings already includes these shares (margin-
+	// account semantics — they're yours immediately); this map is
+	// the parallel "pending" view that powers the per-symbol UI
+	// badge. Incremented by the deferred path of applyCashSettled,
+	// decremented by SettlementCleared with kind=SHARE_CREDIT.
+	PendingShareCredits map[string]int64
+
 	// settledCashSeeded marks that Apply() has lazily set SettledCash
 	// to CashBalance for a portfolio loaded from a pre-T+1 snapshot.
 	// Unexported because it has no semantic meaning outside Apply.
@@ -153,6 +162,7 @@ func NewPortfolio(id string) *Portfolio {
 		ShortCoversHeld:       make(map[string]int64),
 		ShortCoverHoldsBySaga: make(map[string]*ShareHold),
 		PendingLegs:           make(map[PendingLegKey]*PendingLeg),
+		PendingShareCredits:   make(map[string]int64),
 	}
 	p.SetID(id)
 	return p
@@ -325,19 +335,34 @@ func (p *Portfolio) applyCashSettled(data *portfoliov1.CashSettled) {
 	// Settled-cash bookkeeping. The full cost (fromHold + overflow)
 	// is the cash debit; on the instant path it leaves SettledCash
 	// now, on the deferred path it lands in a PendingLeg and clears
-	// later via SettlementCleared.
+	// later via SettlementCleared. A long buy also defers the share
+	// leg as a parallel pending entry — Holdings already moved (see
+	// above), the leg drives the "X shares settling" UI badge and
+	// keeps room for future cash-account / fail-to-deliver work.
 	if IsInstantSettlement(data.SettlesAt, data.SettledAt) {
 		p.SettledCash -= data.Amount
 	} else {
+		settlesAt := data.SettlesAt.AsTime()
+		emittedAt := data.SettledAt.AsTime()
 		p.PendingLegs[PendingLegKey{TradeID: data.TradeId, Kind: portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_CASH_DEBIT}] = &PendingLeg{
 			TradeID:     data.TradeId,
 			OrderSagaID: data.OrderSagaId,
 			Kind:        portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_CASH_DEBIT,
 			Symbol:      data.Symbol,
 			CashAmount:  -data.Amount,
-			SettlesAt:   data.SettlesAt.AsTime(),
-			EmittedAt:   data.SettledAt.AsTime(),
+			SettlesAt:   settlesAt,
+			EmittedAt:   emittedAt,
 		}
+		p.PendingLegs[PendingLegKey{TradeID: data.TradeId, Kind: portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_SHARE_CREDIT}] = &PendingLeg{
+			TradeID:     data.TradeId,
+			OrderSagaID: data.OrderSagaId,
+			Kind:        portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_SHARE_CREDIT,
+			Symbol:      data.Symbol,
+			Quantity:    data.Quantity,
+			SettlesAt:   settlesAt,
+			EmittedAt:   emittedAt,
+		}
+		p.PendingShareCredits[data.Symbol] += data.Quantity
 	}
 }
 
@@ -619,7 +644,8 @@ func (p *Portfolio) advanceAccrualClock(end *timestamppb.Timestamp) {
 
 func (p *Portfolio) applySettlementCleared(data *portfoliov1.SettlementCleared) {
 	key := PendingLegKey{TradeID: data.TradeId, Kind: data.Kind}
-	if _, ok := p.PendingLegs[key]; !ok {
+	leg, ok := p.PendingLegs[key]
+	if !ok {
 		// Idempotent: already cleared, or the leg never existed
 		// (replay of a SettlementCleared whose event predates the
 		// snapshot we restored from). CashBalance was unaffected
@@ -628,6 +654,15 @@ func (p *Portfolio) applySettlementCleared(data *portfoliov1.SettlementCleared) 
 		return
 	}
 	p.SettledCash += data.CashAmount
+	if data.Kind == portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_SHARE_CREDIT {
+		// Drain the per-symbol pending-shares badge counter. Holdings
+		// was credited on trade date and isn't touched here — clearing
+		// the SHARE_CREDIT leg is purely the "no longer pending" signal.
+		p.PendingShareCredits[leg.Symbol] -= leg.Quantity
+		if p.PendingShareCredits[leg.Symbol] <= 0 {
+			delete(p.PendingShareCredits, leg.Symbol)
+		}
+	}
 	delete(p.PendingLegs, key)
 }
 

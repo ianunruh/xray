@@ -42,6 +42,14 @@ message PortfolioSnapshot {
   // (trade_id, kind). Empty when settlement is disabled or the
   // account has no in-flight trades.
   repeated PendingLegSnapshot pending_legs = 18;
+
+  // pending_share_credits tracks shares from long buys that haven't
+  // cleared settlement yet. Holdings already includes them (we run a
+  // margin-account model where the position is yours immediately);
+  // this map exists for per-symbol "X shares settling" UI badges and
+  // as the foundation for future cash-account / corporate-action
+  // / fail-to-deliver work.
+  map<string, int64> pending_share_credits = 19;
 }
 
 message PendingLegSnapshot {
@@ -49,9 +57,11 @@ message PendingLegSnapshot {
   string                       order_saga_id = 2;
   SettlementLegKind            kind          = 3;
   string                       symbol        = 4;
-  int64                        cash_amount   = 5;   // signed
+  int64                        cash_amount   = 5;   // signed; zero for share-only legs
   google.protobuf.Timestamp    settles_at    = 6;
   google.protobuf.Timestamp    emitted_at    = 7;
+  // Share count for SHARE_CREDIT legs; zero for cash-only legs.
+  int64                        quantity      = 8;
 }
 
 message HoldingSnapshot {

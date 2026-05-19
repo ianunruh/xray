@@ -1438,6 +1438,16 @@ export enum SettlementLegKind {
    * @generated from enum value: SETTLEMENT_LEG_KIND_SHORT_COVER = 4;
    */
   SHORT_COVER = 4,
+
+  /**
+   * Long-buy share leg — shares from the buy clear settlement.
+   * Holdings still updates immediately on trade date (margin-account
+   * semantics); the leg is bookkeeping for the per-symbol "pending
+   * shares" UI badge and for future cash-account-mode enforcement.
+   *
+   * @generated from enum value: SETTLEMENT_LEG_KIND_SHARE_CREDIT = 5;
+   */
+  SHARE_CREDIT = 5,
 }
 
 /**

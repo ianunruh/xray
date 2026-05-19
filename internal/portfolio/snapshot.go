@@ -103,6 +103,7 @@ func (p *Portfolio) Snapshot() (proto.Message, error) {
 			Kind:        leg.Kind,
 			Symbol:      leg.Symbol,
 			CashAmount:  leg.CashAmount,
+			Quantity:    leg.Quantity,
 		}
 		if !leg.SettlesAt.IsZero() {
 			ls.SettlesAt = timestamppb.New(leg.SettlesAt)
@@ -111,6 +112,12 @@ func (p *Portfolio) Snapshot() (proto.Message, error) {
 			ls.EmittedAt = timestamppb.New(leg.EmittedAt)
 		}
 		snap.PendingLegs = append(snap.PendingLegs, ls)
+	}
+	if len(p.PendingShareCredits) > 0 {
+		snap.PendingShareCredits = make(map[string]int64, len(p.PendingShareCredits))
+		for sym, qty := range p.PendingShareCredits {
+			snap.PendingShareCredits[sym] = qty
+		}
 	}
 
 	return snap, nil
@@ -220,6 +227,7 @@ func (p *Portfolio) RestoreSnapshot(msg proto.Message) error {
 			Kind:        ls.Kind,
 			Symbol:      ls.Symbol,
 			CashAmount:  ls.CashAmount,
+			Quantity:    ls.Quantity,
 		}
 		if ls.SettlesAt != nil {
 			leg.SettlesAt = ls.SettlesAt.AsTime()
@@ -228,6 +236,10 @@ func (p *Portfolio) RestoreSnapshot(msg proto.Message) error {
 			leg.EmittedAt = ls.EmittedAt.AsTime()
 		}
 		p.PendingLegs[PendingLegKey{TradeID: ls.TradeId, Kind: ls.Kind}] = leg
+	}
+	p.PendingShareCredits = make(map[string]int64, len(snap.PendingShareCredits))
+	for sym, qty := range snap.PendingShareCredits {
+		p.PendingShareCredits[sym] = qty
 	}
 
 	return nil

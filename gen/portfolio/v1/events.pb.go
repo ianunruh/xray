@@ -42,6 +42,11 @@ const (
 	// Short cover — residual cash (signed; can be a credit on profit or
 	// a debit on a loss beyond pooled collateral) clears.
 	SettlementLegKind_SETTLEMENT_LEG_KIND_SHORT_COVER SettlementLegKind = 4
+	// Long-buy share leg — shares from the buy clear settlement.
+	// Holdings still updates immediately on trade date (margin-account
+	// semantics); the leg is bookkeeping for the per-symbol "pending
+	// shares" UI badge and for future cash-account-mode enforcement.
+	SettlementLegKind_SETTLEMENT_LEG_KIND_SHARE_CREDIT SettlementLegKind = 5
 )
 
 // Enum value maps for SettlementLegKind.
@@ -52,13 +57,15 @@ var (
 		2: "SETTLEMENT_LEG_KIND_CASH_DEBIT",
 		3: "SETTLEMENT_LEG_KIND_SHORT_OPEN",
 		4: "SETTLEMENT_LEG_KIND_SHORT_COVER",
+		5: "SETTLEMENT_LEG_KIND_SHARE_CREDIT",
 	}
 	SettlementLegKind_value = map[string]int32{
-		"SETTLEMENT_LEG_KIND_UNSPECIFIED": 0,
-		"SETTLEMENT_LEG_KIND_CASH_CREDIT": 1,
-		"SETTLEMENT_LEG_KIND_CASH_DEBIT":  2,
-		"SETTLEMENT_LEG_KIND_SHORT_OPEN":  3,
-		"SETTLEMENT_LEG_KIND_SHORT_COVER": 4,
+		"SETTLEMENT_LEG_KIND_UNSPECIFIED":  0,
+		"SETTLEMENT_LEG_KIND_CASH_CREDIT":  1,
+		"SETTLEMENT_LEG_KIND_CASH_DEBIT":   2,
+		"SETTLEMENT_LEG_KIND_SHORT_OPEN":   3,
+		"SETTLEMENT_LEG_KIND_SHORT_COVER":  4,
+		"SETTLEMENT_LEG_KIND_SHARE_CREDIT": 5,
 	}
 )
 
@@ -3003,13 +3010,14 @@ const file_portfolio_v1_events_proto_rawDesc = "" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
 	"\x06action\x18\x02 \x01(\tR\x06action\x12\x1a\n" +
 	"\battempts\x18\x03 \x01(\x05R\battempts\x127\n" +
-	"\tfailed_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bfailedAt*\xca\x01\n" +
+	"\tfailed_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bfailedAt*\xf0\x01\n" +
 	"\x11SettlementLegKind\x12#\n" +
 	"\x1fSETTLEMENT_LEG_KIND_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fSETTLEMENT_LEG_KIND_CASH_CREDIT\x10\x01\x12\"\n" +
 	"\x1eSETTLEMENT_LEG_KIND_CASH_DEBIT\x10\x02\x12\"\n" +
 	"\x1eSETTLEMENT_LEG_KIND_SHORT_OPEN\x10\x03\x12#\n" +
-	"\x1fSETTLEMENT_LEG_KIND_SHORT_COVER\x10\x04B7Z5github.com/ianunruh/xray/gen/portfolio/v1;portfoliov1b\x06proto3"
+	"\x1fSETTLEMENT_LEG_KIND_SHORT_COVER\x10\x04\x12$\n" +
+	" SETTLEMENT_LEG_KIND_SHARE_CREDIT\x10\x05B7Z5github.com/ianunruh/xray/gen/portfolio/v1;portfoliov1b\x06proto3"
 
 var (
 	file_portfolio_v1_events_proto_rawDescOnce sync.Once

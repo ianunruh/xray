@@ -120,6 +120,18 @@ export declare type PortfolioSnapshot = Message<"portfolio.v1.PortfolioSnapshot"
    * @generated from field: repeated portfolio.v1.PendingLegSnapshot pending_legs = 18;
    */
   pendingLegs: PendingLegSnapshot[];
+
+  /**
+   * pending_share_credits tracks shares from long buys that haven't
+   * cleared settlement yet. Holdings already includes them (we run a
+   * margin-account model where the position is yours immediately);
+   * this map exists for per-symbol "X shares settling" UI badges and
+   * as the foundation for future cash-account / corporate-action
+   * / fail-to-deliver work.
+   *
+   * @generated from field: map<string, int64> pending_share_credits = 19;
+   */
+  pendingShareCredits: { [key: string]: bigint };
 };
 
 /**
@@ -153,7 +165,7 @@ export declare type PendingLegSnapshot = Message<"portfolio.v1.PendingLegSnapsho
   symbol: string;
 
   /**
-   * signed
+   * signed; zero for share-only legs
    *
    * @generated from field: int64 cash_amount = 5;
    */
@@ -168,6 +180,13 @@ export declare type PendingLegSnapshot = Message<"portfolio.v1.PendingLegSnapsho
    * @generated from field: google.protobuf.Timestamp emitted_at = 7;
    */
   emittedAt?: Timestamp | undefined;
+
+  /**
+   * Share count for SHARE_CREDIT legs; zero for cash-only legs.
+   *
+   * @generated from field: int64 quantity = 8;
+   */
+  quantity: bigint;
 };
 
 /**
