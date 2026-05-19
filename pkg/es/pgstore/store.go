@@ -227,6 +227,73 @@ func (s *Store) queryEvents(ctx context.Context, query string, args ...any) ([]e
 	return events, rows.Err()
 }
 
+// AppendRequest is a single aggregate's append, used by AppendMulti to pack
+// many independent appends into one batched transaction.
+type AppendRequest struct {
+	AggregateID     string
+	ExpectedVersion int
+	Events          []es.RawEvent
+}
+
+// AppendMulti commits all requests in a single transaction so the resulting
+// fsync is shared across every contained event. Either every request is
+// applied or none are. On error (including ErrOptimisticConcurrency) the
+// caller should retry each request individually, since the failure can't be
+// attributed to one request without per-request savepoints.
+//
+// All INSERTs are pipelined through a single pgx.Batch on the transaction's
+// connection so the network round-trip is also shared.
+func (s *Store) AppendMulti(ctx context.Context, reqs []AppendRequest) error {
+	if len(reqs) == 0 {
+		return nil
+	}
+	start := time.Now()
+
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // safe no-op after Commit
+
+	batch := &pgx.Batch{}
+	eventCount := 0
+	for _, r := range reqs {
+		for i, evt := range r.Events {
+			version := r.ExpectedVersion + i + 1
+			batch.Queue(queryAppend, evt.ID, evt.CausationID, evt.CorrelationID, r.AggregateID, evt.Type, version, evt.Data, evt.Timestamp)
+			eventCount++
+		}
+	}
+
+	br := tx.SendBatch(ctx, batch)
+	for i := 0; i < eventCount; i++ {
+		if _, err := br.Exec(); err != nil {
+			_ = br.Close()
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				return es.ErrOptimisticConcurrency
+			}
+			return fmt.Errorf("insert events: %w", err)
+		}
+	}
+	if err := br.Close(); err != nil {
+		return fmt.Errorf("close batch: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+
+	if metrics.StoreAppendSeconds != nil {
+		// One row per request: the group flush is amortized across them.
+		d := time.Since(start).Seconds()
+		for _, r := range reqs {
+			metrics.StoreAppendSeconds.Record(ctx, d,
+				metric.WithAttributes(attribute.String("aggregate_type", metrics.AggregateType(r.AggregateID))))
+		}
+	}
+	return nil
+}
+
 // Append inserts new events using a batch INSERT. A unique constraint
 // violation on (aggregate_id, version) is mapped to ErrOptimisticConcurrency.
 func (s *Store) Append(ctx context.Context, aggregateID string, expectedVersion int, events []es.RawEvent) error {
