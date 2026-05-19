@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 5s
+  scrape_timeout: 4s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: xray
+    # xray runs on the host (go run ./cmd/xray), not inside compose, so
+    # we scrape it via the docker-host bridge. Adjust the port if
+    # LISTEN_ADDR is overridden.
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
+        labels:
+          service: xray
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
