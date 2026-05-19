@@ -211,16 +211,47 @@
 
     {
       "type": "row",
-      "id": 103,
-      "title": "Group-commit writer",
+      "id": 104,
+      "title": "Async publisher",
       "collapsed": false,
       "gridPos": {"h": 1, "w": 24, "x": 0, "y": 39}
     },
     {
       "type": "timeseries",
+      "id": 17,
+      "title": "Queue depth",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 40},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "xray_asyncpublisher_queue_depth", "legendFormat": "depth", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1024}, {"color": "red", "value": 3072}]}, "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 20}}, "overrides": []},
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi"}}
+    },
+    {
+      "type": "timeseries",
+      "id": 18,
+      "title": "Async publish failures/s",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 40},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "rate(xray_asyncpublisher_publish_errors_total[$__rate_interval])", "legendFormat": "errors", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "ops", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 10}]}, "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 30}}, "overrides": []},
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi"}}
+    },
+    {
+      "type": "row",
+      "id": 103,
+      "title": "Group-commit writer",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 48}
+    },
+    {
+      "type": "timeseries",
       "id": 14,
       "title": "Batch size (avg & p99)",
-      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 40},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 49},
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {"expr": "rate(xray_groupcommit_batch_size_sum[$__rate_interval]) / clamp_min(rate(xray_groupcommit_batch_size_count[$__rate_interval]), 1)", "legendFormat": "avg", "refId": "A"},
@@ -233,7 +264,7 @@
       "type": "timeseries",
       "id": 15,
       "title": "Flush latency by kind (p50 / p99)",
-      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 40},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 49},
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {"expr": "histogram_quantile(0.50, sum by (le, kind) (rate(xray_groupcommit_flush_seconds_bucket[$__rate_interval])))", "legendFormat": "p50 {{kind}}", "refId": "A"},
@@ -246,7 +277,7 @@
       "type": "timeseries",
       "id": 16,
       "title": "Fallbacks/s",
-      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 40},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 49},
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {"expr": "rate(xray_groupcommit_fallbacks_total[$__rate_interval])", "legendFormat": "fallbacks", "refId": "A"}

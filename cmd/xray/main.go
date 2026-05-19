@@ -41,6 +41,7 @@ import (
 	"github.com/ianunruh/xray/internal/tradermgr"
 	"github.com/ianunruh/xray/internal/twapsaga"
 	"github.com/ianunruh/xray/pkg/es"
+	"github.com/ianunruh/xray/pkg/es/asyncpublisher"
 	"github.com/ianunruh/xray/pkg/es/groupcommit"
 	"github.com/ianunruh/xray/pkg/es/natsstore"
 	"github.com/ianunruh/xray/pkg/es/pgstore"
@@ -160,7 +161,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	publisher := natsstore.NewPublisher(js, log)
+	var publisher es.EventPublisher = natsstore.NewPublisher(js, log)
+	if envBoolOr("ASYNC_PUBLISH_ENABLED", true) {
+		apCfg := asyncpublisher.Default()
+		if v := os.Getenv("ASYNC_PUBLISH_QUEUE_DEPTH"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				apCfg.QueueDepth = n
+			}
+		}
+		ap := asyncpublisher.New(publisher, apCfg, log)
+		go ap.Run(ctx)
+		publisher = ap
+		log.Info("async publisher enabled", "queue_depth", apCfg.QueueDepth)
+	}
 
 	// Create command handlers. writeStore is the maybe-wrapped EventStore
 	// (group-commit if enabled, else pgstore directly); snapshots still
