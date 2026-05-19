@@ -41,6 +41,13 @@ var (
 	PublisherPublishSeconds metric.Float64Histogram
 	PublisherErrorsTotal    metric.Int64Counter
 
+	AsyncPublisherQueueDepth   metric.Int64UpDownCounter
+	AsyncPublisherErrorsTotal  metric.Int64Counter
+
+	GroupCommitBatchSize       metric.Int64Histogram
+	GroupCommitFlushSeconds    metric.Float64Histogram
+	GroupCommitFallbacksTotal  metric.Int64Counter
+
 	RPCDurationSeconds metric.Float64Histogram
 	RPCErrorsTotal     metric.Int64Counter
 )
@@ -137,6 +144,39 @@ func buildInstruments() error {
 	if PublisherErrorsTotal, err = Meter.Int64Counter(
 		"xray.publisher.errors_total",
 		metric.WithDescription("Failed NATS publish attempts."),
+	); err != nil {
+		return err
+	}
+
+	if AsyncPublisherQueueDepth, err = Meter.Int64UpDownCounter(
+		"xray.asyncpublisher.queue_depth",
+		metric.WithDescription("Number of event batches queued for async publish."),
+	); err != nil {
+		return err
+	}
+	if AsyncPublisherErrorsTotal, err = Meter.Int64Counter(
+		"xray.asyncpublisher.publish_errors_total",
+		metric.WithDescription("Events whose async publish failed (durable in PG, recovered via Backfill)."),
+	); err != nil {
+		return err
+	}
+
+	if GroupCommitBatchSize, err = Meter.Int64Histogram(
+		"xray.groupcommit.batch_size",
+		metric.WithDescription("Number of append requests packed into one group-commit flush."),
+	); err != nil {
+		return err
+	}
+	if GroupCommitFlushSeconds, err = Meter.Float64Histogram(
+		"xray.groupcommit.flush_seconds",
+		metric.WithDescription("End-to-end group-commit flush latency, labeled batched|fallback."),
+		metric.WithUnit("s"),
+	); err != nil {
+		return err
+	}
+	if GroupCommitFallbacksTotal, err = Meter.Int64Counter(
+		"xray.groupcommit.fallbacks_total",
+		metric.WithDescription("Requests that fell back to individual append after a batched commit failed."),
 	); err != nil {
 		return err
 	}

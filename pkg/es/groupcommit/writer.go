@@ -216,63 +216,29 @@ func (w *Writer) drainRemaining() {
 func (w *Writer) Stopped() <-chan struct{} { return w.stopped }
 
 // ---- metrics helpers ----
+//
+// Instruments live in internal/metrics and are built by metrics.Init.
+// Constructing them in this package's init() would race with metrics.Init:
+// the no-op meter is captured before Init swaps in the real provider, so
+// the instruments would silently no-op forever.
 
 func (w *Writer) recordBatchSize(ctx context.Context, n int) {
-	if groupBatchSize == nil {
+	if metrics.GroupCommitBatchSize == nil {
 		return
 	}
-	groupBatchSize.Record(ctx, int64(n))
+	metrics.GroupCommitBatchSize.Record(ctx, int64(n))
 }
 
 func (w *Writer) recordFlushSeconds(ctx context.Context, secs float64, kind string) {
-	if groupFlushSeconds == nil {
+	if metrics.GroupCommitFlushSeconds == nil {
 		return
 	}
-	groupFlushSeconds.Record(ctx, secs, metric.WithAttributes(attribute.String("kind", kind)))
+	metrics.GroupCommitFlushSeconds.Record(ctx, secs, metric.WithAttributes(attribute.String("kind", kind)))
 }
 
 func (w *Writer) recordFallbacks(ctx context.Context, n int) {
-	if groupFallbacks == nil {
+	if metrics.GroupCommitFallbacksTotal == nil {
 		return
 	}
-	groupFallbacks.Add(ctx, int64(n))
-}
-
-// Instruments built lazily on first Writer construction; package-level so
-// they're cheap to access. Init is idempotent.
-var (
-	groupBatchSize    metric.Int64Histogram
-	groupFlushSeconds metric.Float64Histogram
-	groupFallbacks    metric.Int64Counter
-	instrumentOnce    sync.Once
-)
-
-func init() {
-	instrumentOnce.Do(func() {
-		// Built against metrics.Meter, which is no-op until metrics.Init
-		// runs. Safe to construct here either way.
-		var err error
-		groupBatchSize, err = metrics.Meter.Int64Histogram(
-			"xray.groupcommit.batch_size",
-			metric.WithDescription("Number of append requests packed into one group-commit flush."),
-		)
-		if err != nil {
-			groupBatchSize = nil
-		}
-		groupFlushSeconds, err = metrics.Meter.Float64Histogram(
-			"xray.groupcommit.flush_seconds",
-			metric.WithDescription("End-to-end group-commit flush latency, labeled batched|fallback."),
-			metric.WithUnit("s"),
-		)
-		if err != nil {
-			groupFlushSeconds = nil
-		}
-		groupFallbacks, err = metrics.Meter.Int64Counter(
-			"xray.groupcommit.fallbacks_total",
-			metric.WithDescription("Requests that fell back to individual append after a batched commit failed."),
-		)
-		if err != nil {
-			groupFallbacks = nil
-		}
-	})
+	metrics.GroupCommitFallbacksTotal.Add(ctx, int64(n))
 }

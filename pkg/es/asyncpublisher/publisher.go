@@ -17,8 +17,6 @@ import (
 	"log/slog"
 	"sync"
 
-	"go.opentelemetry.io/otel/metric"
-
 	"github.com/ianunruh/xray/internal/metrics"
 	"github.com/ianunruh/xray/pkg/es"
 )
@@ -126,42 +124,22 @@ func (p *Publisher) drain() {
 }
 
 // ---- metrics helpers ----
+//
+// Instruments live in internal/metrics and are built by metrics.Init.
+// Building them in this package's init() would race with metrics.Init:
+// the no-op meter is captured before Init swaps in the real provider, so
+// the instruments would silently no-op forever.
 
 func (p *Publisher) recordQueueDelta(ctx context.Context, delta int64) {
-	if asyncQueueDepth == nil {
+	if metrics.AsyncPublisherQueueDepth == nil {
 		return
 	}
-	asyncQueueDepth.Add(ctx, delta)
+	metrics.AsyncPublisherQueueDepth.Add(ctx, delta)
 }
 
 func (p *Publisher) recordPublishError(ctx context.Context, n int) {
-	if asyncPublishErrors == nil {
+	if metrics.AsyncPublisherErrorsTotal == nil {
 		return
 	}
-	asyncPublishErrors.Add(ctx, int64(n))
-}
-
-// Instruments are built once against metrics.Meter (no-op until
-// metrics.Init runs).
-var (
-	asyncQueueDepth    metric.Int64UpDownCounter
-	asyncPublishErrors metric.Int64Counter
-)
-
-func init() {
-	var err error
-	asyncQueueDepth, err = metrics.Meter.Int64UpDownCounter(
-		"xray.asyncpublisher.queue_depth",
-		metric.WithDescription("Number of event batches queued for async publish."),
-	)
-	if err != nil {
-		asyncQueueDepth = nil
-	}
-	asyncPublishErrors, err = metrics.Meter.Int64Counter(
-		"xray.asyncpublisher.publish_errors_total",
-		metric.WithDescription("Events whose async publish failed (durable in PG, recovered via Backfill)."),
-	)
-	if err != nil {
-		asyncPublishErrors = nil
-	}
+	metrics.AsyncPublisherErrorsTotal.Add(ctx, int64(n))
 }
