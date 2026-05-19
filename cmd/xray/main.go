@@ -41,6 +41,7 @@ import (
 	"github.com/ianunruh/xray/internal/tradermgr"
 	"github.com/ianunruh/xray/internal/twapsaga"
 	"github.com/ianunruh/xray/pkg/es"
+	"github.com/ianunruh/xray/pkg/es/groupcommit"
 	"github.com/ianunruh/xray/pkg/es/natsstore"
 	"github.com/ianunruh/xray/pkg/es/pgstore"
 	"github.com/ianunruh/xray/pkg/es/snapshotter"
@@ -99,6 +100,33 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Optionally route writes through the group-commit writer to amortize
+	// the COMMIT fsync across concurrent appends. Reads, snapshots, and
+	// checkpoints still hit the concrete pgstore directly; only the
+	// command handlers' write path is wrapped.
+	var writeStore es.EventStore = store
+	if envBoolOr("GROUPCOMMIT_ENABLED", false) {
+		gcCfg := groupcommit.Default()
+		if v := os.Getenv("GROUPCOMMIT_MAX_BATCH"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				gcCfg.MaxBatch = n
+			}
+		}
+		if d := parseDurationOr("GROUPCOMMIT_MAX_WAIT", 0); d > 0 {
+			gcCfg.MaxWait = d
+		}
+		if v := os.Getenv("GROUPCOMMIT_QUEUE_DEPTH"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				gcCfg.QueueDepth = n
+			}
+		}
+		gc := groupcommit.New(store, gcCfg, log)
+		go gc.Run(ctx)
+		writeStore = gc
+		log.Info("group-commit writer enabled",
+			"max_batch", gcCfg.MaxBatch, "max_wait", gcCfg.MaxWait, "queue_depth", gcCfg.QueueDepth)
+	}
+
 	registry := es.NewRegistry()
 	orderbook.RegisterEvents(registry)
 	bracket.RegisterEvents(registry)
@@ -134,32 +162,34 @@ func main() {
 
 	publisher := natsstore.NewPublisher(js, log)
 
-	// Create command handlers.
-	obHandler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
+	// Create command handlers. writeStore is the maybe-wrapped EventStore
+	// (group-commit if enabled, else pgstore directly); snapshots still
+	// resolve against the concrete pgstore.
+	obHandler := es.NewHandler(writeStore, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
 	}, log).WithSnapshots(store).WithPublisher(publisher)
 
-	bracketHandler := es.NewHandler(store, registry, func(id string) *bracket.BracketSaga {
+	bracketHandler := es.NewHandler(writeStore, registry, func(id string) *bracket.BracketSaga {
 		return bracket.NewBracketSaga(id)
 	}, log).WithPublisher(publisher)
 
-	portfolioHandler := es.NewHandler(store, registry, func(id string) *portfolio.Portfolio {
+	portfolioHandler := es.NewHandler(writeStore, registry, func(id string) *portfolio.Portfolio {
 		return portfolio.NewPortfolio(id)
 	}, log).WithSnapshots(store).WithPublisher(publisher)
 
-	orderSagaHandler := es.NewHandler(store, registry, func(id string) *ordersaga.OrderSaga {
+	orderSagaHandler := es.NewHandler(writeStore, registry, func(id string) *ordersaga.OrderSaga {
 		return ordersaga.NewOrderSaga(id)
 	}, log).WithPublisher(publisher)
 
-	ocoSagaHandler := es.NewHandler(store, registry, func(id string) *ocosaga.OCOSaga {
+	ocoSagaHandler := es.NewHandler(writeStore, registry, func(id string) *ocosaga.OCOSaga {
 		return ocosaga.NewOCOSaga(id)
 	}, log).WithPublisher(publisher)
 
-	twapHandler := es.NewHandler(store, registry, func(id string) *twapsaga.TWAPSaga {
+	twapHandler := es.NewHandler(writeStore, registry, func(id string) *twapsaga.TWAPSaga {
 		return twapsaga.NewTWAPSaga(id)
 	}, log).WithPublisher(publisher)
 
-	corpactionHandler := es.NewHandler(store, registry, func(id string) *corpaction.CorporateAction {
+	corpactionHandler := es.NewHandler(writeStore, registry, func(id string) *corpaction.CorporateAction {
 		return corpaction.NewCorporateAction(id)
 	}, log).WithPublisher(publisher)
 
