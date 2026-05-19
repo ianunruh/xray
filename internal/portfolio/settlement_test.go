@@ -255,8 +255,10 @@ func TestSettlement_Clear_NotDue(t *testing.T) {
 	assert.ErrorIs(t, err, portfolio.ErrSettlementNotDue)
 }
 
-func TestSettlement_Invariant_HoldsRespectSettledCash(t *testing.T) {
-	// CashHeld / CashReleased should keep SettledCash + Σ legs = CashBalance.
+func TestSettlement_HoldsDoNotMoveSettledCash(t *testing.T) {
+	// CashHeld / CashReleased are reservations, not clearings, so
+	// SettledCash is untouched. Withdraw still respects the held
+	// portion via the separate CashBalance check (Phase 4).
 	registry := newTestRegistry()
 	store := memstore.New()
 	handler := newTestHandler(store, registry)
@@ -270,8 +272,8 @@ func TestSettlement_Invariant_HoldsRespectSettledCash(t *testing.T) {
 
 	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
 	require.NoError(t, err)
-	assert.Equal(t, int64(70_000_000), p.CashBalance)
-	assert.Equal(t, int64(70_000_000), p.SettledCash, "hold draws from settled cash")
+	assert.Equal(t, int64(70_000_000), p.CashBalance, "hold deducts from spendable cash")
+	assert.Equal(t, int64(100_000_000), p.SettledCash, "hold doesn't change settled cash")
 
 	release := portfolio.ReleaseCash{AccountID: "acct-1", OrderSagaID: "saga-1", Amount: 30_000_000}
 	require.NoError(t, handler.Handle(ctx, release, func(p *portfolio.Portfolio) ([]es.Event, error) {
@@ -280,7 +282,8 @@ func TestSettlement_Invariant_HoldsRespectSettledCash(t *testing.T) {
 
 	p, err = handler.Load(ctx, portfolio.AggregateID("acct-1"))
 	require.NoError(t, err)
-	assert.Equal(t, int64(100_000_000), p.SettledCash, "release returns to settled cash")
+	assert.Equal(t, int64(100_000_000), p.CashBalance)
+	assert.Equal(t, int64(100_000_000), p.SettledCash)
 }
 
 func TestSettlement_Policy_StampsSettlesAt(t *testing.T) {
@@ -323,6 +326,53 @@ func TestSettlement_Policy_DisabledStaysInstant(t *testing.T) {
 	tradeDate := time.Now()
 	got := policy.SettlesAt(tradeDate)
 	assert.WithinDuration(t, tradeDate.Add(24*time.Hour), got, time.Second)
+}
+
+func TestSettlement_Withdraw_GatedOnSettledCash(t *testing.T) {
+	registry := newTestRegistry()
+	store := memstore.New()
+	handler := newTestHandler(store, registry)
+	ctx := context.Background()
+	fund(t, handler, "acct-1", 100_000_000)
+
+	// Defer a $50K credit so cash_balance=$150K but settled_cash=$100K.
+	tradeDate := time.Now().Add(-48 * time.Hour) // doesn't matter for the gate
+	settlesAt := tradeDate.Add(24 * time.Hour)
+	appendEvent(t, handler, es.Event{
+		AggregateID: portfolio.AggregateID("acct-1"),
+		Type:        portfolio.EventSharesSettled,
+		Timestamp:   tradeDate,
+		Data: &portfoliov1.SharesSettled{
+			AccountId:     "acct-1",
+			OrderSagaId:   "saga-1",
+			TradeId:       "trade-1",
+			Symbol:        "AAPL",
+			Quantity:      100,
+			PricePerShare: 500_000,
+			Proceeds:      50_000_000,
+			SettledAt:     timestamppb.New(tradeDate),
+			SettlesAt:     timestamppb.New(settlesAt),
+		},
+	})
+
+	// Withdraw of $100K succeeds (within both cash_balance and settled_cash).
+	wd := portfolio.WithdrawCash{AccountID: "acct-1", Amount: 100_000_000}
+	require.NoError(t, handler.Handle(ctx, wd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+		return portfolio.ExecuteWithdrawCash(p, wd)
+	}))
+
+	p, err := handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(50_000_000), p.CashBalance, "balance reflects the pending credit minus withdrawal")
+	assert.Equal(t, int64(0), p.SettledCash, "withdrawal drained settled cash to zero")
+
+	// Further withdrawal: $1 fails — settled cash exhausted even though
+	// cash_balance has $50M of pending credit on it.
+	wd2 := portfolio.WithdrawCash{AccountID: "acct-1", Amount: 1}
+	p, err = handler.Load(ctx, portfolio.AggregateID("acct-1"))
+	require.NoError(t, err)
+	_, err = portfolio.ExecuteWithdrawCash(p, wd2)
+	assert.ErrorIs(t, err, portfolio.ErrUnsettledFunds)
 }
 
 func TestSettlement_Replay_DeterministicAcrossLoads(t *testing.T) {

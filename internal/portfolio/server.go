@@ -407,9 +407,17 @@ func buildMarginSnapshot(accountID string, p *Portfolio, marker Marker) *portfol
 		CollateralPool: p.CollateralPool,
 		ProceedsPool:   p.ProceedsPool,
 		MarginLoan:     p.MarginLoan(),
+		SettledCash:    p.SettledCash,
 	}
 	for _, h := range p.CollateralHeldBySaga {
 		resp.CollateralHeldPreFill += h.Amount
+	}
+	for _, leg := range p.PendingLegs {
+		if leg.CashAmount > 0 {
+			resp.PendingCashCredits += leg.CashAmount
+		} else if leg.CashAmount < 0 {
+			resp.PendingCashDebits += -leg.CashAmount
+		}
 	}
 
 	// Deterministic ordering so responses (and tests) don't depend on

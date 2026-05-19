@@ -38,14 +38,16 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 		switch data := evt.Data.(type) {
 		case *portfoliov1.CashDeposited:
 			batch.Queue(
-				`INSERT INTO projection_portfolios (account_id, cash_balance)
-				VALUES ($1, $2)
-				ON CONFLICT (account_id) DO UPDATE SET cash_balance = projection_portfolios.cash_balance + $2`,
+				`INSERT INTO projection_portfolios (account_id, cash_balance, settled_cash)
+				VALUES ($1, $2, $2)
+				ON CONFLICT (account_id) DO UPDATE SET
+					cash_balance = projection_portfolios.cash_balance + $2,
+					settled_cash = projection_portfolios.settled_cash + $2`,
 				data.AccountId, data.Amount,
 			)
 		case *portfoliov1.CashWithdrawn:
 			batch.Queue(
-				`UPDATE projection_portfolios SET cash_balance = cash_balance - $1 WHERE account_id = $2`,
+				`UPDATE projection_portfolios SET cash_balance = cash_balance - $1, settled_cash = settled_cash - $1 WHERE account_id = $2`,
 				data.Amount, data.AccountId,
 			)
 		case *portfoliov1.CashHeld:
@@ -63,6 +65,12 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 				`UPDATE projection_portfolios SET cash_held = cash_held - $1 WHERE account_id = $2`,
 				data.Amount, data.AccountId,
 			)
+			if IsInstantSettlement(data.SettlesAt, data.SettledAt) {
+				batch.Queue(
+					`UPDATE projection_portfolios SET settled_cash = settled_cash - $1 WHERE account_id = $2`,
+					data.Amount, data.AccountId,
+				)
+			}
 			batch.Queue(
 				`INSERT INTO projection_holdings (account_id, symbol, quantity, total_cost)
 				VALUES ($1, $2, $3, $4)
@@ -111,6 +119,12 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 				`UPDATE projection_portfolios SET cash_balance = cash_balance + $1 WHERE account_id = $2`,
 				data.Proceeds, data.AccountId,
 			)
+			if IsInstantSettlement(data.SettlesAt, data.SettledAt) {
+				batch.Queue(
+					`UPDATE projection_portfolios SET settled_cash = settled_cash + $1 WHERE account_id = $2`,
+					data.Proceeds, data.AccountId,
+				)
+			}
 		case *portfoliov1.OrderSagaStarted:
 			batch.Queue(
 				`INSERT INTO projection_pending_orders (saga_id, account_id, symbol, side, price, quantity, display_quantity, order_type, time_in_force, status, started_at)
@@ -173,18 +187,30 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 		case *portfoliov1.ShortCovered:
 			// Net cash impact: pools (proceeds_released +
 			// collateral_released) return to cash; cost is paid.
+			delta := data.ProceedsReleased + data.CollateralReleased - data.Cost
 			batch.Queue(
 				`UPDATE projection_portfolios SET cash_balance = cash_balance + $1 WHERE account_id = $2`,
-				data.ProceedsReleased+data.CollateralReleased-data.Cost, data.AccountId,
+				delta, data.AccountId,
 			)
+			if IsInstantSettlement(data.SettlesAt, data.CoveredAt) {
+				batch.Queue(
+					`UPDATE projection_portfolios SET settled_cash = settled_cash + $1 WHERE account_id = $2`,
+					delta, data.AccountId,
+				)
+			}
 		case *portfoliov1.TransactionFeeCharged:
 			batch.Queue(
-				`UPDATE projection_portfolios SET cash_balance = cash_balance - $1 WHERE account_id = $2`,
+				`UPDATE projection_portfolios SET cash_balance = cash_balance - $1, settled_cash = settled_cash - $1 WHERE account_id = $2`,
 				data.Amount, data.AccountId,
 			)
 			batch.Queue(
 				`UPDATE projection_pending_orders SET fees_paid = fees_paid + $1 WHERE saga_id = $2`,
 				data.Amount, data.OrderSagaId,
+			)
+		case *portfoliov1.SettlementCleared:
+			batch.Queue(
+				`UPDATE projection_portfolios SET settled_cash = settled_cash + $1 WHERE account_id = $2`,
+				data.CashAmount, data.AccountId,
 			)
 		}
 	}
@@ -231,9 +257,9 @@ func (p *PgPortfolioProjection) GetPortfolio(ctx context.Context, accountID stri
 	}
 
 	err := p.pool.QueryRow(ctx,
-		`SELECT cash_balance, cash_held FROM projection_portfolios WHERE account_id = $1`,
+		`SELECT cash_balance, cash_held, settled_cash FROM projection_portfolios WHERE account_id = $1`,
 		accountID,
-	).Scan(&resp.CashBalance, &resp.CashHeld)
+	).Scan(&resp.CashBalance, &resp.CashHeld, &resp.SettledCash)
 	if err == pgx.ErrNoRows {
 		return resp, nil
 	}

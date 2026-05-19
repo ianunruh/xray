@@ -128,6 +128,12 @@ func ExecuteWithdrawCash(p *Portfolio, cmd WithdrawCash) ([]es.Event, error) {
 	if p.CashBalance < cmd.Amount {
 		return nil, ErrInsufficientFunds
 	}
+	// Withdrawal must come from cleared funds: unsettled credits
+	// (e.g. proceeds from a sell that hasn't settled yet) sit in
+	// PendingLegs and can be traded against but not withdrawn.
+	if p.SettledCash < cmd.Amount {
+		return nil, ErrUnsettledFunds
+	}
 
 	now := time.Now()
 	evt := es.Event{
