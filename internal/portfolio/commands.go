@@ -1083,3 +1083,51 @@ func emitHoldingAdjusted(p *Portfolio, cmd AdjustHolding, oldQty, newQty, droppe
 	}
 	return []es.Event{evt}, nil
 }
+
+// CreditDividend pays a cash dividend to an account. Idempotent on
+// action_id — re-issuing the same command is a no-op so the
+// corpaction reactor can safely retry. PerShare and shares pre-
+// computed (caller knows them from the record-date snapshot); the
+// amount is multiplied here so the event carries an independently
+// verifiable value.
+type CreditDividend struct {
+	AccountID      string
+	ActionID       string
+	Symbol         string
+	SharesOfRecord int64
+	PerShare       int64
+}
+
+func (c CreditDividend) AggregateID() string { return AggregateID(c.AccountID) }
+
+func ExecuteCreditDividend(p *Portfolio, cmd CreditDividend) ([]es.Event, error) {
+	if cmd.ActionID == "" {
+		return nil, errors.New("action_id required")
+	}
+	if cmd.SharesOfRecord <= 0 || cmd.PerShare <= 0 {
+		return nil, errors.New("shares_of_record and per_share must be positive")
+	}
+	if p.HasAppliedAction(cmd.ActionID) {
+		return nil, nil
+	}
+	amount := cmd.SharesOfRecord * cmd.PerShare
+	now := time.Now()
+	evt := es.Event{
+		AggregateID: p.AggregateID(),
+		Type:        EventDividendCredited,
+		Timestamp:   now,
+		Data: &portfoliov1.DividendCredited{
+			AccountId:      cmd.AccountID,
+			ActionId:       cmd.ActionID,
+			Symbol:         cmd.Symbol,
+			SharesOfRecord: cmd.SharesOfRecord,
+			PerShare:       cmd.PerShare,
+			Amount:         amount,
+			CreditedAt:     timestamppb.New(now),
+		},
+	}
+	if err := p.Apply(evt); err != nil {
+		return nil, err
+	}
+	return []es.Event{evt}, nil
+}

@@ -328,6 +328,24 @@ message HoldingAdjusted {
   google.protobuf.Timestamp adjusted_at    = 9;
 }
 
+// DividendCredited records a cash-dividend payment to a single
+// account on a single corporate action. Emitted per (account,
+// action) on pay_date by the corpaction coordinator. Dividends
+// settle instantly (no T+1 deferral) — pay_date is already T+N from
+// declaration and wired cash is "settled" the moment it arrives — so
+// both CashBalance and SettledCash move together.
+message DividendCredited {
+  string                    account_id       = 1;
+  string                    action_id        = 2;
+  string                    symbol           = 3;
+  // shares_of_record is the snapshot taken at record_date; pay-date
+  // entitlement is computed from this, not the live holdings.
+  int64                     shares_of_record = 4;
+  int64                     per_share        = 5;
+  int64                     amount           = 6;  // shares * per_share
+  google.protobuf.Timestamp credited_at      = 7;
+}
+
 // SettlementCleared records that a pending settlement leg has cleared.
 // Emitted by the settlement reactor on or after the leg's settles_at.
 // Moves cash_amount from "pending" into SettledCash (CashBalance is

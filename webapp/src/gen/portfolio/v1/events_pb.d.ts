@@ -1080,6 +1080,64 @@ export declare type HoldingAdjusted = Message<"portfolio.v1.HoldingAdjusted"> & 
 export declare const HoldingAdjustedSchema: GenMessage<HoldingAdjusted>;
 
 /**
+ * DividendCredited records a cash-dividend payment to a single
+ * account on a single corporate action. Emitted per (account,
+ * action) on pay_date by the corpaction coordinator. Dividends
+ * settle instantly (no T+1 deferral) — pay_date is already T+N from
+ * declaration and wired cash is "settled" the moment it arrives — so
+ * both CashBalance and SettledCash move together.
+ *
+ * @generated from message portfolio.v1.DividendCredited
+ */
+export declare type DividendCredited = Message<"portfolio.v1.DividendCredited"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string action_id = 2;
+   */
+  actionId: string;
+
+  /**
+   * @generated from field: string symbol = 3;
+   */
+  symbol: string;
+
+  /**
+   * shares_of_record is the snapshot taken at record_date; pay-date
+   * entitlement is computed from this, not the live holdings.
+   *
+   * @generated from field: int64 shares_of_record = 4;
+   */
+  sharesOfRecord: bigint;
+
+  /**
+   * @generated from field: int64 per_share = 5;
+   */
+  perShare: bigint;
+
+  /**
+   * shares * per_share
+   *
+   * @generated from field: int64 amount = 6;
+   */
+  amount: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp credited_at = 7;
+   */
+  creditedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.DividendCredited.
+ * Use `create(DividendCreditedSchema)` to create a new message.
+ */
+export declare const DividendCreditedSchema: GenMessage<DividendCredited>;
+
+/**
  * SettlementCleared records that a pending settlement leg has cleared.
  * Emitted by the settlement reactor on or after the leg's settles_at.
  * Moves cash_amount from "pending" into SettledCash (CashBalance is

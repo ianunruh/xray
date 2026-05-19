@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	corpactionv1 "github.com/ianunruh/xray/gen/corpaction/v1"
 	"github.com/ianunruh/xray/internal/portfolio"
@@ -14,6 +15,15 @@ import (
 // portfolio.PgPortfolioProjection.
 type HoldersReader interface {
 	HoldersOfSymbol(ctx context.Context, symbol string) ([]string, error)
+}
+
+// HoldingsReader returns (account, shares) pairs for everyone
+// holding a symbol — the dividend record-date snapshot needs share
+// counts, not just account IDs. Satisfied by
+// portfolio.PgPortfolioProjection.HoldingsForSymbol via a small
+// adapter (defined where the coordinator is constructed).
+type HoldingsReader interface {
+	HoldingsForSymbol(ctx context.Context, symbol string) ([]HolderShares, error)
 }
 
 // OpenOrder is the minimal shape Coordinator needs for resting-order
@@ -61,40 +71,45 @@ type SagaCanceler interface {
 type Coordinator struct {
 	portfolioHandler *es.Handler[*portfolio.Portfolio]
 	holders          HoldersReader
+	holdings         HoldingsReader
 	orders           OrderLister
 	sagas            SagaLister
 	cancelOrder      OrderCanceler
 	cancelSaga       SagaCanceler
+	dividendHolders  DividendHoldersStore
 }
 
 func NewCoordinator(
 	portfolioHandler *es.Handler[*portfolio.Portfolio],
 	holders HoldersReader,
+	holdings HoldingsReader,
 	orders OrderLister,
 	sagas SagaLister,
 	cancelOrder OrderCanceler,
 	cancelSaga SagaCanceler,
+	dividendHolders DividendHoldersStore,
 ) *Coordinator {
 	return &Coordinator{
 		portfolioHandler: portfolioHandler,
 		holders:          holders,
+		holdings:         holdings,
 		orders:           orders,
 		sagas:            sagas,
 		cancelOrder:      cancelOrder,
 		cancelSaga:       cancelSaga,
+		dividendHolders:  dividendHolders,
 	}
 }
 
-// ApplyAction dispatches on action type. Currently SPLIT is the only
-// fully-implemented branch (phase 4); CASH_DIVIDEND and SYMBOL_CHANGE
-// return ErrNotImplemented so the reactor leaves them Declared until
-// later phases land.
+// ApplyAction dispatches on action type. SPLIT and CASH_DIVIDEND
+// are fully wired; SYMBOL_CHANGE returns ErrNotImplemented until
+// phase 6 lands.
 func (c *Coordinator) ApplyAction(ctx context.Context, action ActionRow) (FanoutCounts, error) {
 	switch action.Type {
 	case corpactionv1.ActionType_ACTION_TYPE_SPLIT:
 		return c.applySplit(ctx, action)
 	case corpactionv1.ActionType_ACTION_TYPE_CASH_DIVIDEND:
-		return FanoutCounts{}, ErrNotImplemented
+		return c.applyDividend(ctx, action)
 	case corpactionv1.ActionType_ACTION_TYPE_SYMBOL_CHANGE:
 		return FanoutCounts{}, ErrNotImplemented
 	default:
@@ -102,11 +117,19 @@ func (c *Coordinator) ApplyAction(ctx context.Context, action ActionRow) (Fanout
 	}
 }
 
-// SnapshotDividendHolders is the phase-5 entry point. For now it's a
-// no-op so the reactor's tick path doesn't error on dividends that
-// reach record_date.
-func (c *Coordinator) SnapshotDividendHolders(_ context.Context, _ ActionRow) (int32, error) {
-	return 0, nil
+// SnapshotDividendHolders writes the per-action record-date snapshot
+// of every (account, shares) pair holding the symbol. Idempotent at
+// the store layer.
+func (c *Coordinator) SnapshotDividendHolders(ctx context.Context, action ActionRow) (int32, error) {
+	rows, err := c.holdings.HoldingsForSymbol(ctx, action.Symbol)
+	if err != nil {
+		return 0, fmt.Errorf("list holdings: %w", err)
+	}
+	count, err := c.dividendHolders.SaveSnapshot(ctx, action.ActionID, rows, time.Now())
+	if err != nil {
+		return 0, fmt.Errorf("save snapshot: %w", err)
+	}
+	return count, nil
 }
 
 // ErrNotImplemented surfaces from action types that aren't yet wired.
@@ -166,6 +189,36 @@ func (c *Coordinator) applySplit(ctx context.Context, action ActionRow) (FanoutC
 			return portfolio.ExecuteAdjustHolding(p, cmd)
 		}); err != nil {
 			return counts, fmt.Errorf("adjust holding for %s: %w", accountID, err)
+		}
+		counts.Holders++
+	}
+	return counts, nil
+}
+
+// applyDividend reads the record-date snapshot and credits the
+// per-share dividend to every entitled account. The reactor has
+// already verified DividendSnapshotted=true on the aggregate, so a
+// missing or empty snapshot here is a bug (treat as zero holders —
+// the action applies but credits nothing, and the audit trail still
+// records that the apply happened).
+func (c *Coordinator) applyDividend(ctx context.Context, action ActionRow) (FanoutCounts, error) {
+	var counts FanoutCounts
+	holders, err := c.dividendHolders.LoadSnapshot(ctx, action.ActionID)
+	if err != nil {
+		return counts, fmt.Errorf("load dividend snapshot: %w", err)
+	}
+	for _, h := range holders {
+		cmd := portfolio.CreditDividend{
+			AccountID:      h.AccountID,
+			ActionID:       action.ActionID,
+			Symbol:         action.Symbol,
+			SharesOfRecord: h.Shares,
+			PerShare:       action.DividendPerShare,
+		}
+		if err := c.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteCreditDividend(p, cmd)
+		}); err != nil {
+			return counts, fmt.Errorf("credit dividend for %s: %w", h.AccountID, err)
 		}
 		counts.Holders++
 	}

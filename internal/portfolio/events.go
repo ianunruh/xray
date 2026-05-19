@@ -31,6 +31,7 @@ const (
 	EventTransactionFeeCharged = "TransactionFeeCharged"
 	EventSettlementCleared     = "SettlementCleared"
 	EventHoldingAdjusted       = "HoldingAdjusted"
+	EventDividendCredited      = "DividendCredited"
 )
 
 func RegisterEvents(r *es.Registry) {
@@ -57,4 +58,5 @@ func RegisterEvents(r *es.Registry) {
 	r.Register(EventTransactionFeeCharged, func() proto.Message { return new(portfoliov1.TransactionFeeCharged) })
 	r.Register(EventSettlementCleared, func() proto.Message { return new(portfoliov1.SettlementCleared) })
 	r.Register(EventHoldingAdjusted, func() proto.Message { return new(portfoliov1.HoldingAdjusted) })
+	r.Register(EventDividendCredited, func() proto.Message { return new(portfoliov1.DividendCredited) })
 }

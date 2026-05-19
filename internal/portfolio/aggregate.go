@@ -296,6 +296,8 @@ func (p *Portfolio) Apply(evt es.Event) error {
 		p.applySettlementCleared(data)
 	case *portfoliov1.HoldingAdjusted:
 		p.applyHoldingAdjusted(data)
+	case *portfoliov1.DividendCredited:
+		p.applyDividendCredited(data)
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}
@@ -668,6 +670,15 @@ func (p *Portfolio) advanceAccrualClock(end *timestamppb.Timestamp) {
 	if t := end.AsTime(); t.After(p.LastAccruedAt) {
 		p.LastAccruedAt = t
 	}
+}
+
+func (p *Portfolio) applyDividendCredited(data *portfoliov1.DividendCredited) {
+	if p.HasAppliedAction(data.ActionId) {
+		return
+	}
+	p.markActionApplied(data.ActionId)
+	p.CashBalance += data.Amount
+	p.SettledCash += data.Amount
 }
 
 func (p *Portfolio) applyHoldingAdjusted(data *portfoliov1.HoldingAdjusted) {

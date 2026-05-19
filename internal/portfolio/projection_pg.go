@@ -223,6 +223,16 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 				 WHERE account_id = $2 AND symbol = $3`,
 				data.NewQuantity, data.AccountId, data.Symbol,
 			)
+		case *portfoliov1.DividendCredited:
+			// Cash dividends settle instantly; both cash_balance and
+			// settled_cash move together.
+			batch.Queue(
+				`UPDATE projection_portfolios
+				 SET cash_balance = cash_balance + $1,
+				     settled_cash = settled_cash + $1
+				 WHERE account_id = $2`,
+				data.Amount, data.AccountId,
+			)
 		}
 	}
 
@@ -240,6 +250,40 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 	}
 
 	return nil
+}
+
+// HoldingRow is one (account, shares) pair returned by
+// HoldingsForSymbol.
+type HoldingRow struct {
+	AccountID string
+	Shares    int64
+}
+
+// HoldingsForSymbol returns the per-account share count for every
+// account with a positive position. Used by the corpaction
+// dividend-snapshot path; HoldersOfSymbol (account-only) is enough
+// for splits where the per-account quantity is loaded from the
+// aggregate during the per-account adjust.
+func (p *PgPortfolioProjection) HoldingsForSymbol(ctx context.Context, symbol string) ([]HoldingRow, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT account_id, quantity FROM projection_holdings
+		 WHERE symbol = $1 AND quantity > 0
+		 ORDER BY account_id`,
+		symbol,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query holdings of %s: %w", symbol, err)
+	}
+	defer rows.Close()
+	var out []HoldingRow
+	for rows.Next() {
+		var r HoldingRow
+		if err := rows.Scan(&r.AccountID, &r.Shares); err != nil {
+			return nil, fmt.Errorf("scan holding row: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 // HoldersOfSymbol returns every account_id with a positive position
