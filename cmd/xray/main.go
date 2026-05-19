@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -28,6 +29,7 @@ import (
 	"github.com/ianunruh/xray/internal/diagnostics"
 	"github.com/ianunruh/xray/internal/feesaccruer"
 	"github.com/ianunruh/xray/internal/margincall"
+	"github.com/ianunruh/xray/internal/metrics"
 	"github.com/ianunruh/xray/internal/ocosaga"
 	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/ordersaga"
@@ -70,6 +72,12 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	metricsHandler, err := metrics.Init()
+	if err != nil {
+		log.Error("failed to initialize metrics", "error", err)
+		os.Exit(1)
+	}
 
 	poolConfig, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -337,18 +345,21 @@ func main() {
 	traderSrv := tradermgr.NewServer(traderMgr)
 	corpactionSrv := corpaction.NewServer(corpactionHandler, corpactionProjection, log)
 
+	connectOpts := connect.WithInterceptors(metrics.ConnectInterceptor())
+
 	mux := http.NewServeMux()
-	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
+	mux.Handle("/metrics", metricsHandler)
+	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv, connectOpts)
 	mux.Handle(path, h)
-	portfolioPath, portfolioH := portfoliov1connect.NewPortfolioServiceHandler(portfolioSrv)
+	portfolioPath, portfolioH := portfoliov1connect.NewPortfolioServiceHandler(portfolioSrv, connectOpts)
 	mux.Handle(portfolioPath, portfolioH)
-	sagaPath, sagaH := sagav1connect.NewSagaServiceHandler(sagaSrv)
+	sagaPath, sagaH := sagav1connect.NewSagaServiceHandler(sagaSrv, connectOpts)
 	mux.Handle(sagaPath, sagaH)
-	diagnosticsPath, diagnosticsH := diagnosticsv1connect.NewDiagnosticsServiceHandler(diagnosticsSrv)
+	diagnosticsPath, diagnosticsH := diagnosticsv1connect.NewDiagnosticsServiceHandler(diagnosticsSrv, connectOpts)
 	mux.Handle(diagnosticsPath, diagnosticsH)
-	traderPath, traderH := traderv1connect.NewTraderServiceHandler(traderSrv)
+	traderPath, traderH := traderv1connect.NewTraderServiceHandler(traderSrv, connectOpts)
 	mux.Handle(traderPath, traderH)
-	corpactionPath, corpactionH := corpactionv1connect.NewCorporateActionServiceHandler(corpactionSrv)
+	corpactionPath, corpactionH := corpactionv1connect.NewCorporateActionServiceHandler(corpactionSrv, connectOpts)
 	mux.Handle(corpactionPath, corpactionH)
 
 	httpServer := &http.Server{
