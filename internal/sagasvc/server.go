@@ -357,15 +357,26 @@ func (s *Server) List(ctx context.Context, req *connect.Request[sagav1.ListSagas
 }
 
 func (s *Server) Cancel(ctx context.Context, req *connect.Request[sagav1.CancelSagaRequest]) (*connect.Response[sagav1.CancelSagaResponse], error) {
-	row, err := s.projection.Get(ctx, req.Msg.SagaId)
+	if err := s.CancelByID(ctx, req.Msg.SagaId); err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&sagav1.CancelSagaResponse{}), nil
+}
+
+// CancelByID is the non-Connect entry point for cancellation. The
+// corpaction coordinator drives this when a corporate action affects
+// a symbol that has in-flight sagas. Returns connect-typed errors so
+// the Connect handler can pass them through unchanged.
+func (s *Server) CancelByID(ctx context.Context, sagaID string) error {
+	row, err := s.projection.Get(ctx, sagaID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return connect.NewError(connect.CodeInternal, err)
 	}
 	if row == nil {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("saga %s not found", req.Msg.SagaId))
+		return connect.NewError(connect.CodeNotFound, fmt.Errorf("saga %s not found", sagaID))
 	}
 	if row.Status != sagav1.SagaStatus_SAGA_STATUS_ACTIVE {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
+		return connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("saga %s is %s, cannot cancel", row.SagaID, row.Status))
 	}
 
@@ -374,25 +385,16 @@ func (s *Server) Cancel(ctx context.Context, req *connect.Request[sagav1.CancelS
 
 	switch row.Kind {
 	case sagav1.SagaKind_SAGA_KIND_SINGLE_ORDER:
-		if err := s.cancelSingleOrder(ctx, row); err != nil {
-			return nil, err
-		}
+		return s.cancelSingleOrder(ctx, row)
 	case sagav1.SagaKind_SAGA_KIND_BRACKET:
-		if err := s.cancelBracket(ctx, row); err != nil {
-			return nil, err
-		}
+		return s.cancelBracket(ctx, row)
 	case sagav1.SagaKind_SAGA_KIND_OCO:
-		if err := s.cancelOCO(ctx, row); err != nil {
-			return nil, err
-		}
+		return s.cancelOCO(ctx, row)
 	case sagav1.SagaKind_SAGA_KIND_TWAP:
-		if err := s.cancelTWAP(ctx, row); err != nil {
-			return nil, err
-		}
+		return s.cancelTWAP(ctx, row)
 	default:
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("unknown saga kind: %d", row.Kind))
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("unknown saga kind: %d", row.Kind))
 	}
-	return connect.NewResponse(&sagav1.CancelSagaResponse{}), nil
 }
 
 // cancelTWAP marks the parent TWAP as failed (which suppresses future

@@ -445,9 +445,19 @@ Each step shippable; ordering matches dependency.
   the displayed slice's queue position is now meaningless).
   Cancelling with a structured reason is simpler, traceable in
   diagnostics, and matches what some retail brokers actually do for
-  ambiguous corporate actions. Note: in-flight *sagas* (TWAP,
-  bracket, OCO) DO adjust — those have state worth preserving and
-  the math is clean because saga commands re-compute on every step.
+  ambiguous corporate actions.
+
+- **In-flight sagas cancel too, not adjust.** Original plan said
+  sagas would adjust because "the math is clean"; on contact the
+  math isn't actually clean — TWAP's `PlannedSliceQuantity` and
+  `TotalFilled` are denominated in pre-split shares, brackets carry
+  TP/SL trigger prices that need scaling, OCO carries shared
+  share-cover holds. Each kind needs its own per-state-shape
+  adjustment, and the user can re-submit a fresh saga against the
+  post-split book trivially. We take the same out as we do for
+  open orders: cancel with a structured reason and let the user
+  re-submit. Proper adjustment is a worthwhile follow-up if
+  cancellation friction becomes a real complaint.
 
 - **No tax-lot accounting.** Splits adjust `avg_cost` proportionally
   (TotalCost preserved). A real broker tracks each tax lot

@@ -242,6 +242,31 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 	return nil
 }
 
+// HoldersOfSymbol returns every account_id with a positive position
+// in the symbol. Used by the corpaction reactor to fan a split out
+// across affected accounts.
+func (p *PgPortfolioProjection) HoldersOfSymbol(ctx context.Context, symbol string) ([]string, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT account_id FROM projection_holdings
+		 WHERE symbol = $1 AND quantity > 0
+		 ORDER BY account_id`,
+		symbol,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query holders of %s: %w", symbol, err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan holder: %w", err)
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 func (p *PgPortfolioProjection) ListPortfolios(ctx context.Context) ([]string, error) {
 	rows, err := p.pool.Query(ctx,
 		`SELECT account_id FROM projection_portfolios ORDER BY account_id`,
