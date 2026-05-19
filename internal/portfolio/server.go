@@ -47,6 +47,7 @@ type Server struct {
 	marginCallsReader   MarginCallsReader
 	feesReader          FeesReader
 	shortInterestReader ShortInterestReader
+	pendingReader       PendingSettlementsReader
 	broker              *PortfolioBroker
 	log                 *slog.Logger
 }
@@ -75,6 +76,16 @@ func NewServer(
 		broker:              broker,
 		log:                 log,
 	}
+}
+
+// WithPendingSettlementsReader installs the optional pending-leg
+// reader. When set, GetPortfolio populates pending_cash_credits /
+// pending_cash_debits with the per-account sums; otherwise those
+// fields stay zero. Optional so the server still boots in test
+// configurations that don't wire the projection.
+func (s *Server) WithPendingSettlementsReader(r PendingSettlementsReader) *Server {
+	s.pendingReader = r
+	return s
 }
 
 // ShortInterestReader exposes the venue-wide short-interest aggregate.
@@ -147,7 +158,7 @@ func (s *Server) CreditShares(ctx context.Context, req *connect.Request[portfoli
 }
 
 func (s *Server) GetPortfolio(ctx context.Context, req *connect.Request[portfoliov1.GetPortfolioRequest]) (*connect.Response[portfoliov1.GetPortfolioResponse], error) {
-	resp, err := s.reader.GetPortfolio(ctx, req.Msg.AccountId)
+	resp, err := s.loadPortfolioResponse(ctx, req.Msg.AccountId)
 	if err != nil {
 		s.log.Error("GetPortfolio failed", "account_id", req.Msg.AccountId, "error", err)
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -158,7 +169,7 @@ func (s *Server) GetPortfolio(ctx context.Context, req *connect.Request[portfoli
 func (s *Server) StreamPortfolio(ctx context.Context, req *connect.Request[portfoliov1.StreamPortfolioRequest], stream *connect.ServerStream[portfoliov1.GetPortfolioResponse]) error {
 	accountID := req.Msg.AccountId
 
-	resp, err := s.reader.GetPortfolio(ctx, accountID)
+	resp, err := s.loadPortfolioResponse(ctx, accountID)
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, err)
 	}
@@ -177,7 +188,7 @@ func (s *Server) StreamPortfolio(ctx context.Context, req *connect.Request[portf
 			if !ok {
 				return nil
 			}
-			resp, err := s.reader.GetPortfolio(ctx, accountID)
+			resp, err := s.loadPortfolioResponse(ctx, accountID)
 			if err != nil {
 				s.log.Error("StreamPortfolio read failed", "account_id", accountID, "error", err)
 				continue
@@ -187,6 +198,27 @@ func (s *Server) StreamPortfolio(ctx context.Context, req *connect.Request[portf
 			}
 		}
 	}
+}
+
+// loadPortfolioResponse reads the PG-backed portfolio response and,
+// when the pending-settlements reader is wired, decorates it with
+// the pending bucket sums. Keeping the two reads here (rather than
+// inside PgPortfolioProjection.GetPortfolio) means the projections
+// stay decoupled.
+func (s *Server) loadPortfolioResponse(ctx context.Context, accountID string) (*portfoliov1.GetPortfolioResponse, error) {
+	resp, err := s.reader.GetPortfolio(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if s.pendingReader != nil {
+		totals, err := s.pendingReader.PendingTotals(ctx, accountID)
+		if err != nil {
+			return nil, err
+		}
+		resp.PendingCashCredits = totals.Credits
+		resp.PendingCashDebits = totals.Debits
+	}
+	return resp, nil
 }
 
 func (s *Server) ListPortfolios(ctx context.Context, req *connect.Request[portfoliov1.ListPortfoliosRequest]) (*connect.Response[portfoliov1.ListPortfoliosResponse], error) {
