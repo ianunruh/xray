@@ -2,7 +2,7 @@
 // @generated from file portfolio/v1/events.proto (package portfolio.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import type { OrderType, PositionSide, Side, TimeInForce } from "../../orderbook/v1/events_pb";
@@ -181,6 +181,16 @@ export declare type CashSettled = Message<"portfolio.v1.CashSettled"> & {
    * @generated from field: string trade_id = 8;
    */
   tradeId: string;
+
+  /**
+   * settles_at is when the cash leg clears settlement. When zero or
+   * equal to settled_at the leg is instant (SettledCash moves now).
+   * When in the future the leg lands in PendingLegs and the
+   * settlement reactor emits SettlementCleared on/after that instant.
+   *
+   * @generated from field: google.protobuf.Timestamp settles_at = 9;
+   */
+  settlesAt?: Timestamp | undefined;
 };
 
 /**
@@ -379,6 +389,15 @@ export declare type SharesSettled = Message<"portfolio.v1.SharesSettled"> & {
    * @generated from field: string trade_id = 8;
    */
   tradeId: string;
+
+  /**
+   * settles_at is when the cash leg (proceeds) clears settlement. See
+   * CashSettled.settles_at — zero/equal = instant, future = pending.
+   * Shares debit immediately regardless; only cash is deferred.
+   *
+   * @generated from field: google.protobuf.Timestamp settles_at = 9;
+   */
+  settlesAt?: Timestamp | undefined;
 };
 
 /**
@@ -526,6 +545,15 @@ export declare type ShortOpened = Message<"portfolio.v1.ShortOpened"> & {
    * @generated from field: google.protobuf.Timestamp opened_at = 10;
    */
   openedAt?: Timestamp | undefined;
+
+  /**
+   * settles_at marks when this open's bookkeeping clears (audit-only;
+   * proceeds and collateral already locked in the pools on trade
+   * date). Zero/equal-to-opened_at = instant.
+   *
+   * @generated from field: google.protobuf.Timestamp settles_at = 11;
+   */
+  settlesAt?: Timestamp | undefined;
 };
 
 /**
@@ -674,6 +702,15 @@ export declare type ShortCovered = Message<"portfolio.v1.ShortCovered"> & {
    * @generated from field: google.protobuf.Timestamp covered_at = 11;
    */
   coveredAt?: Timestamp | undefined;
+
+  /**
+   * settles_at is when the residual cash leg (the net of returned
+   * pool funds minus cost, signed) clears settlement. Zero/equal =
+   * instant. The pool draining itself is always immediate.
+   *
+   * @generated from field: google.protobuf.Timestamp settles_at = 12;
+   */
+  settlesAt?: Timestamp | undefined;
 };
 
 /**
@@ -975,6 +1012,58 @@ export declare type TransactionFeeCharged = Message<"portfolio.v1.TransactionFee
  * Use `create(TransactionFeeChargedSchema)` to create a new message.
  */
 export declare const TransactionFeeChargedSchema: GenMessage<TransactionFeeCharged>;
+
+/**
+ * SettlementCleared records that a pending settlement leg has cleared.
+ * Emitted by the settlement reactor on or after the leg's settles_at.
+ * Moves cash_amount from "pending" into SettledCash (CashBalance is
+ * unchanged — it already reflected the trade on trade date).
+ * Idempotent: applier looks up the leg by (trade_id, kind); a missed
+ * or already-cleared leg is a no-op.
+ *
+ * @generated from message portfolio.v1.SettlementCleared
+ */
+export declare type SettlementCleared = Message<"portfolio.v1.SettlementCleared"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string order_saga_id = 2;
+   */
+  orderSagaId: string;
+
+  /**
+   * @generated from field: string trade_id = 3;
+   */
+  tradeId: string;
+
+  /**
+   * @generated from field: portfolio.v1.SettlementLegKind kind = 4;
+   */
+  kind: SettlementLegKind;
+
+  /**
+   * Signed: positive for credits (sell proceeds, profitable cover),
+   * negative for debits (buy cost, losing cover residual). Zero for
+   * SHORT_OPEN (pure audit leg).
+   *
+   * @generated from field: int64 cash_amount = 5;
+   */
+  cashAmount: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp cleared_at = 6;
+   */
+  clearedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.SettlementCleared.
+ * Use `create(SettlementClearedSchema)` to create a new message.
+ */
+export declare const SettlementClearedSchema: GenMessage<SettlementCleared>;
 
 /**
  * @generated from message portfolio.v1.OrderSagaStarted
@@ -1305,4 +1394,54 @@ export declare type OrderSagaActionFailed = Message<"portfolio.v1.OrderSagaActio
  * Use `create(OrderSagaActionFailedSchema)` to create a new message.
  */
 export declare const OrderSagaActionFailedSchema: GenMessage<OrderSagaActionFailed>;
+
+/**
+ * SettlementLegKind tags a pending settlement leg by which trade-date
+ * event scheduled it. Determines how the clearing event's cash_amount
+ * rolls into SettledCash on clear (the apply path is uniform, but the
+ * audit trail and projections key off this).
+ *
+ * @generated from enum portfolio.v1.SettlementLegKind
+ */
+export enum SettlementLegKind {
+  /**
+   * @generated from enum value: SETTLEMENT_LEG_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Long sell — proceeds clear into SettledCash.
+   *
+   * @generated from enum value: SETTLEMENT_LEG_KIND_CASH_CREDIT = 1;
+   */
+  CASH_CREDIT = 1,
+
+  /**
+   * Long buy — cost clears out of SettledCash.
+   *
+   * @generated from enum value: SETTLEMENT_LEG_KIND_CASH_DEBIT = 2;
+   */
+  CASH_DEBIT = 2,
+
+  /**
+   * Short open — bookkeeping only; proceeds + collateral are already
+   * in the pools on trade date. SettledCash unchanged.
+   *
+   * @generated from enum value: SETTLEMENT_LEG_KIND_SHORT_OPEN = 3;
+   */
+  SHORT_OPEN = 3,
+
+  /**
+   * Short cover — residual cash (signed; can be a credit on profit or
+   * a debit on a loss beyond pooled collateral) clears.
+   *
+   * @generated from enum value: SETTLEMENT_LEG_KIND_SHORT_COVER = 4;
+   */
+  SHORT_COVER = 4,
+}
+
+/**
+ * Describes the enum portfolio.v1.SettlementLegKind.
+ */
+export declare const SettlementLegKindSchema: GenEnum<SettlementLegKind>;
 

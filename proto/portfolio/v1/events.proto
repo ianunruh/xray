@@ -50,6 +50,11 @@ message CashSettled {
   // trade_id deduplicates settlement events per saga; legacy events
   // pre-dating this field have it empty and bypass dedup.
   string trade_id = 8;
+  // settles_at is when the cash leg clears settlement. When zero or
+  // equal to settled_at the leg is instant (SettledCash moves now).
+  // When in the future the leg lands in PendingLegs and the
+  // settlement reactor emits SettlementCleared on/after that instant.
+  google.protobuf.Timestamp settles_at = 9;
 }
 
 message SharesCredited {
@@ -95,6 +100,10 @@ message SharesSettled {
   // trade_id deduplicates settlement events per saga; legacy events
   // pre-dating this field have it empty and bypass dedup.
   string trade_id = 8;
+  // settles_at is when the cash leg (proceeds) clears settlement. See
+  // CashSettled.settles_at — zero/equal = instant, future = pending.
+  // Shares debit immediately regardless; only cash is deferred.
+  google.protobuf.Timestamp settles_at = 9;
 }
 
 // --- Short-selling events ---
@@ -137,6 +146,10 @@ message ShortOpened {
   int64 collateral_held = 8;
   int64 new_avg_open_price = 9;
   google.protobuf.Timestamp opened_at = 10;
+  // settles_at marks when this open's bookkeeping clears (audit-only;
+  // proceeds and collateral already locked in the pools on trade
+  // date). Zero/equal-to-opened_at = instant.
+  google.protobuf.Timestamp settles_at = 11;
 }
 
 // ShortCoverHeld reserves capacity to buy-to-cover against an existing
@@ -175,6 +188,10 @@ message ShortCovered {
   int64 collateral_released = 9;
   int64 realized_pnl = 10;
   google.protobuf.Timestamp covered_at = 11;
+  // settles_at is when the residual cash leg (the net of returned
+  // pool funds minus cost, signed) clears settlement. Zero/equal =
+  // instant. The pool draining itself is always immediate.
+  google.protobuf.Timestamp settles_at = 12;
 }
 
 // MarginCallIssued records that a margin breach was detected. Emitted
@@ -266,6 +283,42 @@ message TransactionFeeCharged {
   // for buy/sell-to-close, SHORT for open/cover. Lets per-position
   // projections route the fee to the correct row.
   orderbook.v1.PositionSide position_side = 9;
+}
+
+// SettlementLegKind tags a pending settlement leg by which trade-date
+// event scheduled it. Determines how the clearing event's cash_amount
+// rolls into SettledCash on clear (the apply path is uniform, but the
+// audit trail and projections key off this).
+enum SettlementLegKind {
+  SETTLEMENT_LEG_KIND_UNSPECIFIED  = 0;
+  // Long sell — proceeds clear into SettledCash.
+  SETTLEMENT_LEG_KIND_CASH_CREDIT  = 1;
+  // Long buy — cost clears out of SettledCash.
+  SETTLEMENT_LEG_KIND_CASH_DEBIT   = 2;
+  // Short open — bookkeeping only; proceeds + collateral are already
+  // in the pools on trade date. SettledCash unchanged.
+  SETTLEMENT_LEG_KIND_SHORT_OPEN   = 3;
+  // Short cover — residual cash (signed; can be a credit on profit or
+  // a debit on a loss beyond pooled collateral) clears.
+  SETTLEMENT_LEG_KIND_SHORT_COVER  = 4;
+}
+
+// SettlementCleared records that a pending settlement leg has cleared.
+// Emitted by the settlement reactor on or after the leg's settles_at.
+// Moves cash_amount from "pending" into SettledCash (CashBalance is
+// unchanged — it already reflected the trade on trade date).
+// Idempotent: applier looks up the leg by (trade_id, kind); a missed
+// or already-cleared leg is a no-op.
+message SettlementCleared {
+  string                       account_id    = 1;
+  string                       order_saga_id = 2;
+  string                       trade_id      = 3;
+  SettlementLegKind            kind          = 4;
+  // Signed: positive for credits (sell proceeds, profitable cover),
+  // negative for debits (buy cost, losing cover residual). Zero for
+  // SHORT_OPEN (pure audit leg).
+  int64                        cash_amount   = 5;
+  google.protobuf.Timestamp    cleared_at    = 6;
 }
 
 // Order saga events — stored under aggregate ID "order-saga:{uuid}".

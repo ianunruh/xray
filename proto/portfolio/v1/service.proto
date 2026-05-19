@@ -59,6 +59,18 @@ message GetPortfolioResponse {
   // short, summed from projection_pnl_positions. Holdings.realized_pnl
   // covers only long positions and won't include short-cover P&L.
   int64 total_realized_pnl = 6;
+  // settled_cash is the cleared-settlement portion of cash_balance:
+  // what Withdraw is allowed to draw against. Equals cash_balance when
+  // T+1 settlement is disabled and on accounts with no pending legs.
+  int64 settled_cash = 7;
+  // pending_cash_credits is the sum of pending settlement legs that
+  // will increase settled_cash on clear (long sells, profitable
+  // short covers). Always >= 0.
+  int64 pending_cash_credits = 8;
+  // pending_cash_debits is the sum of pending settlement legs that
+  // will decrease settled_cash on clear (long buys, loss-side short
+  // cover residuals). Always >= 0 (the unsigned magnitude).
+  int64 pending_cash_debits = 9;
 }
 
 message Holding {
@@ -219,6 +231,15 @@ message GetMarginSnapshotResponse {
   // expires and auto-liquidation will fire. Unset when no call is
   // active. UI renders this as a countdown in the active-call alert.
   google.protobuf.Timestamp margin_call_grace_expires_at = 19;
+
+  // settled_cash is the cleared-settlement portion of cash_balance.
+  // Margin math itself still uses cash_balance (the trading figure);
+  // settled_cash is surfaced for the UI's cash-line split.
+  int64 settled_cash = 20;
+  // pending_cash_credits / pending_cash_debits — sums over pending
+  // legs awaiting clearing. Sign convention matches GetPortfolio.
+  int64 pending_cash_credits = 21;
+  int64 pending_cash_debits = 22;
 }
 
 // MarginCallRecord is one row in the audit log: the issued snapshot

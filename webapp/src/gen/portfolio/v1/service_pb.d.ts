@@ -174,6 +174,33 @@ export declare type GetPortfolioResponse = Message<"portfolio.v1.GetPortfolioRes
    * @generated from field: int64 total_realized_pnl = 6;
    */
   totalRealizedPnl: bigint;
+
+  /**
+   * settled_cash is the cleared-settlement portion of cash_balance:
+   * what Withdraw is allowed to draw against. Equals cash_balance when
+   * T+1 settlement is disabled and on accounts with no pending legs.
+   *
+   * @generated from field: int64 settled_cash = 7;
+   */
+  settledCash: bigint;
+
+  /**
+   * pending_cash_credits is the sum of pending settlement legs that
+   * will increase settled_cash on clear (long sells, profitable
+   * short covers). Always >= 0.
+   *
+   * @generated from field: int64 pending_cash_credits = 8;
+   */
+  pendingCashCredits: bigint;
+
+  /**
+   * pending_cash_debits is the sum of pending settlement legs that
+   * will decrease settled_cash on clear (long buys, loss-side short
+   * cover residuals). Always >= 0 (the unsigned magnitude).
+   *
+   * @generated from field: int64 pending_cash_debits = 9;
+   */
+  pendingCashDebits: bigint;
 };
 
 /**
@@ -666,6 +693,28 @@ export declare type GetMarginSnapshotResponse = Message<"portfolio.v1.GetMarginS
    * @generated from field: google.protobuf.Timestamp margin_call_grace_expires_at = 19;
    */
   marginCallGraceExpiresAt?: Timestamp | undefined;
+
+  /**
+   * settled_cash is the cleared-settlement portion of cash_balance.
+   * Margin math itself still uses cash_balance (the trading figure);
+   * settled_cash is surfaced for the UI's cash-line split.
+   *
+   * @generated from field: int64 settled_cash = 20;
+   */
+  settledCash: bigint;
+
+  /**
+   * pending_cash_credits / pending_cash_debits — sums over pending
+   * legs awaiting clearing. Sign convention matches GetPortfolio.
+   *
+   * @generated from field: int64 pending_cash_credits = 21;
+   */
+  pendingCashCredits: bigint;
+
+  /**
+   * @generated from field: int64 pending_cash_debits = 22;
+   */
+  pendingCashDebits: bigint;
 };
 
 /**

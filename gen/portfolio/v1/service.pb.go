@@ -474,8 +474,20 @@ type GetPortfolioResponse struct {
 	// short, summed from projection_pnl_positions. Holdings.realized_pnl
 	// covers only long positions and won't include short-cover P&L.
 	TotalRealizedPnl int64 `protobuf:"varint,6,opt,name=total_realized_pnl,json=totalRealizedPnl,proto3" json:"total_realized_pnl,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// settled_cash is the cleared-settlement portion of cash_balance:
+	// what Withdraw is allowed to draw against. Equals cash_balance when
+	// T+1 settlement is disabled and on accounts with no pending legs.
+	SettledCash int64 `protobuf:"varint,7,opt,name=settled_cash,json=settledCash,proto3" json:"settled_cash,omitempty"`
+	// pending_cash_credits is the sum of pending settlement legs that
+	// will increase settled_cash on clear (long sells, profitable
+	// short covers). Always >= 0.
+	PendingCashCredits int64 `protobuf:"varint,8,opt,name=pending_cash_credits,json=pendingCashCredits,proto3" json:"pending_cash_credits,omitempty"`
+	// pending_cash_debits is the sum of pending settlement legs that
+	// will decrease settled_cash on clear (long buys, loss-side short
+	// cover residuals). Always >= 0 (the unsigned magnitude).
+	PendingCashDebits int64 `protobuf:"varint,9,opt,name=pending_cash_debits,json=pendingCashDebits,proto3" json:"pending_cash_debits,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *GetPortfolioResponse) Reset() {
@@ -546,6 +558,27 @@ func (x *GetPortfolioResponse) GetPendingOrders() []*PendingOrder {
 func (x *GetPortfolioResponse) GetTotalRealizedPnl() int64 {
 	if x != nil {
 		return x.TotalRealizedPnl
+	}
+	return 0
+}
+
+func (x *GetPortfolioResponse) GetSettledCash() int64 {
+	if x != nil {
+		return x.SettledCash
+	}
+	return 0
+}
+
+func (x *GetPortfolioResponse) GetPendingCashCredits() int64 {
+	if x != nil {
+		return x.PendingCashCredits
+	}
+	return 0
+}
+
+func (x *GetPortfolioResponse) GetPendingCashDebits() int64 {
+	if x != nil {
+		return x.PendingCashDebits
 	}
 	return 0
 }
@@ -1319,8 +1352,16 @@ type GetMarginSnapshotResponse struct {
 	// expires and auto-liquidation will fire. Unset when no call is
 	// active. UI renders this as a countdown in the active-call alert.
 	MarginCallGraceExpiresAt *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=margin_call_grace_expires_at,json=marginCallGraceExpiresAt,proto3" json:"margin_call_grace_expires_at,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	// settled_cash is the cleared-settlement portion of cash_balance.
+	// Margin math itself still uses cash_balance (the trading figure);
+	// settled_cash is surfaced for the UI's cash-line split.
+	SettledCash int64 `protobuf:"varint,20,opt,name=settled_cash,json=settledCash,proto3" json:"settled_cash,omitempty"`
+	// pending_cash_credits / pending_cash_debits — sums over pending
+	// legs awaiting clearing. Sign convention matches GetPortfolio.
+	PendingCashCredits int64 `protobuf:"varint,21,opt,name=pending_cash_credits,json=pendingCashCredits,proto3" json:"pending_cash_credits,omitempty"`
+	PendingCashDebits  int64 `protobuf:"varint,22,opt,name=pending_cash_debits,json=pendingCashDebits,proto3" json:"pending_cash_debits,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *GetMarginSnapshotResponse) Reset() {
@@ -1484,6 +1525,27 @@ func (x *GetMarginSnapshotResponse) GetMarginCallGraceExpiresAt() *timestamppb.T
 		return x.MarginCallGraceExpiresAt
 	}
 	return nil
+}
+
+func (x *GetMarginSnapshotResponse) GetSettledCash() int64 {
+	if x != nil {
+		return x.SettledCash
+	}
+	return 0
+}
+
+func (x *GetMarginSnapshotResponse) GetPendingCashCredits() int64 {
+	if x != nil {
+		return x.PendingCashCredits
+	}
+	return 0
+}
+
+func (x *GetMarginSnapshotResponse) GetPendingCashDebits() int64 {
+	if x != nil {
+		return x.PendingCashDebits
+	}
+	return 0
 }
 
 // MarginCallRecord is one row in the audit log: the issued snapshot
@@ -2443,7 +2505,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\x14CreditSharesResponse\"4\n" +
 	"\x13GetPortfolioRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\"\x99\x02\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\"\x9e\x03\n" +
 	"\x14GetPortfolioResponse\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12!\n" +
@@ -2451,7 +2513,10 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\tcash_held\x18\x03 \x01(\x03R\bcashHeld\x121\n" +
 	"\bholdings\x18\x04 \x03(\v2\x15.portfolio.v1.HoldingR\bholdings\x12A\n" +
 	"\x0epending_orders\x18\x05 \x03(\v2\x1a.portfolio.v1.PendingOrderR\rpendingOrders\x12,\n" +
-	"\x12total_realized_pnl\x18\x06 \x01(\x03R\x10totalRealizedPnl\"\xc3\x01\n" +
+	"\x12total_realized_pnl\x18\x06 \x01(\x03R\x10totalRealizedPnl\x12!\n" +
+	"\fsettled_cash\x18\a \x01(\x03R\vsettledCash\x120\n" +
+	"\x14pending_cash_credits\x18\b \x01(\x03R\x12pendingCashCredits\x12.\n" +
+	"\x13pending_cash_debits\x18\t \x01(\x03R\x11pendingCashDebits\"\xc3\x01\n" +
 	"\aHolding\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x1a\n" +
 	"\bquantity\x18\x02 \x01(\x03R\bquantity\x12\x1d\n" +
@@ -2517,7 +2582,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"accountIds\"9\n" +
 	"\x18GetMarginSnapshotRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\"\xf8\x06\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\"\xfd\a\n" +
 	"\x19GetMarginSnapshotResponse\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12!\n" +
@@ -2541,7 +2606,10 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"marginLoan\x12@\n" +
 	"\x1clong_maintenance_requirement\x18\x11 \x01(\x03R\x1alongMaintenanceRequirement\x12B\n" +
 	"\x1dshort_maintenance_requirement\x18\x12 \x01(\x03R\x1bshortMaintenanceRequirement\x12Z\n" +
-	"\x1cmargin_call_grace_expires_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\x18marginCallGraceExpiresAt\"\x88\x05\n" +
+	"\x1cmargin_call_grace_expires_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\x18marginCallGraceExpiresAt\x12!\n" +
+	"\fsettled_cash\x18\x14 \x01(\x03R\vsettledCash\x120\n" +
+	"\x14pending_cash_credits\x18\x15 \x01(\x03R\x12pendingCashCredits\x12.\n" +
+	"\x13pending_cash_debits\x18\x16 \x01(\x03R\x11pendingCashDebits\"\x88\x05\n" +
 	"\x10MarginCallRecord\x12\x17\n" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x1d\n" +
 	"\n" +
