@@ -9,7 +9,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/ianunruh/xray/internal/metrics"
 )
 
 const maxRetries = 3
@@ -253,29 +257,55 @@ func stampCausation(ctx context.Context, events []Event) {
 // retried up to maxRetries times.
 func (h *Handler[A]) Handle(ctx context.Context, cmd Command, execute func(A) ([]Event, error)) error {
 	aggregateID := cmd.AggregateID()
+	aggType := metrics.AggregateType(aggregateID)
+	typeAttr := metric.WithAttributes(attribute.String("aggregate_type", aggType))
 
+	start := time.Now()
 	h.locks.Lock(aggregateID)
-	newEvents, err := h.handleLocked(ctx, aggregateID, execute)
+	if metrics.CommandLockWaitSeconds != nil {
+		metrics.CommandLockWaitSeconds.Record(ctx, time.Since(start).Seconds(), typeAttr)
+	}
+
+	newEvents, err := h.handleLocked(ctx, aggregateID, aggType, execute)
 	h.locks.Unlock(aggregateID)
 
 	if err != nil {
+		if metrics.CommandHandleSeconds != nil {
+			metrics.CommandHandleSeconds.Record(ctx, time.Since(start).Seconds(),
+				metric.WithAttributes(
+					attribute.String("aggregate_type", aggType),
+					attribute.String("result", "error"),
+				))
+		}
 		return err
 	}
 
 	// Snapshotting is an async projection (pkg/es/snapshotter); the write
 	// path is responsible for events only.
 	h.publishEvents(ctx, aggregateID, newEvents)
+
+	if metrics.CommandHandleSeconds != nil {
+		metrics.CommandHandleSeconds.Record(ctx, time.Since(start).Seconds(),
+			metric.WithAttributes(
+				attribute.String("aggregate_type", aggType),
+				attribute.String("result", "ok"),
+			))
+	}
 	return nil
 }
 
 // handleLocked runs the retry loop while holding the per-aggregate lock.
-func (h *Handler[A]) handleLocked(ctx context.Context, aggregateID string, execute func(A) ([]Event, error)) ([]Event, error) {
+func (h *Handler[A]) handleLocked(ctx context.Context, aggregateID, aggType string, execute func(A) ([]Event, error)) ([]Event, error) {
+	typeAttr := metric.WithAttributes(attribute.String("aggregate_type", aggType))
 	for attempt := range maxRetries {
 		if attempt > 0 {
 			h.log.Info("retrying command", "aggregate_id", aggregateID, "attempt", attempt+1)
+			if metrics.CommandRetriesTotal != nil {
+				metrics.CommandRetriesTotal.Add(ctx, 1, typeAttr)
+			}
 		}
 
-		newEvents, err := h.tryHandle(ctx, aggregateID, execute)
+		newEvents, err := h.tryHandle(ctx, aggregateID, aggType, execute)
 		if errors.Is(err, ErrOptimisticConcurrency) {
 			h.log.Warn("optimistic concurrency conflict, will retry", "aggregate_id", aggregateID, "attempt", attempt+1)
 			continue
@@ -300,8 +330,9 @@ func (h *Handler[A]) publishEvents(ctx context.Context, aggregateID string, newE
 }
 
 // tryHandle performs a single load→execute→append attempt.
-func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute func(A) ([]Event, error)) ([]Event, error) {
+func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID, aggType string, execute func(A) ([]Event, error)) ([]Event, error) {
 	h.log.Debug("handling command", "aggregate_id", aggregateID)
+	typeAttr := metric.WithAttributes(attribute.String("aggregate_type", aggType))
 
 	var agg A
 	var expectedVersion int
@@ -310,9 +341,15 @@ func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID string, execute 
 		agg = cached.agg
 		expectedVersion = cached.version
 		h.log.Debug("using cached aggregate", "aggregate_id", aggregateID, "version", expectedVersion)
+		if metrics.AggregateCacheHitsTotal != nil {
+			metrics.AggregateCacheHitsTotal.Add(ctx, 1, typeAttr)
+		}
 	} else {
 		agg = h.factory(aggregateID)
 
+		if metrics.AggregateCacheMissTotal != nil {
+			metrics.AggregateCacheMissTotal.Add(ctx, 1, typeAttr)
+		}
 		v, err := h.loadAggregate(ctx, agg, aggregateID)
 		if err != nil {
 			return nil, err
