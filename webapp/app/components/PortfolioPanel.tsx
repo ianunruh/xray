@@ -556,6 +556,24 @@ export function PortfolioSummary({
           <Stack gap="xs">
             <Group gap="xl">
               <Stat label="Cash Held" value={formatMoney(portfolio.cashHeld)} />
+              <Stat
+                label="Settled Cash"
+                value={formatMoney(portfolio.settledCash)}
+              />
+              {portfolio.pendingCashCredits > 0n && (
+                <Stat
+                  label="Pending Credits"
+                  value={formatMoney(portfolio.pendingCashCredits)}
+                  color="green"
+                />
+              )}
+              {portfolio.pendingCashDebits > 0n && (
+                <Stat
+                  label="Pending Debits"
+                  value={formatMoney(portfolio.pendingCashDebits)}
+                  color="orange"
+                />
+              )}
               {margin && (
                 <>
                   <Stat label="Equity" value={formatMoney(margin.equity)} />

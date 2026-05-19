@@ -541,6 +541,39 @@ function OperationsCard({ ops }: { ops: GetOperationsStatusResponse }) {
             Event-driven (no tick)
           </Text>
         </OpsBlock>
+        <OpsBlock
+          title="Settlement Reactor"
+          subtitle={
+            ops.settlementReactor?.settlementEnabled
+              ? `T+${fmtDurMs(ops.settlementReactor?.windowMs ?? 0n)} · ${fmtInterval(
+                  ops.settlementReactor?.intervalMs,
+                )}`
+              : "disabled"
+          }
+        >
+          {ops.settlementReactor?.settlementEnabled === false ? (
+            <Text size="xs" c="dimmed">
+              Settlements clear instantly
+            </Text>
+          ) : ops.settlementReactor?.lastTickAt ? (
+            <Stack gap={2}>
+              <Text size="xs">
+                Last tick {fmtRelative(ops.settlementReactor.lastTickAt)} —{" "}
+                {fmtDurMs(ops.settlementReactor.lastTickMs)}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {ops.settlementReactor.lastTickAccounts} account
+                {ops.settlementReactor.lastTickAccounts === 1 ? "" : "s"} ·{" "}
+                {ops.settlementReactor.lastTickCleared} cleared ·{" "}
+                {ops.settlementReactor.lastTickFailed} failed
+              </Text>
+            </Stack>
+          ) : (
+            <Text size="xs" c="dimmed">
+              Awaiting first tick…
+            </Text>
+          )}
+        </OpsBlock>
       </Group>
     </Stack>
   );
