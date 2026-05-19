@@ -819,7 +819,16 @@ export function PortfolioPositions({
                   return (
                   <Table.Tr key={h.symbol}>
                     <Table.Td>{h.symbol}</Table.Td>
-                    <Table.Td ta="right">{formatQuantity(h.quantity)}</Table.Td>
+                    <Table.Td ta="right">
+                      <Group gap={4} justify="flex-end" wrap="nowrap">
+                        {formatQuantity(h.quantity)}
+                        {h.pendingShares > 0n && (
+                          <Text size="xs" c="dimmed" title="Shares pending settlement (T+1)">
+                            ({formatQuantity(h.pendingShares)} settling)
+                          </Text>
+                        )}
+                      </Group>
+                    </Table.Td>
                     <Table.Td ta="right">{formatMoney(h.averageCost)}</Table.Td>
                     <Table.Td ta="right">
                       {m && !m.markMissing ? (

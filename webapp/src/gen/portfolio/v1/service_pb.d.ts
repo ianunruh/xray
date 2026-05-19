@@ -242,6 +242,15 @@ export declare type Holding = Message<"portfolio.v1.Holding"> & {
    * @generated from field: int64 realized_pnl = 6;
    */
   realizedPnl: bigint;
+
+  /**
+   * pending_shares is the slice of `quantity` that's still settling
+   * (from buys that haven't cleared T+1). Margin-account model — the
+   * shares are tradeable now, this is purely the visible badge.
+   *
+   * @generated from field: int64 pending_shares = 7;
+   */
+  pendingShares: bigint;
 };
 
 /**

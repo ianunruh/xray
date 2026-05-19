@@ -584,13 +584,17 @@ func (x *GetPortfolioResponse) GetPendingCashDebits() int64 {
 }
 
 type Holding struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
-	Quantity      int64                  `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	TotalCost     int64                  `protobuf:"varint,3,opt,name=total_cost,json=totalCost,proto3" json:"total_cost,omitempty"`
-	AverageCost   int64                  `protobuf:"varint,4,opt,name=average_cost,json=averageCost,proto3" json:"average_cost,omitempty"`
-	SharesHeld    int64                  `protobuf:"varint,5,opt,name=shares_held,json=sharesHeld,proto3" json:"shares_held,omitempty"`
-	RealizedPnl   int64                  `protobuf:"varint,6,opt,name=realized_pnl,json=realizedPnl,proto3" json:"realized_pnl,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Symbol      string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Quantity    int64                  `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	TotalCost   int64                  `protobuf:"varint,3,opt,name=total_cost,json=totalCost,proto3" json:"total_cost,omitempty"`
+	AverageCost int64                  `protobuf:"varint,4,opt,name=average_cost,json=averageCost,proto3" json:"average_cost,omitempty"`
+	SharesHeld  int64                  `protobuf:"varint,5,opt,name=shares_held,json=sharesHeld,proto3" json:"shares_held,omitempty"`
+	RealizedPnl int64                  `protobuf:"varint,6,opt,name=realized_pnl,json=realizedPnl,proto3" json:"realized_pnl,omitempty"`
+	// pending_shares is the slice of `quantity` that's still settling
+	// (from buys that haven't cleared T+1). Margin-account model — the
+	// shares are tradeable now, this is purely the visible badge.
+	PendingShares int64 `protobuf:"varint,7,opt,name=pending_shares,json=pendingShares,proto3" json:"pending_shares,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -663,6 +667,13 @@ func (x *Holding) GetSharesHeld() int64 {
 func (x *Holding) GetRealizedPnl() int64 {
 	if x != nil {
 		return x.RealizedPnl
+	}
+	return 0
+}
+
+func (x *Holding) GetPendingShares() int64 {
+	if x != nil {
+		return x.PendingShares
 	}
 	return 0
 }
@@ -2516,7 +2527,7 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\x12total_realized_pnl\x18\x06 \x01(\x03R\x10totalRealizedPnl\x12!\n" +
 	"\fsettled_cash\x18\a \x01(\x03R\vsettledCash\x120\n" +
 	"\x14pending_cash_credits\x18\b \x01(\x03R\x12pendingCashCredits\x12.\n" +
-	"\x13pending_cash_debits\x18\t \x01(\x03R\x11pendingCashDebits\"\xc3\x01\n" +
+	"\x13pending_cash_debits\x18\t \x01(\x03R\x11pendingCashDebits\"\xea\x01\n" +
 	"\aHolding\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x1a\n" +
 	"\bquantity\x18\x02 \x01(\x03R\bquantity\x12\x1d\n" +
@@ -2525,7 +2536,8 @@ const file_portfolio_v1_service_proto_rawDesc = "" +
 	"\faverage_cost\x18\x04 \x01(\x03R\vaverageCost\x12\x1f\n" +
 	"\vshares_held\x18\x05 \x01(\x03R\n" +
 	"sharesHeld\x12!\n" +
-	"\frealized_pnl\x18\x06 \x01(\x03R\vrealizedPnl\"\x97\x05\n" +
+	"\frealized_pnl\x18\x06 \x01(\x03R\vrealizedPnl\x12%\n" +
+	"\x0epending_shares\x18\a \x01(\x03R\rpendingShares\"\x97\x05\n" +
 	"\fPendingOrder\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12&\n" +

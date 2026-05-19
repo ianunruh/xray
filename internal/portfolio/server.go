@@ -202,9 +202,10 @@ func (s *Server) StreamPortfolio(ctx context.Context, req *connect.Request[portf
 
 // loadPortfolioResponse reads the PG-backed portfolio response and,
 // when the pending-settlements reader is wired, decorates it with
-// the pending bucket sums. Keeping the two reads here (rather than
-// inside PgPortfolioProjection.GetPortfolio) means the projections
-// stay decoupled.
+// the pending cash bucket sums and per-symbol pending shares.
+// Keeping the two reads here (rather than inside
+// PgPortfolioProjection.GetPortfolio) means the projections stay
+// decoupled.
 func (s *Server) loadPortfolioResponse(ctx context.Context, accountID string) (*portfoliov1.GetPortfolioResponse, error) {
 	resp, err := s.reader.GetPortfolio(ctx, accountID)
 	if err != nil {
@@ -217,6 +218,16 @@ func (s *Server) loadPortfolioResponse(ctx context.Context, accountID string) (*
 		}
 		resp.PendingCashCredits = totals.Credits
 		resp.PendingCashDebits = totals.Debits
+
+		pendingShares, err := s.pendingReader.PendingSharesBySymbol(ctx, accountID)
+		if err != nil {
+			return nil, err
+		}
+		for _, h := range resp.Holdings {
+			if qty, ok := pendingShares[h.Symbol]; ok {
+				h.PendingShares = qty
+			}
+		}
 	}
 	return resp, nil
 }

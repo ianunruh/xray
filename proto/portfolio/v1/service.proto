@@ -80,6 +80,10 @@ message Holding {
   int64 average_cost = 4;
   int64 shares_held = 5;
   int64 realized_pnl = 6;
+  // pending_shares is the slice of `quantity` that's still settling
+  // (from buys that haven't cleared T+1). Margin-account model — the
+  // shares are tradeable now, this is purely the visible badge.
+  int64 pending_shares = 7;
 }
 
 message PendingOrder {
