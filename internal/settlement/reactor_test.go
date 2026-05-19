@@ -85,6 +85,17 @@ func (f *fakeReader) PendingTotals(_ context.Context, accountID string) (portfol
 	return totals, nil
 }
 
+func (f *fakeReader) PendingSharesBySymbol(_ context.Context, accountID string) (map[string]int64, error) {
+	out := make(map[string]int64)
+	for _, r := range f.rows {
+		if r.AccountID != accountID || r.Quantity <= 0 {
+			continue
+		}
+		out[r.Symbol] += r.Quantity
+	}
+	return out, nil
+}
+
 // fakeReaderSubscribed wraps fakeReader and removes a leg from the
 // fake row list when the reactor's ClearSettlement succeeds. The
 // reactor talks to the aggregate via the handler; the projection

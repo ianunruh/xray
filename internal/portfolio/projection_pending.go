@@ -32,6 +32,11 @@ type PendingSettlementsReader interface {
 	// PendingTotals returns the per-account credit/debit sums for
 	// every pending leg, signed by leg.CashAmount.
 	PendingTotals(ctx context.Context, accountID string) (PendingTotals, error)
+	// PendingSharesBySymbol returns the per-symbol sum of unsettled
+	// share counts for the account — sourced from open SHARE_CREDIT
+	// legs. Used to decorate GetPortfolio's holdings with the "X
+	// shares settling" badge.
+	PendingSharesBySymbol(ctx context.Context, accountID string) (map[string]int64, error)
 }
 
 // PendingLegRow is the projected row the reactor consumes; mirrors
@@ -44,6 +49,7 @@ type PendingLegRow struct {
 	Kind        portfoliov1.SettlementLegKind
 	Symbol      string
 	CashAmount  int64
+	Quantity    int64
 	SettlesAt   time.Time
 }
 
@@ -82,6 +88,19 @@ func (p *PgPendingProjection) HandleEvents(ctx context.Context, events []es.Even
 				Kind:        portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_CASH_DEBIT,
 				Symbol:      data.Symbol,
 				CashAmount:  -data.Amount,
+				SettlesAt:   data.SettlesAt.AsTime(),
+				EmittedAt:   data.SettledAt.AsTime(),
+			})
+			// Parallel SHARE_CREDIT leg — drives the per-symbol
+			// pending-shares badge. Mirrors what the aggregate
+			// stores in PendingShareCredits.
+			p.queueInsert(batch, pendingInsert{
+				AccountID:   data.AccountId,
+				OrderSagaID: data.OrderSagaId,
+				TradeID:     data.TradeId,
+				Kind:        portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_SHARE_CREDIT,
+				Symbol:      data.Symbol,
+				Quantity:    data.Quantity,
 				SettlesAt:   data.SettlesAt.AsTime(),
 				EmittedAt:   data.SettledAt.AsTime(),
 			})
@@ -156,6 +175,7 @@ type pendingInsert struct {
 	Kind        portfoliov1.SettlementLegKind
 	Symbol      string
 	CashAmount  int64
+	Quantity    int64
 	SettlesAt   time.Time
 	EmittedAt   time.Time
 }
@@ -165,11 +185,11 @@ func (p *PgPendingProjection) queueInsert(batch *pgx.Batch, ins pendingInsert) {
 	// row already captures the leg correctly.
 	batch.Queue(
 		`INSERT INTO projection_pending_settlements
-		 (account_id, trade_id, kind, order_saga_id, symbol, cash_amount, settles_at, emitted_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		 (account_id, trade_id, kind, order_saga_id, symbol, cash_amount, quantity, settles_at, emitted_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 ON CONFLICT (account_id, trade_id, kind) DO NOTHING`,
 		ins.AccountID, ins.TradeID, int32(ins.Kind), ins.OrderSagaID,
-		ins.Symbol, ins.CashAmount, ins.SettlesAt, ins.EmittedAt,
+		ins.Symbol, ins.CashAmount, ins.Quantity, ins.SettlesAt, ins.EmittedAt,
 	)
 }
 
@@ -196,7 +216,7 @@ func (p *PgPendingProjection) AccountsWithDueSettlements(ctx context.Context, be
 
 func (p *PgPendingProjection) DueLegs(ctx context.Context, accountID string, before time.Time) ([]PendingLegRow, error) {
 	rows, err := p.pool.Query(ctx,
-		`SELECT account_id, order_saga_id, trade_id, kind, symbol, cash_amount, settles_at
+		`SELECT account_id, order_saga_id, trade_id, kind, symbol, cash_amount, quantity, settles_at
 		 FROM projection_pending_settlements
 		 WHERE account_id = $1 AND settles_at <= $2
 		 ORDER BY settles_at ASC`,
@@ -212,7 +232,7 @@ func (p *PgPendingProjection) DueLegs(ctx context.Context, accountID string, bef
 			leg  PendingLegRow
 			kind int32
 		)
-		if err := rows.Scan(&leg.AccountID, &leg.OrderSagaID, &leg.TradeID, &kind, &leg.Symbol, &leg.CashAmount, &leg.SettlesAt); err != nil {
+		if err := rows.Scan(&leg.AccountID, &leg.OrderSagaID, &leg.TradeID, &kind, &leg.Symbol, &leg.CashAmount, &leg.Quantity, &leg.SettlesAt); err != nil {
 			return nil, fmt.Errorf("scan due leg: %w", err)
 		}
 		leg.Kind = portfoliov1.SettlementLegKind(kind)
@@ -235,4 +255,30 @@ func (p *PgPendingProjection) PendingTotals(ctx context.Context, accountID strin
 		return PendingTotals{}, fmt.Errorf("query pending totals: %w", err)
 	}
 	return totals, nil
+}
+
+func (p *PgPendingProjection) PendingSharesBySymbol(ctx context.Context, accountID string) (map[string]int64, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT symbol, SUM(quantity)
+		 FROM projection_pending_settlements
+		 WHERE account_id = $1 AND quantity > 0
+		 GROUP BY symbol`,
+		accountID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query pending shares: %w", err)
+	}
+	defer rows.Close()
+	out := make(map[string]int64)
+	for rows.Next() {
+		var (
+			sym string
+			qty int64
+		)
+		if err := rows.Scan(&sym, &qty); err != nil {
+			return nil, fmt.Errorf("scan pending shares row: %w", err)
+		}
+		out[sym] = qty
+	}
+	return out, rows.Err()
 }
