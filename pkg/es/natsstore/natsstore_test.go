@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -171,14 +172,14 @@ func TestProjectionConsumer_CatchUp(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	var received []es.Event
-	proj := &collectingProjection{events: &received}
+	proj := newCollectingProjection()
 
 	consumer := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "test-replay").
 		WithEphemeral(proj)
 	err = consumer.Start(ctx)
 	require.NoError(t, err)
 
+	received := proj.Snapshot()
 	assert.Len(t, received, 5)
 	for i, evt := range received {
 		data := evt.Data.(*orderbookv1.OrderPlaced)
@@ -195,14 +196,13 @@ func TestProjectionConsumer_Ongoing(t *testing.T) {
 	_, err := natsstore.EnsureStream(ctx, js)
 	require.NoError(t, err)
 
-	var received []es.Event
-	proj := &collectingProjection{events: &received}
+	proj := newCollectingProjection()
 
 	consumer := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "test-ongoing").
 		WithEphemeral(proj)
 	err = consumer.Start(ctx)
 	require.NoError(t, err)
-	assert.Empty(t, received)
+	assert.Zero(t, proj.Len())
 
 	publisher := natsstore.NewPublisher(js, slog.Default())
 	now := time.Now()
@@ -222,9 +222,10 @@ func TestProjectionConsumer_Ongoing(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
-		return len(received) == 1
+		return proj.Len() == 1
 	}, 2*time.Second, 10*time.Millisecond)
 
+	received := proj.Snapshot()
 	data := received[0].Data.(*orderbookv1.OrderPlaced)
 	assert.Equal(t, "order-1", data.OrderId)
 }
@@ -319,23 +320,22 @@ func TestProjectionConsumer_PersistentResumesFromCheckpoint(t *testing.T) {
 
 	checkpoint := newMemCheckpointStore()
 
-	var received []es.Event
-	proj := &collectingProjection{events: &received}
+	proj := newCollectingProjection()
 	consumer := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "test-resume").
 		WithPersistent(checkpoint, proj)
 	require.NoError(t, consumer.Start(ctx))
 
-	assert.Len(t, received, 5)
+	assert.Equal(t, 5, proj.Len())
 	assert.Equal(t, uint64(5), checkpoint.seqs["test-resume"])
 
 	publishOrderPlaced(t, ctx, publisher, 2, 6)
 
-	received = nil
+	proj.Reset()
 	consumer2 := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "test-resume").
 		WithPersistent(checkpoint, proj)
 	require.NoError(t, consumer2.Start(ctx))
 
-	assert.Len(t, received, 2)
+	assert.Equal(t, 2, proj.Len())
 	assert.Equal(t, uint64(7), checkpoint.seqs["test-resume"])
 }
 
@@ -352,20 +352,19 @@ func TestProjectionConsumer_EphemeralReplaysFromZero(t *testing.T) {
 	publisher := natsstore.NewPublisher(js, slog.Default())
 	publishOrderPlaced(t, ctx, publisher, 5, 1)
 
-	var received []es.Event
-	proj := &collectingProjection{events: &received}
+	proj := newCollectingProjection()
 	consumer := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "test-replay-boot").
 		WithEphemeral(proj)
 	require.NoError(t, consumer.Start(ctx))
-	assert.Len(t, received, 5)
+	assert.Equal(t, 5, proj.Len())
 
 	publishOrderPlaced(t, ctx, publisher, 2, 6)
 
-	received = nil
+	proj.Reset()
 	consumer2 := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "test-replay-boot").
 		WithEphemeral(proj)
 	require.NoError(t, consumer2.Start(ctx))
-	assert.Len(t, received, 7) // sees all 7 — cursor was reset on boot
+	assert.Equal(t, 7, proj.Len()) // sees all 7 — cursor was reset on boot
 }
 
 func TestProjectionConsumer_IndependentCursorsPerName(t *testing.T) {
@@ -402,33 +401,64 @@ func TestProjectionConsumer_IndependentCursorsPerName(t *testing.T) {
 	checkpoint := newMemCheckpointStore()
 
 	// Run consumer A: catches up through all 3 events, checkpoints.
-	var receivedA []es.Event
-	projA := &collectingProjection{events: &receivedA}
+	projA := newCollectingProjection()
 	consumerA := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "consumer-a").
 		WithPersistent(checkpoint, projA)
 	require.NoError(t, consumerA.Start(ctx))
-	assert.Len(t, receivedA, 3)
+	assert.Equal(t, 3, projA.Len())
 	assert.Equal(t, uint64(3), checkpoint.seqs["consumer-a"])
 
 	// Consumer B starts fresh on the same store but with a different name:
 	// must see all 3 events regardless of consumer A's progress.
-	var receivedB []es.Event
-	projB := &collectingProjection{events: &receivedB}
+	projB := newCollectingProjection()
 	consumerB := natsstore.NewProjectionConsumer(js, registry, slog.Default(), "consumer-b").
 		WithPersistent(checkpoint, projB)
 	require.NoError(t, consumerB.Start(ctx))
-	assert.Len(t, receivedB, 3)
+	assert.Equal(t, 3, projB.Len())
 	assert.Equal(t, uint64(3), checkpoint.seqs["consumer-b"])
 	assert.Equal(t, uint64(3), checkpoint.seqs["consumer-a"]) // unaffected
 }
 
+// collectingProjection records every event it receives. HandleEvents
+// runs on the consumer's goroutine while assertions read the slice
+// from the test goroutine, so all access goes through the mutex.
 type collectingProjection struct {
-	events *[]es.Event
+	mu     sync.Mutex
+	events []es.Event
+}
+
+func newCollectingProjection() *collectingProjection {
+	return &collectingProjection{}
 }
 
 func (p *collectingProjection) HandleEvents(_ context.Context, events []es.Event) error {
-	*p.events = append(*p.events, events...)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events = append(p.events, events...)
 	return nil
+}
+
+func (p *collectingProjection) Len() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.events)
+}
+
+// Snapshot returns a copy of the collected events. Use this instead of
+// retaining the slice across multiple assertions, since the consumer
+// goroutine may keep appending.
+func (p *collectingProjection) Snapshot() []es.Event {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]es.Event, len(p.events))
+	copy(out, p.events)
+	return out
+}
+
+func (p *collectingProjection) Reset() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events = nil
 }
 
 type memCheckpointStore struct {
