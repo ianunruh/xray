@@ -74,6 +74,30 @@ func (r *Registry) Serialize(e Event) (RawEvent, error) {
 	}, nil
 }
 
+// SerializeInto marshals e.Data by appending to buf, so multiple events
+// from the same command can share one pooled buffer. Returns the
+// RawEvent (whose Data sub-slices the buffer) and the new buffer with
+// the appended bytes. Caller owns the buffer's lifetime and must keep
+// it alive at least until the resulting RawEvent.Data has been consumed
+// (e.g. the store Append returns).
+func (r *Registry) SerializeInto(e Event, buf []byte) (RawEvent, []byte, error) {
+	start := len(buf)
+	appended, err := proto.MarshalOptions{}.MarshalAppend(buf, e.Data)
+	if err != nil {
+		return RawEvent{}, buf, fmt.Errorf("marshal event %s: %w", e.Type, err)
+	}
+	return RawEvent{
+		ID:            e.ID,
+		CausationID:   e.CausationID,
+		CorrelationID: e.CorrelationID,
+		AggregateID:   e.AggregateID,
+		Type:          e.Type,
+		Version:       e.Version,
+		Timestamp:     e.Timestamp,
+		Data:          appended[start:],
+	}, appended, nil
+}
+
 // Deserialize converts a RawEvent to an Event by looking up the factory
 // for the event type and unmarshaling the data.
 func (r *Registry) Deserialize(raw RawEvent) (Event, error) {

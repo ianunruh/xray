@@ -115,6 +115,10 @@ func (s *Store) StreamMetadata(_ context.Context, aggregateID string) (es.Stream
 
 // Append adds new events to the stream. It returns ErrOptimisticConcurrency
 // if the expected version doesn't match the current stream length.
+//
+// Data bytes are copied so callers are free to reuse the input slice
+// after Append returns (matching the contract observed by pgstore via
+// pgx, which serializes the bytes to the wire during the call).
 func (s *Store) Append(_ context.Context, aggregateID string, expectedVersion int, events []es.RawEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -128,6 +132,11 @@ func (s *Store) Append(_ context.Context, aggregateID string, expectedVersion in
 		evt.AggregateID = aggregateID
 		evt.Version = expectedVersion + i + 1
 		evt.Position = s.nextPosition.Add(1)
+		if evt.Data != nil {
+			owned := make([]byte, len(evt.Data))
+			copy(owned, evt.Data)
+			evt.Data = owned
+		}
 		stream = append(stream, evt)
 	}
 

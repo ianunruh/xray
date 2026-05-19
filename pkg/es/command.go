@@ -18,6 +18,28 @@ import (
 
 const maxRetries = 3
 
+// rawEventSlicePool recycles the per-command []RawEvent slice. The slice
+// itself is reused across commands; the RawEvent.Data byte slices it
+// holds reference into marshalBufPool buffers, which are recycled in
+// the same defer.
+var rawEventSlicePool = sync.Pool{
+	New: func() any {
+		s := make([]RawEvent, 0, 16)
+		return &s
+	},
+}
+
+// marshalBufPool recycles the scratch buffer that all events in a
+// single command marshal into. Each event's RawEvent.Data is a
+// sub-slice of this buffer, so the whole buffer must outlive the
+// store.Append call. The defer in tryHandle handles that.
+var marshalBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0, 4096)
+		return &b
+	},
+}
+
 // aggregateLocks provides per-aggregate mutual exclusion so that the
 // load→execute→append cycle is serialized for each aggregate ID.
 type aggregateLocks struct {
@@ -371,13 +393,30 @@ func (h *Handler[A]) tryHandle(ctx context.Context, aggregateID, aggType string,
 
 	stampCausation(ctx, newEvents)
 
-	rawNew := make([]RawEvent, len(newEvents))
-	for i, evt := range newEvents {
-		raw, err := h.registry.Serialize(evt)
+	slicePtr := rawEventSlicePool.Get().(*[]RawEvent)
+	bufPtr := marshalBufPool.Get().(*[]byte)
+	rawNew := (*slicePtr)[:0]
+	scratch := (*bufPtr)[:0]
+	defer func() {
+		// Clear references so the pool doesn't keep proto messages alive
+		// any longer than necessary, then return both for reuse.
+		for i := range rawNew {
+			rawNew[i] = RawEvent{}
+		}
+		*slicePtr = rawNew[:0]
+		rawEventSlicePool.Put(slicePtr)
+		*bufPtr = scratch[:0]
+		marshalBufPool.Put(bufPtr)
+	}()
+
+	for _, evt := range newEvents {
+		var raw RawEvent
+		var err error
+		raw, scratch, err = h.registry.SerializeInto(evt, scratch)
 		if err != nil {
 			return nil, fmt.Errorf("serialize event: %w", err)
 		}
-		rawNew[i] = raw
+		rawNew = append(rawNew, raw)
 	}
 
 	if err := h.store.Append(ctx, aggregateID, expectedVersion, rawNew); err != nil {
