@@ -298,6 +298,8 @@ func (p *Portfolio) Apply(evt es.Event) error {
 		p.applyHoldingAdjusted(data)
 	case *portfoliov1.DividendCredited:
 		p.applyDividendCredited(data)
+	case *portfoliov1.SymbolMigrated:
+		p.applySymbolMigrated(data)
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}
@@ -669,6 +671,32 @@ func (p *Portfolio) advanceAccrualClock(end *timestamppb.Timestamp) {
 	}
 	if t := end.AsTime(); t.After(p.LastAccruedAt) {
 		p.LastAccruedAt = t
+	}
+}
+
+func (p *Portfolio) applySymbolMigrated(data *portfoliov1.SymbolMigrated) {
+	if p.HasAppliedAction(data.ActionId) {
+		return
+	}
+	p.markActionApplied(data.ActionId)
+
+	// Rewrite Holdings, ShortPositions, and PendingShareCredits keys
+	// from old → new. SharesHeld / ShortCoversHeld / ShareHoldsBySaga
+	// are zeroed out by the upstream order/saga cancellation pass and
+	// don't need migration. PendingLegs reference the symbol per-leg
+	// (audit field, not a key) and stay with the original symbol —
+	// the cash side clears regardless.
+	if h, ok := p.Holdings[data.OldSymbol]; ok {
+		p.Holdings[data.NewSymbol] = h
+		delete(p.Holdings, data.OldSymbol)
+	}
+	if s, ok := p.ShortPositions[data.OldSymbol]; ok {
+		p.ShortPositions[data.NewSymbol] = s
+		delete(p.ShortPositions, data.OldSymbol)
+	}
+	if qty, ok := p.PendingShareCredits[data.OldSymbol]; ok {
+		p.PendingShareCredits[data.NewSymbol] += qty
+		delete(p.PendingShareCredits, data.OldSymbol)
 	}
 }
 

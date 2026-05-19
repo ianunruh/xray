@@ -12,6 +12,7 @@ import (
 
 	corpactionv1 "github.com/ianunruh/xray/gen/corpaction/v1"
 	"github.com/ianunruh/xray/internal/corpaction"
+	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/portfolio"
 	"github.com/ianunruh/xray/pkg/es"
 	"github.com/ianunruh/xray/pkg/es/memstore"
@@ -91,6 +92,7 @@ func (f *fakeSagaCanceler) CancelByID(_ context.Context, sagaID string) error {
 
 type coordEnv struct {
 	handler   *es.Handler[*portfolio.Portfolio]
+	obHandler *es.Handler[*orderbook.OrderBook]
 	holders   *fakeHolders
 	holdings  *fakeHoldings
 	orders    *fakeOrders
@@ -105,22 +107,27 @@ func newCoordinatorEnv(t *testing.T) *coordEnv {
 	t.Helper()
 	registry := es.NewRegistry()
 	portfolio.RegisterEvents(registry)
+	orderbook.RegisterEvents(registry)
 	store := memstore.New()
 	handler := es.NewHandler(store, registry, func(id string) *portfolio.Portfolio {
 		return portfolio.NewPortfolio(id)
 	}, slog.Default())
+	obHandler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
+		return orderbook.NewOrderBook(id)
+	}, slog.Default())
 
 	e := &coordEnv{
-		handler:  handler,
-		holders:  &fakeHolders{rows: map[string][]string{}},
-		holdings: &fakeHoldings{rows: map[string][]corpaction.HolderShares{}},
-		orders:   &fakeOrders{rows: map[string][]corpaction.OpenOrder{}},
-		sagas:    &fakeSagas{rows: map[string][]corpaction.SagaInfo{}},
-		orderC:   &fakeOrderCanceler{},
-		sagaC:    &fakeSagaCanceler{},
-		divStore: newFakeDividendStore(),
+		handler:   handler,
+		obHandler: obHandler,
+		holders:   &fakeHolders{rows: map[string][]string{}},
+		holdings:  &fakeHoldings{rows: map[string][]corpaction.HolderShares{}},
+		orders:    &fakeOrders{rows: map[string][]corpaction.OpenOrder{}},
+		sagas:     &fakeSagas{rows: map[string][]corpaction.SagaInfo{}},
+		orderC:    &fakeOrderCanceler{},
+		sagaC:     &fakeSagaCanceler{},
+		divStore:  newFakeDividendStore(),
 	}
-	e.coord = corpaction.NewCoordinator(handler, e.holders, e.holdings, e.orders, e.sagas, e.orderC, e.sagaC, e.divStore)
+	e.coord = corpaction.NewCoordinator(handler, obHandler, e.holders, e.holdings, e.orders, e.sagas, e.orderC, e.sagaC, e.divStore)
 	return e
 }
 
@@ -228,15 +235,94 @@ func TestCoordinator_Split_IdempotentOnRetry(t *testing.T) {
 	assert.Equal(t, int64(200), p.Holdings["AAPL"].Quantity, "still 200, not 400")
 }
 
-func TestCoordinator_UnsupportedType_ReturnsErr(t *testing.T) {
+func TestCoordinator_Rename_FansOutAndTerminatesOldBook(t *testing.T) {
 	e := newCoordinatorEnv(t)
+	depositAndCredit(t, e.handler, "acct-1", "FB", 100, 1_000_000)
+	depositAndCredit(t, e.handler, "acct-2", "FB", 50, 1_500_000)
+	e.holders.rows["FB"] = []string{"acct-1", "acct-2"}
+	e.orders.rows["FB"] = []corpaction.OpenOrder{
+		{OrderID: "ord-1", Symbol: "FB"},
+	}
+	e.sagas.rows["FB"] = []corpaction.SagaInfo{
+		{SagaID: "saga-1"},
+	}
+
+	counts, err := e.coord.ApplyAction(context.Background(), corpaction.ActionRow{
+		ActionID:  "rename-1",
+		Symbol:    "FB",
+		Type:      corpactionv1.ActionType_ACTION_TYPE_SYMBOL_CHANGE,
+		NewSymbol: "META",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), counts.Holders)
+	assert.Equal(t, int32(1), counts.Orders)
+	assert.Equal(t, int32(1), counts.Sagas)
+
+	// Holdings rewritten on both portfolios.
+	for _, acct := range []string{"acct-1", "acct-2"} {
+		p, err := e.handler.Load(context.Background(), portfolio.AggregateID(acct))
+		require.NoError(t, err)
+		assert.Nil(t, p.Holdings["FB"], "old key gone for %s", acct)
+		assert.NotNil(t, p.Holdings["META"], "new key present for %s", acct)
+		assert.True(t, p.HasAppliedAction("rename-1"))
+	}
+
+	// Orderbook aggregate marked renamed.
+	book, err := e.obHandler.Load(context.Background(), orderbook.AggregateID("FB"))
+	require.NoError(t, err)
+	assert.Equal(t, "META", book.RenamedTo, "old book points to new ticker")
+	assert.Equal(t, orderbook.PhaseClosed, book.Phase, "old book closed")
+}
+
+func TestCoordinator_Rename_RejectsPostRenameOrders(t *testing.T) {
+	e := newCoordinatorEnv(t)
+	// Run a rename with no holders/orders/sagas to keep the test focused.
 	_, err := e.coord.ApplyAction(context.Background(), corpaction.ActionRow{
 		ActionID:  "rename-1",
-		Symbol:    "AAPL",
+		Symbol:    "FB",
 		Type:      corpactionv1.ActionType_ACTION_TYPE_SYMBOL_CHANGE,
-		NewSymbol: "MSFT",
+		NewSymbol: "META",
 	})
-	assert.ErrorIs(t, err, corpaction.ErrNotImplemented)
+	require.NoError(t, err)
+
+	// Now try to place an order on the old symbol — should fail.
+	placeCmd := orderbook.PlaceOrder{
+		Symbol:      "FB",
+		Side:        orderbook.Buy,
+		Price:       1_000_000,
+		Quantity:    1,
+		OrderType:   orderbook.Limit,
+		TimeInForce: orderbook.GTC,
+		OrderID:     "ord-test",
+		AccountID:   "acct-test",
+	}
+	err = e.obHandler.Handle(context.Background(), placeCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecutePlaceOrder(book, placeCmd)
+	})
+	assert.ErrorIs(t, err, orderbook.ErrSymbolRenamed, "old symbol rejects new orders")
+}
+
+func TestCoordinator_Rename_Idempotent(t *testing.T) {
+	e := newCoordinatorEnv(t)
+	depositAndCredit(t, e.handler, "acct-1", "FB", 100, 1_000_000)
+	e.holders.rows["FB"] = []string{"acct-1"}
+
+	row := corpaction.ActionRow{
+		ActionID:  "rename-retry",
+		Symbol:    "FB",
+		Type:      corpactionv1.ActionType_ACTION_TYPE_SYMBOL_CHANGE,
+		NewSymbol: "META",
+	}
+	_, err := e.coord.ApplyAction(context.Background(), row)
+	require.NoError(t, err)
+	// Second apply — Holdings already migrated, mark action retains
+	// AppliedActions; MigrateSymbol short-circuits.
+	_, err = e.coord.ApplyAction(context.Background(), row)
+	require.NoError(t, err)
+
+	p, _ := e.handler.Load(context.Background(), portfolio.AggregateID("acct-1"))
+	assert.NotNil(t, p.Holdings["META"])
+	assert.Nil(t, p.Holdings["FB"])
 }
 
 func TestCoordinator_Dividend_SnapshotAndApply(t *testing.T) {

@@ -1080,6 +1080,49 @@ export declare type HoldingAdjusted = Message<"portfolio.v1.HoldingAdjusted"> & 
 export declare const HoldingAdjustedSchema: GenMessage<HoldingAdjusted>;
 
 /**
+ * SymbolMigrated records the per-account rewrite of all positional
+ * state from old_symbol to new_symbol when a SYMBOL_CHANGE corporate
+ * action applies. Holdings, ShortPositions, and PendingShareCredits
+ * migrate; pending settlement legs (which reference the original
+ * trade's symbol for audit) are left in place — their cash clears
+ * regardless of the symbol rename. Idempotent via AppliedActions.
+ *
+ * @generated from message portfolio.v1.SymbolMigrated
+ */
+export declare type SymbolMigrated = Message<"portfolio.v1.SymbolMigrated"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string action_id = 2;
+   */
+  actionId: string;
+
+  /**
+   * @generated from field: string old_symbol = 3;
+   */
+  oldSymbol: string;
+
+  /**
+   * @generated from field: string new_symbol = 4;
+   */
+  newSymbol: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp migrated_at = 5;
+   */
+  migratedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.SymbolMigrated.
+ * Use `create(SymbolMigratedSchema)` to create a new message.
+ */
+export declare const SymbolMigratedSchema: GenMessage<SymbolMigrated>;
+
+/**
  * DividendCredited records a cash-dividend payment to a single
  * account on a single corporate action. Emitted per (account,
  * action) on pay_date by the corpaction coordinator. Dividends

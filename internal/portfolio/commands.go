@@ -1131,3 +1131,47 @@ func ExecuteCreditDividend(p *Portfolio, cmd CreditDividend) ([]es.Event, error)
 	}
 	return []es.Event{evt}, nil
 }
+
+// MigrateSymbol rewrites a portfolio's per-symbol positional state
+// from OldSymbol to NewSymbol on a SYMBOL_CHANGE corporate action.
+// Idempotent on action_id — re-issuing the same command is a no-op.
+type MigrateSymbol struct {
+	AccountID string
+	ActionID  string
+	OldSymbol string
+	NewSymbol string
+}
+
+func (c MigrateSymbol) AggregateID() string { return AggregateID(c.AccountID) }
+
+func ExecuteMigrateSymbol(p *Portfolio, cmd MigrateSymbol) ([]es.Event, error) {
+	if cmd.ActionID == "" {
+		return nil, errors.New("action_id required")
+	}
+	if cmd.OldSymbol == "" || cmd.NewSymbol == "" {
+		return nil, errors.New("old_symbol and new_symbol required")
+	}
+	if cmd.OldSymbol == cmd.NewSymbol {
+		return nil, errors.New("new_symbol must differ from old_symbol")
+	}
+	if p.HasAppliedAction(cmd.ActionID) {
+		return nil, nil
+	}
+	now := time.Now()
+	evt := es.Event{
+		AggregateID: p.AggregateID(),
+		Type:        EventSymbolMigrated,
+		Timestamp:   now,
+		Data: &portfoliov1.SymbolMigrated{
+			AccountId:   cmd.AccountID,
+			ActionId:    cmd.ActionID,
+			OldSymbol:   cmd.OldSymbol,
+			NewSymbol:   cmd.NewSymbol,
+			MigratedAt:  timestamppb.New(now),
+		},
+	}
+	if err := p.Apply(evt); err != nil {
+		return nil, err
+	}
+	return []es.Event{evt}, nil
+}

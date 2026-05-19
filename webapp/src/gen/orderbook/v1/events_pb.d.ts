@@ -492,6 +492,44 @@ export declare type OfficialCloseSet = Message<"orderbook.v1.OfficialCloseSet"> 
 export declare const OfficialCloseSetSchema: GenMessage<OfficialCloseSet>;
 
 /**
+ * SymbolRenamed terminates an orderbook aggregate's order-accepting
+ * life. Future PlaceOrder / OpenAuction commands reject; the
+ * aggregate's events stay in history for audit and replay. The new
+ * symbol gets a fresh aggregate (created lazily on first order
+ * against it). Emitted by the corporate-action coordinator on a
+ * SYMBOL_CHANGE action.
+ *
+ * @generated from message orderbook.v1.SymbolRenamed
+ */
+export declare type SymbolRenamed = Message<"orderbook.v1.SymbolRenamed"> & {
+  /**
+   * @generated from field: string old_symbol = 1;
+   */
+  oldSymbol: string;
+
+  /**
+   * @generated from field: string new_symbol = 2;
+   */
+  newSymbol: string;
+
+  /**
+   * @generated from field: string action_id = 3;
+   */
+  actionId: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp renamed_at = 4;
+   */
+  renamedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.SymbolRenamed.
+ * Use `create(SymbolRenamedSchema)` to create a new message.
+ */
+export declare const SymbolRenamedSchema: GenMessage<SymbolRenamed>;
+
+/**
  * @generated from message orderbook.v1.SagaStarted
  */
 export declare type SagaStarted = Message<"orderbook.v1.SagaStarted"> & {

@@ -27,6 +27,7 @@ var (
 	ErrAuctionRejectsIOC           = errors.New("IOC/FOK orders cannot be placed during an auction")
 	ErrAuctionRejectsMarket        = errors.New("market orders cannot be placed during an auction without AT_OPEN/AT_CLOSE")
 	ErrMarketClosed                = errors.New("market is closed")
+	ErrSymbolRenamed               = errors.New("symbol has been renamed; place orders against the new ticker")
 	ErrAlreadyInAuction            = errors.New("market is already in an auction phase")
 	ErrNotInAuction                = errors.New("uncross requires the market to be in an auction phase")
 	ErrCannotOpenAuction           = errors.New("opening auction can only be entered from CONTINUOUS or CLOSED")
@@ -192,6 +193,13 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 		}
 	}
 
+	// Renamed orderbooks reject new orders permanently — the symbol's
+	// state has migrated to a fresh aggregate keyed under new_symbol.
+	// Checked before phase so the error is specific (the post-rename
+	// phase is also Closed, but ErrMarketClosed would mislead).
+	if book.RenamedTo != "" {
+		return nil, ErrSymbolRenamed
+	}
 	// Phase-aware validation matrix. Each phase has a different set of
 	// acceptable (OrderType, TimeInForce) combinations.
 	switch book.Phase {
@@ -718,4 +726,46 @@ func ExecuteReplaceOrder(book *OrderBook, cmd ReplaceOrder) ([]es.Event, error) 
 	events = triggerStops(book, events, now)
 
 	return events, nil
+}
+
+// MarkRenamed permanently terminates this orderbook's order-accepting
+// life. Called by the corporate-action coordinator on a SYMBOL_CHANGE
+// action after open orders have been cancelled. Idempotent: re-issuing
+// against an already-renamed orderbook is a no-op.
+type MarkRenamed struct {
+	Symbol    string
+	NewSymbol string
+	ActionID  string
+}
+
+func (c MarkRenamed) AggregateID() string {
+	return AggregateID(c.Symbol)
+}
+
+func ExecuteMarkRenamed(book *OrderBook, cmd MarkRenamed) ([]es.Event, error) {
+	if cmd.NewSymbol == "" {
+		return nil, errors.New("new_symbol required")
+	}
+	if cmd.ActionID == "" {
+		return nil, errors.New("action_id required")
+	}
+	if book.RenamedTo != "" {
+		return nil, nil
+	}
+	now := time.Now()
+	evt := es.Event{
+		AggregateID: book.AggregateID(),
+		Type:        EventSymbolRenamed,
+		Timestamp:   now,
+		Data: &orderbookv1.SymbolRenamed{
+			OldSymbol: cmd.Symbol,
+			NewSymbol: cmd.NewSymbol,
+			ActionId:  cmd.ActionID,
+			RenamedAt: timestamppb.New(now),
+		},
+	}
+	if err := book.Apply(evt); err != nil {
+		return nil, err
+	}
+	return []es.Event{evt}, nil
 }

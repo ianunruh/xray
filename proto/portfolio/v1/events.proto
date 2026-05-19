@@ -328,6 +328,20 @@ message HoldingAdjusted {
   google.protobuf.Timestamp adjusted_at    = 9;
 }
 
+// SymbolMigrated records the per-account rewrite of all positional
+// state from old_symbol to new_symbol when a SYMBOL_CHANGE corporate
+// action applies. Holdings, ShortPositions, and PendingShareCredits
+// migrate; pending settlement legs (which reference the original
+// trade's symbol for audit) are left in place — their cash clears
+// regardless of the symbol rename. Idempotent via AppliedActions.
+message SymbolMigrated {
+  string                    account_id  = 1;
+  string                    action_id   = 2;
+  string                    old_symbol  = 3;
+  string                    new_symbol  = 4;
+  google.protobuf.Timestamp migrated_at = 5;
+}
+
 // DividendCredited records a cash-dividend payment to a single
 // account on a single corporate action. Emitted per (account,
 // action) on pay_date by the corpaction coordinator. Dividends

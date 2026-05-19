@@ -233,6 +233,17 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 				 WHERE account_id = $2`,
 				data.Amount, data.AccountId,
 			)
+		case *portfoliov1.SymbolMigrated:
+			// Rewrite the per-account holding row from old → new
+			// symbol. ON CONFLICT shouldn't happen (you can't hold
+			// both symbols simultaneously if one renamed into the
+			// other), but DO NOTHING keeps replays safe.
+			batch.Queue(
+				`UPDATE projection_holdings
+				 SET symbol = $1
+				 WHERE account_id = $2 AND symbol = $3`,
+				data.NewSymbol, data.AccountId, data.OldSymbol,
+			)
 		}
 	}
 

@@ -221,6 +221,19 @@ message OfficialCloseSet {
   google.protobuf.Timestamp at = 5;
 }
 
+// SymbolRenamed terminates an orderbook aggregate's order-accepting
+// life. Future PlaceOrder / OpenAuction commands reject; the
+// aggregate's events stay in history for audit and replay. The new
+// symbol gets a fresh aggregate (created lazily on first order
+// against it). Emitted by the corporate-action coordinator on a
+// SYMBOL_CHANGE action.
+message SymbolRenamed {
+  string                    old_symbol = 1;
+  string                    new_symbol = 2;
+  string                    action_id  = 3;
+  google.protobuf.Timestamp renamed_at = 4;
+}
+
 // Saga lifecycle events — stored under aggregate ID "saga:{uuid}".
 
 message SagaStarted {

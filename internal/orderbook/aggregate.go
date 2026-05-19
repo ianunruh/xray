@@ -45,6 +45,13 @@ type OrderBook struct {
 	// session — sums every TradeExecuted (continuous + auction crosses)
 	// and resets to zero on OfficialCloseSet.
 	SessionVolume int64
+
+	// RenamedTo is set when a SYMBOL_CHANGE corporate action has
+	// applied to this orderbook. The aggregate's events stay in
+	// history for audit; new commands (PlaceOrder, OpenAuction, etc.)
+	// reject with ErrSymbolRenamed. The new symbol is a fresh
+	// aggregate created lazily on first order against it.
+	RenamedTo string
 }
 
 // NewOrderBook creates a new OrderBook aggregate with the given ID.
@@ -148,6 +155,14 @@ func (ob *OrderBook) Apply(evt es.Event) error {
 		// is preserved on the event itself (CloseVolume) for consumers
 		// that care about end-of-session totals.
 		ob.SessionVolume = 0
+	case *orderbookv1.SymbolRenamed:
+		// Permanently terminate this aggregate's order-accepting life.
+		// Phase flips to Closed so order-placement guards reject; the
+		// RenamedTo field is the source of truth for the new ticker
+		// in case the UI / diagnostics needs to show a forwarding
+		// pointer.
+		ob.Phase = PhaseClosed
+		ob.RenamedTo = data.NewSymbol
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	corpactionv1 "github.com/ianunruh/xray/gen/corpaction/v1"
+	"github.com/ianunruh/xray/internal/orderbook"
 	"github.com/ianunruh/xray/internal/portfolio"
 	"github.com/ianunruh/xray/pkg/es"
 )
@@ -70,6 +71,7 @@ type SagaCanceler interface {
 // unit-tested with fakes.
 type Coordinator struct {
 	portfolioHandler *es.Handler[*portfolio.Portfolio]
+	orderbookHandler *es.Handler[*orderbook.OrderBook]
 	holders          HoldersReader
 	holdings         HoldingsReader
 	orders           OrderLister
@@ -81,6 +83,7 @@ type Coordinator struct {
 
 func NewCoordinator(
 	portfolioHandler *es.Handler[*portfolio.Portfolio],
+	orderbookHandler *es.Handler[*orderbook.OrderBook],
 	holders HoldersReader,
 	holdings HoldingsReader,
 	orders OrderLister,
@@ -91,6 +94,7 @@ func NewCoordinator(
 ) *Coordinator {
 	return &Coordinator{
 		portfolioHandler: portfolioHandler,
+		orderbookHandler: orderbookHandler,
 		holders:          holders,
 		holdings:         holdings,
 		orders:           orders,
@@ -111,7 +115,7 @@ func (c *Coordinator) ApplyAction(ctx context.Context, action ActionRow) (Fanout
 	case corpactionv1.ActionType_ACTION_TYPE_CASH_DIVIDEND:
 		return c.applyDividend(ctx, action)
 	case corpactionv1.ActionType_ACTION_TYPE_SYMBOL_CHANGE:
-		return FanoutCounts{}, ErrNotImplemented
+		return c.applyRename(ctx, action)
 	default:
 		return FanoutCounts{}, fmt.Errorf("unknown action type: %v", action.Type)
 	}
@@ -191,6 +195,78 @@ func (c *Coordinator) applySplit(ctx context.Context, action ActionRow) (FanoutC
 			return counts, fmt.Errorf("adjust holding for %s: %w", accountID, err)
 		}
 		counts.Holders++
+	}
+	return counts, nil
+}
+
+// applyRename cancels orders + sagas for the old symbol, migrates
+// per-account positional state from old to new, then permanently
+// terminates the old orderbook aggregate. Order: cancellations
+// first (so holds release while the aggregate still accepts cancel
+// commands), then portfolio migration, then orderbook closure.
+func (c *Coordinator) applyRename(ctx context.Context, action ActionRow) (FanoutCounts, error) {
+	var counts FanoutCounts
+	if action.NewSymbol == "" {
+		return counts, errors.New("rename action missing new_symbol")
+	}
+
+	// 1. Cancel resting orders on the old symbol.
+	open := c.orders.OpenOrdersBySymbol(action.Symbol)
+	reason := fmt.Sprintf("corporate_action:rename:%s", action.ActionID)
+	for _, o := range open {
+		if err := c.cancelOrder.CancelOrder(ctx, action.Symbol, o.OrderID, reason); err != nil {
+			return counts, fmt.Errorf("cancel order %s: %w", o.OrderID, err)
+		}
+		counts.Orders++
+	}
+
+	// 2. Cancel in-flight sagas on the old symbol.
+	active, err := c.sagas.ActiveSagasBySymbol(ctx, action.Symbol)
+	if err != nil {
+		return counts, fmt.Errorf("list active sagas: %w", err)
+	}
+	for _, s := range active {
+		if err := c.cancelSaga.CancelByID(ctx, s.SagaID); err != nil {
+			return counts, fmt.Errorf("cancel saga %s: %w", s.SagaID, err)
+		}
+		counts.Sagas++
+	}
+
+	// 3. Migrate holdings for every long-position holder. Short
+	//    positions also migrate via the same aggregate-level rewrite;
+	//    holders enumeration walks projection_holdings (long-only)
+	//    today — v1 limitation, documented in the plan as a
+	//    follow-up.
+	accounts, err := c.holders.HoldersOfSymbol(ctx, action.Symbol)
+	if err != nil {
+		return counts, fmt.Errorf("list holders: %w", err)
+	}
+	for _, accountID := range accounts {
+		cmd := portfolio.MigrateSymbol{
+			AccountID: accountID,
+			ActionID:  action.ActionID,
+			OldSymbol: action.Symbol,
+			NewSymbol: action.NewSymbol,
+		}
+		if err := c.portfolioHandler.Handle(ctx, cmd, func(p *portfolio.Portfolio) ([]es.Event, error) {
+			return portfolio.ExecuteMigrateSymbol(p, cmd)
+		}); err != nil {
+			return counts, fmt.Errorf("migrate symbol for %s: %w", accountID, err)
+		}
+		counts.Holders++
+	}
+
+	// 4. Terminate the old orderbook aggregate. After this, PlaceOrder
+	//    against orderbook:<old_symbol> returns ErrSymbolRenamed.
+	markCmd := orderbook.MarkRenamed{
+		Symbol:    action.Symbol,
+		NewSymbol: action.NewSymbol,
+		ActionID:  action.ActionID,
+	}
+	if err := c.orderbookHandler.Handle(ctx, markCmd, func(book *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecuteMarkRenamed(book, markCmd)
+	}); err != nil {
+		return counts, fmt.Errorf("mark orderbook renamed: %w", err)
 	}
 	return counts, nil
 }
