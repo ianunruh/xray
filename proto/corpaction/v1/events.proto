@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package corpaction.v1;
+
+option go_package = "github.com/ianunruh/xray/gen/corpaction/v1;corpactionv1";
+
+import "google/protobuf/timestamp.proto";
+
+// Corporate-action lifecycle events. Stored under aggregate ID
+// "corp-action:{action_id}". The aggregate itself is a tiny state
+// machine — actual state changes (holdings, orders, sagas) live on
+// their own aggregates via their own events, each carrying the same
+// action_id so dedup keyed by (target, action_id) is replay-safe.
+
+// ActionType discriminates the type-specific payload on
+// CorporateActionDeclared. SPLIT covers both forward (ratio > 1) and
+// reverse (ratio < 1).
+enum ActionType {
+  ACTION_TYPE_UNSPECIFIED   = 0;
+  ACTION_TYPE_SPLIT         = 1;
+  ACTION_TYPE_CASH_DIVIDEND = 2;
+  ACTION_TYPE_SYMBOL_CHANGE = 3;
+}
+
+// ActionStatus is the lifecycle marker the aggregate's Status maps to.
+// Status is also surfaced via the projection so the UI ledger can
+// filter without loading aggregates.
+enum ActionStatus {
+  ACTION_STATUS_UNSPECIFIED = 0;
+  // Declared but not yet applied — sitting in the queue waiting for
+  // effective_date (splits/renames) or pay_date (dividends).
+  ACTION_STATUS_DECLARED = 1;
+  // Fan-out events emitted, action is in the history.
+  ACTION_STATUS_APPLIED  = 2;
+  // Fan-out hit an unrecoverable error; logged in failed_reason.
+  ACTION_STATUS_FAILED   = 3;
+}
+
+// CorporateActionDeclared records an operator's intent to apply a
+// corporate action at some future moment. The reactor scans for
+// declared actions whose effective_date (or pay_date for dividends)
+// has passed and drives the fan-out.
+message CorporateActionDeclared {
+  string                    action_id      = 1;
+  string                    symbol         = 2;
+  ActionType                type           = 3;
+
+  // Split: ratio is numerator/denominator. 2-for-1 = 2/1,
+  // 1-for-10 (reverse) = 1/10. Both must be > 0.
+  int32                     split_numerator   = 4;
+  int32                     split_denominator = 5;
+
+  // Cash dividend: per-share, in price units (e.g. $0.24 = 2400).
+  int64                     dividend_per_share = 6;
+
+  // Symbol change: the post-effective ticker.
+  string                    new_symbol     = 7;
+
+  // Splits + renames: instant of cutover. Ignored for dividends.
+  google.protobuf.Timestamp effective_date = 8;
+  // Dividends: holders at record_date are entitled; cash credits
+  // on pay_date. Ignored for splits + renames.
+  google.protobuf.Timestamp record_date    = 9;
+  google.protobuf.Timestamp pay_date       = 10;
+  google.protobuf.Timestamp declared_at    = 11;
+}
+
+// CorporateActionApplied marks the action as fully fanned-out. Counts
+// are bundled here so the diagnostics panel and the ledger UI can show
+// "this split touched N accounts and cancelled M orders" without
+// re-deriving from the event log.
+message CorporateActionApplied {
+  string                    action_id      = 1;
+  google.protobuf.Timestamp applied_at     = 2;
+  int32                     holders_count  = 3;
+  int32                     orders_count   = 4;
+  int32                     sagas_count    = 5;
+}
+
+// CorporateActionFailed marks the action as failed after repeated
+// retries. The reactor logs the underlying error in failed_reason.
+message CorporateActionFailed {
+  string                    action_id   = 1;
+  string                    reason      = 2;
+  google.protobuf.Timestamp failed_at   = 3;
+}
+
+// DividendRecordSnapshotted is the per-action record-date snapshot
+// that fixes which accounts are entitled to the dividend. Emitted
+// once per action the first time the reactor observes
+// now >= record_date. The pay-date applier reads from the matching
+// projection_dividend_record_holders rows, not from the aggregate.
+message DividendRecordSnapshotted {
+  string                    action_id        = 1;
+  string                    symbol           = 2;
+  int32                     holders_count    = 3;
+  google.protobuf.Timestamp snapshotted_at   = 4;
+}

@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package corpaction.v1;
+
+option go_package = "github.com/ianunruh/xray/gen/corpaction/v1;corpactionv1";
+
+import "google/protobuf/timestamp.proto";
+import "corpaction/v1/events.proto";
+
+// CorporateActionService is the operator-facing surface for declaring
+// and listing corporate actions. Per-action lifecycle progression is
+// driven by the reactor; this service is read+declare only.
+service CorporateActionService {
+  rpc Declare(DeclareCorporateActionRequest) returns (DeclareCorporateActionResponse);
+  rpc List(ListCorporateActionsRequest) returns (ListCorporateActionsResponse);
+  rpc Get(GetCorporateActionRequest) returns (GetCorporateActionResponse);
+}
+
+// DeclareCorporateActionRequest carries one action's full payload.
+// Type-specific fields are validated on the server: SPLIT requires
+// split_numerator + split_denominator + effective_date;
+// CASH_DIVIDEND requires dividend_per_share + record_date + pay_date;
+// SYMBOL_CHANGE requires new_symbol + effective_date.
+message DeclareCorporateActionRequest {
+  string                    symbol             = 1;
+  ActionType                type               = 2;
+  int32                     split_numerator    = 3;
+  int32                     split_denominator  = 4;
+  int64                     dividend_per_share = 5;
+  string                    new_symbol         = 6;
+  google.protobuf.Timestamp effective_date     = 7;
+  google.protobuf.Timestamp record_date        = 8;
+  google.protobuf.Timestamp pay_date           = 9;
+}
+
+message DeclareCorporateActionResponse {
+  // Server-generated unique ID for the declared action.
+  string action_id = 1;
+}
+
+message ListCorporateActionsRequest {
+  // Optional filters; empty means all.
+  string       symbol = 1;
+  ActionStatus status = 2;
+  // 0 = no cap.
+  int32        limit  = 3;
+}
+
+message ListCorporateActionsResponse {
+  repeated CorporateActionRecord actions = 1;
+}
+
+message GetCorporateActionRequest {
+  string action_id = 1;
+}
+
+message GetCorporateActionResponse {
+  CorporateActionRecord action = 1;
+}
+
+// CorporateActionRecord is the projection row used by the ledger UI
+// and the reactor's work-list query. Mirrors the declared event with
+// the addition of status + applied/failed metadata.
+message CorporateActionRecord {
+  string                    action_id          = 1;
+  string                    symbol             = 2;
+  ActionType                type               = 3;
+  ActionStatus              status             = 4;
+  int32                     split_numerator    = 5;
+  int32                     split_denominator  = 6;
+  int64                     dividend_per_share = 7;
+  string                    new_symbol         = 8;
+  google.protobuf.Timestamp effective_date     = 9;
+  google.protobuf.Timestamp record_date        = 10;
+  google.protobuf.Timestamp pay_date           = 11;
+  google.protobuf.Timestamp declared_at        = 12;
+  google.protobuf.Timestamp applied_at         = 13;
+  string                    failed_reason      = 14;
+  int32                     holders_count      = 15;
+  int32                     orders_count       = 16;
+  int32                     sagas_count        = 17;
+}
