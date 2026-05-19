@@ -1007,11 +1007,12 @@ func (*GetOperationsStatusRequest) Descriptor() ([]byte, []int) {
 }
 
 type GetOperationsStatusResponse struct {
-	state             protoimpl.MessageState   `protogen:"open.v1"`
-	Accruer           *AccruerStatus           `protobuf:"bytes,1,opt,name=accruer,proto3" json:"accruer,omitempty"`
-	Reconciler        *ReconcilerStatus        `protobuf:"bytes,2,opt,name=reconciler,proto3" json:"reconciler,omitempty"`
-	MarginReactor     *MarginReactorStatus     `protobuf:"bytes,3,opt,name=margin_reactor,json=marginReactor,proto3" json:"margin_reactor,omitempty"`
-	SettlementReactor *SettlementReactorStatus `protobuf:"bytes,4,opt,name=settlement_reactor,json=settlementReactor,proto3" json:"settlement_reactor,omitempty"`
+	state             protoimpl.MessageState        `protogen:"open.v1"`
+	Accruer           *AccruerStatus                `protobuf:"bytes,1,opt,name=accruer,proto3" json:"accruer,omitempty"`
+	Reconciler        *ReconcilerStatus             `protobuf:"bytes,2,opt,name=reconciler,proto3" json:"reconciler,omitempty"`
+	MarginReactor     *MarginReactorStatus          `protobuf:"bytes,3,opt,name=margin_reactor,json=marginReactor,proto3" json:"margin_reactor,omitempty"`
+	SettlementReactor *SettlementReactorStatus      `protobuf:"bytes,4,opt,name=settlement_reactor,json=settlementReactor,proto3" json:"settlement_reactor,omitempty"`
+	CorpactionReactor *CorporateActionReactorStatus `protobuf:"bytes,5,opt,name=corpaction_reactor,json=corpactionReactor,proto3" json:"corpaction_reactor,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1070,6 +1071,13 @@ func (x *GetOperationsStatusResponse) GetMarginReactor() *MarginReactorStatus {
 func (x *GetOperationsStatusResponse) GetSettlementReactor() *SettlementReactorStatus {
 	if x != nil {
 		return x.SettlementReactor
+	}
+	return nil
+}
+
+func (x *GetOperationsStatusResponse) GetCorpactionReactor() *CorporateActionReactorStatus {
+	if x != nil {
+		return x.CorpactionReactor
 	}
 	return nil
 }
@@ -1403,6 +1411,101 @@ func (x *SettlementReactorStatus) GetLastTickFailed() int32 {
 	return 0
 }
 
+// CorporateActionReactorStatus mirrors internal/corpaction.ReactorStatus.
+// enabled=false means the binary started without the reactor; the
+// declare RPC still works but nothing fans out automatically.
+type CorporateActionReactorStatus struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Enabled             bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	IntervalMs          int64                  `protobuf:"varint,2,opt,name=interval_ms,json=intervalMs,proto3" json:"interval_ms,omitempty"`
+	LastTickAt          *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=last_tick_at,json=lastTickAt,proto3" json:"last_tick_at,omitempty"`
+	LastTickMs          int64                  `protobuf:"varint,4,opt,name=last_tick_ms,json=lastTickMs,proto3" json:"last_tick_ms,omitempty"`
+	LastTickApplied     int32                  `protobuf:"varint,5,opt,name=last_tick_applied,json=lastTickApplied,proto3" json:"last_tick_applied,omitempty"`
+	LastTickSnapshotted int32                  `protobuf:"varint,6,opt,name=last_tick_snapshotted,json=lastTickSnapshotted,proto3" json:"last_tick_snapshotted,omitempty"`
+	LastTickFailed      int32                  `protobuf:"varint,7,opt,name=last_tick_failed,json=lastTickFailed,proto3" json:"last_tick_failed,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *CorporateActionReactorStatus) Reset() {
+	*x = CorporateActionReactorStatus{}
+	mi := &file_diagnostics_v1_service_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CorporateActionReactorStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CorporateActionReactorStatus) ProtoMessage() {}
+
+func (x *CorporateActionReactorStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_diagnostics_v1_service_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CorporateActionReactorStatus.ProtoReflect.Descriptor instead.
+func (*CorporateActionReactorStatus) Descriptor() ([]byte, []int) {
+	return file_diagnostics_v1_service_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *CorporateActionReactorStatus) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *CorporateActionReactorStatus) GetIntervalMs() int64 {
+	if x != nil {
+		return x.IntervalMs
+	}
+	return 0
+}
+
+func (x *CorporateActionReactorStatus) GetLastTickAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastTickAt
+	}
+	return nil
+}
+
+func (x *CorporateActionReactorStatus) GetLastTickMs() int64 {
+	if x != nil {
+		return x.LastTickMs
+	}
+	return 0
+}
+
+func (x *CorporateActionReactorStatus) GetLastTickApplied() int32 {
+	if x != nil {
+		return x.LastTickApplied
+	}
+	return 0
+}
+
+func (x *CorporateActionReactorStatus) GetLastTickSnapshotted() int32 {
+	if x != nil {
+		return x.LastTickSnapshotted
+	}
+	return 0
+}
+
+func (x *CorporateActionReactorStatus) GetLastTickFailed() int32 {
+	if x != nil {
+		return x.LastTickFailed
+	}
+	return 0
+}
+
 var File_diagnostics_v1_service_proto protoreflect.FileDescriptor
 
 const file_diagnostics_v1_service_proto_rawDesc = "" +
@@ -1474,14 +1577,15 @@ const file_diagnostics_v1_service_proto_rawDesc = "" +
 	"batch_size\x18\a \x01(\x05R\tbatchSize\x12\x14\n" +
 	"\x05error\x18\b \x01(\tR\x05error\x12*\n" +
 	"\x02at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\x02at\"\x1c\n" +
-	"\x1aGetOperationsStatusRequest\"\xbc\x02\n" +
+	"\x1aGetOperationsStatusRequest\"\x99\x03\n" +
 	"\x1bGetOperationsStatusResponse\x127\n" +
 	"\aaccruer\x18\x01 \x01(\v2\x1d.diagnostics.v1.AccruerStatusR\aaccruer\x12@\n" +
 	"\n" +
 	"reconciler\x18\x02 \x01(\v2 .diagnostics.v1.ReconcilerStatusR\n" +
 	"reconciler\x12J\n" +
 	"\x0emargin_reactor\x18\x03 \x01(\v2#.diagnostics.v1.MarginReactorStatusR\rmarginReactor\x12V\n" +
-	"\x12settlement_reactor\x18\x04 \x01(\v2'.diagnostics.v1.SettlementReactorStatusR\x11settlementReactor\"\x8e\x02\n" +
+	"\x12settlement_reactor\x18\x04 \x01(\v2'.diagnostics.v1.SettlementReactorStatusR\x11settlementReactor\x12[\n" +
+	"\x12corpaction_reactor\x18\x05 \x01(\v2,.diagnostics.v1.CorporateActionReactorStatusR\x11corpactionReactor\"\x8e\x02\n" +
 	"\rAccruerStatus\x12\x1f\n" +
 	"\vinterval_ms\x18\x01 \x01(\x03R\n" +
 	"intervalMs\x12$\n" +
@@ -1516,7 +1620,18 @@ const file_diagnostics_v1_service_proto_rawDesc = "" +
 	"lastTickMs\x12,\n" +
 	"\x12last_tick_accounts\x18\x06 \x01(\x05R\x10lastTickAccounts\x12*\n" +
 	"\x11last_tick_cleared\x18\a \x01(\x05R\x0flastTickCleared\x12(\n" +
-	"\x10last_tick_failed\x18\b \x01(\x05R\x0elastTickFailed*\xad\x01\n" +
+	"\x10last_tick_failed\x18\b \x01(\x05R\x0elastTickFailed\"\xc3\x02\n" +
+	"\x1cCorporateActionReactorStatus\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x1f\n" +
+	"\vinterval_ms\x18\x02 \x01(\x03R\n" +
+	"intervalMs\x12<\n" +
+	"\flast_tick_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"lastTickAt\x12 \n" +
+	"\flast_tick_ms\x18\x04 \x01(\x03R\n" +
+	"lastTickMs\x12*\n" +
+	"\x11last_tick_applied\x18\x05 \x01(\x05R\x0flastTickApplied\x122\n" +
+	"\x15last_tick_snapshotted\x18\x06 \x01(\x05R\x13lastTickSnapshotted\x12(\n" +
+	"\x10last_tick_failed\x18\a \x01(\x05R\x0elastTickFailed*\xad\x01\n" +
 	"\x0fProjectionPhase\x12 \n" +
 	"\x1cPROJECTION_PHASE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18PROJECTION_PHASE_RUNNING\x10\x01\x12\x1f\n" +
@@ -1545,7 +1660,7 @@ func file_diagnostics_v1_service_proto_rawDescGZIP() []byte {
 }
 
 var file_diagnostics_v1_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_diagnostics_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_diagnostics_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_diagnostics_v1_service_proto_goTypes = []any{
 	(ProjectionPhase)(0),                    // 0: diagnostics.v1.ProjectionPhase
 	(*ListAggregatesRequest)(nil),           // 1: diagnostics.v1.ListAggregatesRequest
@@ -1569,46 +1684,49 @@ var file_diagnostics_v1_service_proto_goTypes = []any{
 	(*ReconcilerStatus)(nil),                // 19: diagnostics.v1.ReconcilerStatus
 	(*MarginReactorStatus)(nil),             // 20: diagnostics.v1.MarginReactorStatus
 	(*SettlementReactorStatus)(nil),         // 21: diagnostics.v1.SettlementReactorStatus
-	(*timestamppb.Timestamp)(nil),           // 22: google.protobuf.Timestamp
+	(*CorporateActionReactorStatus)(nil),    // 22: diagnostics.v1.CorporateActionReactorStatus
+	(*timestamppb.Timestamp)(nil),           // 23: google.protobuf.Timestamp
 }
 var file_diagnostics_v1_service_proto_depIdxs = []int32{
-	22, // 0: diagnostics.v1.AggregateSummary.first_event_at:type_name -> google.protobuf.Timestamp
-	22, // 1: diagnostics.v1.AggregateSummary.last_event_at:type_name -> google.protobuf.Timestamp
+	23, // 0: diagnostics.v1.AggregateSummary.first_event_at:type_name -> google.protobuf.Timestamp
+	23, // 1: diagnostics.v1.AggregateSummary.last_event_at:type_name -> google.protobuf.Timestamp
 	2,  // 2: diagnostics.v1.ListAggregatesResponse.aggregates:type_name -> diagnostics.v1.AggregateSummary
-	22, // 3: diagnostics.v1.DiagnosticEvent.timestamp:type_name -> google.protobuf.Timestamp
+	23, // 3: diagnostics.v1.DiagnosticEvent.timestamp:type_name -> google.protobuf.Timestamp
 	5,  // 4: diagnostics.v1.GetAggregateEventsResponse.events:type_name -> diagnostics.v1.DiagnosticEvent
 	5,  // 5: diagnostics.v1.GetEventChainResponse.events:type_name -> diagnostics.v1.DiagnosticEvent
 	0,  // 6: diagnostics.v1.ProjectionStatus.phase:type_name -> diagnostics.v1.ProjectionPhase
-	22, // 7: diagnostics.v1.ProjectionStatus.rebuild_started_at:type_name -> google.protobuf.Timestamp
+	23, // 7: diagnostics.v1.ProjectionStatus.rebuild_started_at:type_name -> google.protobuf.Timestamp
 	10, // 8: diagnostics.v1.ListProjectionsResponse.projections:type_name -> diagnostics.v1.ProjectionStatus
 	0,  // 9: diagnostics.v1.ProjectionProgress.phase:type_name -> diagnostics.v1.ProjectionPhase
-	22, // 10: diagnostics.v1.ProjectionProgress.at:type_name -> google.protobuf.Timestamp
+	23, // 10: diagnostics.v1.ProjectionProgress.at:type_name -> google.protobuf.Timestamp
 	18, // 11: diagnostics.v1.GetOperationsStatusResponse.accruer:type_name -> diagnostics.v1.AccruerStatus
 	19, // 12: diagnostics.v1.GetOperationsStatusResponse.reconciler:type_name -> diagnostics.v1.ReconcilerStatus
 	20, // 13: diagnostics.v1.GetOperationsStatusResponse.margin_reactor:type_name -> diagnostics.v1.MarginReactorStatus
 	21, // 14: diagnostics.v1.GetOperationsStatusResponse.settlement_reactor:type_name -> diagnostics.v1.SettlementReactorStatus
-	22, // 15: diagnostics.v1.AccruerStatus.last_tick_at:type_name -> google.protobuf.Timestamp
-	22, // 16: diagnostics.v1.ReconcilerStatus.last_tick_at:type_name -> google.protobuf.Timestamp
-	22, // 17: diagnostics.v1.SettlementReactorStatus.last_tick_at:type_name -> google.protobuf.Timestamp
-	1,  // 18: diagnostics.v1.DiagnosticsService.ListAggregates:input_type -> diagnostics.v1.ListAggregatesRequest
-	4,  // 19: diagnostics.v1.DiagnosticsService.GetAggregateEvents:input_type -> diagnostics.v1.GetAggregateEventsRequest
-	7,  // 20: diagnostics.v1.DiagnosticsService.GetEventChain:input_type -> diagnostics.v1.GetEventChainRequest
-	9,  // 21: diagnostics.v1.DiagnosticsService.ListProjections:input_type -> diagnostics.v1.ListProjectionsRequest
-	12, // 22: diagnostics.v1.DiagnosticsService.RebuildProjection:input_type -> diagnostics.v1.RebuildProjectionRequest
-	14, // 23: diagnostics.v1.DiagnosticsService.StreamProjectionProgress:input_type -> diagnostics.v1.StreamProjectionProgressRequest
-	16, // 24: diagnostics.v1.DiagnosticsService.GetOperationsStatus:input_type -> diagnostics.v1.GetOperationsStatusRequest
-	3,  // 25: diagnostics.v1.DiagnosticsService.ListAggregates:output_type -> diagnostics.v1.ListAggregatesResponse
-	6,  // 26: diagnostics.v1.DiagnosticsService.GetAggregateEvents:output_type -> diagnostics.v1.GetAggregateEventsResponse
-	8,  // 27: diagnostics.v1.DiagnosticsService.GetEventChain:output_type -> diagnostics.v1.GetEventChainResponse
-	11, // 28: diagnostics.v1.DiagnosticsService.ListProjections:output_type -> diagnostics.v1.ListProjectionsResponse
-	13, // 29: diagnostics.v1.DiagnosticsService.RebuildProjection:output_type -> diagnostics.v1.RebuildProjectionResponse
-	15, // 30: diagnostics.v1.DiagnosticsService.StreamProjectionProgress:output_type -> diagnostics.v1.ProjectionProgress
-	17, // 31: diagnostics.v1.DiagnosticsService.GetOperationsStatus:output_type -> diagnostics.v1.GetOperationsStatusResponse
-	25, // [25:32] is the sub-list for method output_type
-	18, // [18:25] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	22, // 15: diagnostics.v1.GetOperationsStatusResponse.corpaction_reactor:type_name -> diagnostics.v1.CorporateActionReactorStatus
+	23, // 16: diagnostics.v1.AccruerStatus.last_tick_at:type_name -> google.protobuf.Timestamp
+	23, // 17: diagnostics.v1.ReconcilerStatus.last_tick_at:type_name -> google.protobuf.Timestamp
+	23, // 18: diagnostics.v1.SettlementReactorStatus.last_tick_at:type_name -> google.protobuf.Timestamp
+	23, // 19: diagnostics.v1.CorporateActionReactorStatus.last_tick_at:type_name -> google.protobuf.Timestamp
+	1,  // 20: diagnostics.v1.DiagnosticsService.ListAggregates:input_type -> diagnostics.v1.ListAggregatesRequest
+	4,  // 21: diagnostics.v1.DiagnosticsService.GetAggregateEvents:input_type -> diagnostics.v1.GetAggregateEventsRequest
+	7,  // 22: diagnostics.v1.DiagnosticsService.GetEventChain:input_type -> diagnostics.v1.GetEventChainRequest
+	9,  // 23: diagnostics.v1.DiagnosticsService.ListProjections:input_type -> diagnostics.v1.ListProjectionsRequest
+	12, // 24: diagnostics.v1.DiagnosticsService.RebuildProjection:input_type -> diagnostics.v1.RebuildProjectionRequest
+	14, // 25: diagnostics.v1.DiagnosticsService.StreamProjectionProgress:input_type -> diagnostics.v1.StreamProjectionProgressRequest
+	16, // 26: diagnostics.v1.DiagnosticsService.GetOperationsStatus:input_type -> diagnostics.v1.GetOperationsStatusRequest
+	3,  // 27: diagnostics.v1.DiagnosticsService.ListAggregates:output_type -> diagnostics.v1.ListAggregatesResponse
+	6,  // 28: diagnostics.v1.DiagnosticsService.GetAggregateEvents:output_type -> diagnostics.v1.GetAggregateEventsResponse
+	8,  // 29: diagnostics.v1.DiagnosticsService.GetEventChain:output_type -> diagnostics.v1.GetEventChainResponse
+	11, // 30: diagnostics.v1.DiagnosticsService.ListProjections:output_type -> diagnostics.v1.ListProjectionsResponse
+	13, // 31: diagnostics.v1.DiagnosticsService.RebuildProjection:output_type -> diagnostics.v1.RebuildProjectionResponse
+	15, // 32: diagnostics.v1.DiagnosticsService.StreamProjectionProgress:output_type -> diagnostics.v1.ProjectionProgress
+	17, // 33: diagnostics.v1.DiagnosticsService.GetOperationsStatus:output_type -> diagnostics.v1.GetOperationsStatusResponse
+	27, // [27:34] is the sub-list for method output_type
+	20, // [20:27] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_diagnostics_v1_service_proto_init() }
@@ -1622,7 +1740,7 @@ func file_diagnostics_v1_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_diagnostics_v1_service_proto_rawDesc), len(file_diagnostics_v1_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   21,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

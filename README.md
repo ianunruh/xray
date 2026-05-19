@@ -278,6 +278,8 @@ Environment variables:
 - `SETTLEMENT_ENABLED` — Defer trade-date cash settlements to T+N (default: `true`). When `false`, every settlement clears instantly — same as the pre-T+1 behavior.
 - `SETTLEMENT_WINDOW` — How long after trade date the cash leg clears (default: `24h`)
 - `SETTLEMENT_TICK_INTERVAL` — How often the settlement reactor scans the projection for due legs (default: `1m`)
+- `CORPACTION_ENABLED` — Run the corporate-action reactor (default: `true`). When `false`, declared actions stay queued until the reactor comes back online.
+- `CORPACTION_TICK_INTERVAL` — How often the corporate-action reactor scans for due actions (default: `5m`)
 
 ## API surface
 
@@ -366,6 +368,16 @@ Every trade-date cash leg defers to T+1 by default (`SETTLEMENT_ENABLED=true`, `
 `CashBalance` keeps its existing "spendable cash" meaning, so margin math, buying power, the order-impact preview, and the strategy bots are unaffected. The new `settled_cash` field exposes the cleared portion separately; `Withdraw` requires `amount ≤ min(CashBalance, SettledCash)` so unsettled credits can be *traded against* but not withdrawn — same as a real margin account.
 
 Settlement is toggle-able per event (`settles_at` is stamped at emit time, not consulted at replay time) so flipping `SETTLEMENT_ENABLED=false` only affects newly emitted settlements; historical events replay exactly as they were recorded. The reactor still runs when disabled — it just finds no work — so operational paths stay consistent. Tick stats and disabled state surface on `/projections` alongside the existing accruer/reconciler/margin-reactor cards.
+
+## Corporate actions
+
+Operators declare corporate actions via `corpaction.v1.CorporateActionService.Declare`. Three action types are supported:
+
+- **Splits** (forward + reverse): on `effective_date`, the reactor cancels resting orders for the symbol, cancels in-flight sagas, then issues `AdjustHolding` against every holder. Quantity scales by `numerator/denominator`; `TotalCost` is preserved, so `avg_cost` auto-scales. Reverse-split truncation is logged on the event (cash-in-lieu is a follow-up).
+- **Cash dividends**: the reactor takes a record-date snapshot of every holder's share count into `projection_dividend_record_holders` the first time it observes `now >= record_date`. On `pay_date` it credits `shares × per_share` to every account in the snapshot — so a holder who sells after the record date still gets paid. Dividends settle instantly (both `CashBalance` and `SettledCash` move together).
+- **Symbol changes**: on `effective_date`, the old orderbook aggregate is permanently marked `RenamedTo=<new>`; new `PlaceOrder` against the old ticker returns `ErrSymbolRenamed`. Each holder's `Holdings`, `ShortPositions`, and `PendingShareCredits` keys are rewritten old → new. The new symbol's orderbook is a fresh aggregate created lazily on first order against it.
+
+Every per-aggregate adjustment event (`HoldingAdjusted`, `DividendCredited`, `SymbolMigrated`, `OrderCancelled{reason:"corporate_action:..."}`) carries the `action_id`, and each touched aggregate keeps an `AppliedActions` dedup set — mirrors `SettledTrades`. The corpaction aggregate itself is a tiny state machine (`Declared → Applied | Failed`); all real state change lives on the aggregates it touches. The reactor surfaces a `Corporate Actions` card on `/projections` alongside the other background loops.
 
 ## Replay / time-travel
 

@@ -138,10 +138,11 @@ message ProjectionProgress {
 message GetOperationsStatusRequest {}
 
 message GetOperationsStatusResponse {
-  AccruerStatus            accruer            = 1;
-  ReconcilerStatus         reconciler         = 2;
-  MarginReactorStatus      margin_reactor     = 3;
-  SettlementReactorStatus  settlement_reactor = 4;
+  AccruerStatus              accruer             = 1;
+  ReconcilerStatus           reconciler          = 2;
+  MarginReactorStatus        margin_reactor      = 3;
+  SettlementReactorStatus    settlement_reactor  = 4;
+  CorporateActionReactorStatus corpaction_reactor = 5;
 }
 
 // AccruerStatus mirrors internal/feesaccruer.Status. Durations are in
@@ -185,4 +186,17 @@ message SettlementReactorStatus {
   int32                     last_tick_accounts = 6;
   int32                     last_tick_cleared  = 7;
   int32                     last_tick_failed   = 8;
+}
+
+// CorporateActionReactorStatus mirrors internal/corpaction.ReactorStatus.
+// enabled=false means the binary started without the reactor; the
+// declare RPC still works but nothing fans out automatically.
+message CorporateActionReactorStatus {
+  bool                      enabled              = 1;
+  int64                     interval_ms          = 2;
+  google.protobuf.Timestamp last_tick_at         = 3;
+  int64                     last_tick_ms         = 4;
+  int32                     last_tick_applied    = 5;
+  int32                     last_tick_snapshotted = 6;
+  int32                     last_tick_failed     = 7;
 }

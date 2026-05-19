@@ -21,8 +21,10 @@ import (
 	"github.com/ianunruh/xray/gen/orderbook/v1/orderbookv1connect"
 	"github.com/ianunruh/xray/gen/portfolio/v1/portfoliov1connect"
 	"github.com/ianunruh/xray/gen/saga/v1/sagav1connect"
+	"github.com/ianunruh/xray/gen/corpaction/v1/corpactionv1connect"
 	"github.com/ianunruh/xray/gen/trader/v1/traderv1connect"
 	"github.com/ianunruh/xray/internal/bracket"
+	"github.com/ianunruh/xray/internal/corpaction"
 	"github.com/ianunruh/xray/internal/diagnostics"
 	"github.com/ianunruh/xray/internal/feesaccruer"
 	"github.com/ianunruh/xray/internal/margincall"
@@ -96,6 +98,7 @@ func main() {
 	ordersaga.RegisterEvents(registry)
 	ocosaga.RegisterEvents(registry)
 	twapsaga.RegisterEvents(registry)
+	corpaction.RegisterEvents(registry)
 
 	// Connect to NATS.
 	nc, err := nats.Connect(natsURL)
@@ -148,6 +151,10 @@ func main() {
 		return twapsaga.NewTWAPSaga(id)
 	}, log).WithPublisher(publisher)
 
+	corpactionHandler := es.NewHandler(store, registry, func(id string) *corpaction.CorporateAction {
+		return corpaction.NewCorporateAction(id)
+	}, log).WithPublisher(publisher)
+
 	// Create projections.
 	tradeProjection := orderbook.NewPgTradeProjection(pool)
 	orderProjection := orderbook.NewPgOrderProjection(pool)
@@ -165,6 +172,8 @@ func main() {
 	marginCallsProjection := portfolio.NewPgMarginCallsProjection(pool)
 	feesProjection := portfolio.NewPgFeesProjection(pool)
 	pendingProjection := portfolio.NewPgPendingProjection(pool)
+	corpactionProjection := corpaction.NewPgProjection(pool)
+	dividendHoldersStore := corpaction.NewPgDividendHoldersStore(pool)
 	accruableAccounts := portfolio.NewInMemoryAccruableAccounts()
 	broker := orderbook.NewBroker()
 	portfolioBroker := portfolio.NewPortfolioBroker()
@@ -231,6 +240,8 @@ func main() {
 			WithPersistent(store, feesProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "pending-settlements").
 			WithPersistent(store, pendingProjection),
+		natsstore.NewProjectionConsumer(js, registry, log, "corp-actions").
+			WithPersistent(store, corpactionProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "snapshotter").
 			WithPersistent(store, snap),
 	}
@@ -272,6 +283,30 @@ func main() {
 		settlement.Config{Interval: parseDurationOr("SETTLEMENT_TICK_INTERVAL", time.Minute)}, log)
 	go settlementReactor.Run(ctx)
 
+	// Construct the saga service early so the corpaction
+	// coordinator can route its SagaCanceler dependency through it.
+	// The Connect handler registration uses the same instance below.
+	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, ocoSagaHandler, twapHandler, obHandler, portfolioHandler, twapReactor, markProjection, sagaProjection, log)
+
+	corpactionCoordinator := corpaction.NewCoordinator(
+		portfolioHandler,
+		obHandler,
+		portfolioProjection,
+		holdingsAdapter{portfolioProjection},
+		orderListerAdapter{orderProjection},
+		sagaListerAdapter{sagaProjection},
+		orderCancelerAdapter{obHandler},
+		sagaSrv,
+		dividendHoldersStore,
+	)
+	corpactionEnabled := envBoolOr("CORPACTION_ENABLED", true)
+	var corpactionReactor *corpaction.Reactor
+	if corpactionEnabled {
+		corpactionReactor = corpaction.New(corpactionHandler, corpactionProjection, corpactionCoordinator, time.Now,
+			corpaction.Config{Interval: parseDurationOr("CORPACTION_TICK_INTERVAL", 5*time.Minute)}, log)
+		go corpactionReactor.Run(ctx)
+	}
+
 	go runSnapshotSweeper(ctx, snap, 5*time.Minute)
 
 	// In-process trader manager. Persists trader configs in PG and
@@ -294,10 +329,13 @@ func main() {
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, dailyCloseProjection, broker)
 	portfolioSrv := portfolio.NewServer(portfolioHandler, obHandler, portfolioProjection, pnlProjection, markProjection, marginCallsProjection, feesProjection, shortsProjection, portfolioBroker, log).
 		WithPendingSettlementsReader(pendingProjection)
-	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, ocoSagaHandler, twapHandler, obHandler, portfolioHandler, twapReactor, markProjection, sagaProjection, log)
 	diagnosticsSrv := diagnostics.NewServer(store, registry, projectionManager, accruer, rec, marginReactor, log).
 		WithSettlementReactor(settlementReactor, settlementPolicy)
+	if corpactionReactor != nil {
+		diagnosticsSrv = diagnosticsSrv.WithCorporateActionReactor(corpactionReactor)
+	}
 	traderSrv := tradermgr.NewServer(traderMgr)
+	corpactionSrv := corpaction.NewServer(corpactionHandler, corpactionProjection, log)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
@@ -310,6 +348,8 @@ func main() {
 	mux.Handle(diagnosticsPath, diagnosticsH)
 	traderPath, traderH := traderv1connect.NewTraderServiceHandler(traderSrv)
 	mux.Handle(traderPath, traderH)
+	corpactionPath, corpactionH := corpactionv1connect.NewCorporateActionServiceHandler(corpactionSrv)
+	mux.Handle(corpactionPath, corpactionH)
 
 	httpServer := &http.Server{
 		Addr:      listenAddr,

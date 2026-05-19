@@ -443,6 +443,11 @@ export declare type GetOperationsStatusResponse = Message<"diagnostics.v1.GetOpe
    * @generated from field: diagnostics.v1.SettlementReactorStatus settlement_reactor = 4;
    */
   settlementReactor?: SettlementReactorStatus | undefined;
+
+  /**
+   * @generated from field: diagnostics.v1.CorporateActionReactorStatus corpaction_reactor = 5;
+   */
+  corpactionReactor?: CorporateActionReactorStatus | undefined;
 };
 
 /**
@@ -617,6 +622,56 @@ export declare type SettlementReactorStatus = Message<"diagnostics.v1.Settlement
  * Use `create(SettlementReactorStatusSchema)` to create a new message.
  */
 export declare const SettlementReactorStatusSchema: GenMessage<SettlementReactorStatus>;
+
+/**
+ * CorporateActionReactorStatus mirrors internal/corpaction.ReactorStatus.
+ * enabled=false means the binary started without the reactor; the
+ * declare RPC still works but nothing fans out automatically.
+ *
+ * @generated from message diagnostics.v1.CorporateActionReactorStatus
+ */
+export declare type CorporateActionReactorStatus = Message<"diagnostics.v1.CorporateActionReactorStatus"> & {
+  /**
+   * @generated from field: bool enabled = 1;
+   */
+  enabled: boolean;
+
+  /**
+   * @generated from field: int64 interval_ms = 2;
+   */
+  intervalMs: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_tick_at = 3;
+   */
+  lastTickAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: int64 last_tick_ms = 4;
+   */
+  lastTickMs: bigint;
+
+  /**
+   * @generated from field: int32 last_tick_applied = 5;
+   */
+  lastTickApplied: number;
+
+  /**
+   * @generated from field: int32 last_tick_snapshotted = 6;
+   */
+  lastTickSnapshotted: number;
+
+  /**
+   * @generated from field: int32 last_tick_failed = 7;
+   */
+  lastTickFailed: number;
+};
+
+/**
+ * Describes the message diagnostics.v1.CorporateActionReactorStatus.
+ * Use `create(CorporateActionReactorStatusSchema)` to create a new message.
+ */
+export declare const CorporateActionReactorStatusSchema: GenMessage<CorporateActionReactorStatus>;
 
 /**
  * @generated from enum diagnostics.v1.ProjectionPhase

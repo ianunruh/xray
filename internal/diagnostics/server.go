@@ -13,6 +13,7 @@ import (
 
 	diagnosticsv1 "github.com/ianunruh/xray/gen/diagnostics/v1"
 	"github.com/ianunruh/xray/gen/diagnostics/v1/diagnosticsv1connect"
+	"github.com/ianunruh/xray/internal/corpaction"
 	"github.com/ianunruh/xray/internal/feesaccruer"
 	"github.com/ianunruh/xray/internal/margincall"
 	"github.com/ianunruh/xray/internal/portfolio"
@@ -42,6 +43,7 @@ type Server struct {
 	marginReactor     *margincall.Reactor
 	settlementReactor SettlementStatusProvider
 	settlementPolicy  portfolio.SettlementPolicy
+	corpactionReactor CorporateActionStatusProvider
 	marshal           protojson.MarshalOptions
 	log               *slog.Logger
 }
@@ -52,6 +54,13 @@ type Server struct {
 // risking import cycles in the wider tree).
 type SettlementStatusProvider interface {
 	Status() settlement.Status
+}
+
+// CorporateActionStatusProvider is satisfied by *corpaction.Reactor.
+// Small interface to keep the diagnostics package free of the
+// corpaction coordinator's transitive deps.
+type CorporateActionStatusProvider interface {
+	Status() corpaction.ReactorStatus
 }
 
 // NewServer constructs a diagnostics server backed by the given event store,
@@ -89,6 +98,14 @@ func NewServer(
 func (s *Server) WithSettlementReactor(r SettlementStatusProvider, policy portfolio.SettlementPolicy) *Server {
 	s.settlementReactor = r
 	s.settlementPolicy = policy
+	return s
+}
+
+// WithCorporateActionReactor wires the corporate-action reactor for
+// the /projections operations card. Optional — when nil, the status
+// surfaces as enabled=false.
+func (s *Server) WithCorporateActionReactor(r CorporateActionStatusProvider) *Server {
+	s.corpactionReactor = r
 	return s
 }
 
@@ -397,6 +414,19 @@ func (s *Server) GetOperationsStatus(ctx context.Context, _ *connect.Request[dia
 		out.SettlementReactor.LastTickAccounts = int32(sr.LastTickAccounts)
 		out.SettlementReactor.LastTickCleared = int32(sr.LastTickCleared)
 		out.SettlementReactor.LastTickFailed = int32(sr.LastTickFailed)
+	}
+	out.CorpactionReactor = &diagnosticsv1.CorporateActionReactorStatus{}
+	if s.corpactionReactor != nil {
+		cs := s.corpactionReactor.Status()
+		out.CorpactionReactor.Enabled = true
+		out.CorpactionReactor.IntervalMs = cs.Interval.Milliseconds()
+		if !cs.LastTickAt.IsZero() {
+			out.CorpactionReactor.LastTickAt = timestamppb.New(cs.LastTickAt)
+		}
+		out.CorpactionReactor.LastTickMs = cs.LastTickDuration.Milliseconds()
+		out.CorpactionReactor.LastTickApplied = int32(cs.LastTickApplied)
+		out.CorpactionReactor.LastTickSnapshotted = int32(cs.LastTickSnapshotted)
+		out.CorpactionReactor.LastTickFailed = int32(cs.LastTickFailed)
 	}
 	return connect.NewResponse(out), nil
 }
