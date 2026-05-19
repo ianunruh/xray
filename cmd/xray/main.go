@@ -33,6 +33,7 @@ import (
 	"github.com/ianunruh/xray/internal/pricesource"
 	"github.com/ianunruh/xray/internal/reconciler"
 	"github.com/ianunruh/xray/internal/sagasvc"
+	"github.com/ianunruh/xray/internal/settlement"
 	"github.com/ianunruh/xray/internal/tradermgr"
 	"github.com/ianunruh/xray/internal/twapsaga"
 	"github.com/ianunruh/xray/pkg/es"
@@ -163,11 +164,17 @@ func main() {
 	activeCallsProjection := portfolio.NewInMemoryActiveMarginCalls()
 	marginCallsProjection := portfolio.NewPgMarginCallsProjection(pool)
 	feesProjection := portfolio.NewPgFeesProjection(pool)
+	pendingProjection := portfolio.NewPgPendingProjection(pool)
 	accruableAccounts := portfolio.NewInMemoryAccruableAccounts()
 	broker := orderbook.NewBroker()
 	portfolioBroker := portfolio.NewPortfolioBroker()
 	bracketReactor := bracket.NewReactor(bracketHandler, orderSagaHandler, ocoSagaHandler, obHandler, log)
-	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, markProjection, log)
+	settlementPolicy := portfolio.SettlementPolicy{
+		Enabled: envBoolOr("SETTLEMENT_ENABLED", true),
+		Window:  parseDurationOr("SETTLEMENT_WINDOW", 24*time.Hour),
+	}
+	orderSagaReactor := ordersaga.NewReactor(orderSagaHandler, portfolioHandler, obHandler, markProjection, log).
+		WithSettlementPolicy(settlementPolicy)
 	ocoSagaReactor := ocosaga.NewReactor(ocoSagaHandler, portfolioHandler, obHandler, log)
 	twapReactor := twapsaga.NewReactor(twapHandler, orderSagaHandler, log)
 	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shortsProjection, longsProjection, activeUserSagasProjection, markProjection, activeCallsProjection,
@@ -222,6 +229,8 @@ func main() {
 			WithPersistent(store, dailyCloseProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "fees-history").
 			WithPersistent(store, feesProjection),
+		natsstore.NewProjectionConsumer(js, registry, log, "pending-settlements").
+			WithPersistent(store, pendingProjection),
 		natsstore.NewProjectionConsumer(js, registry, log, "snapshotter").
 			WithPersistent(store, snap),
 	}
@@ -259,6 +268,10 @@ func main() {
 		feesaccruer.Config{Interval: time.Hour}, log)
 	go accruer.Run(ctx)
 
+	settlementReactor := settlement.New(portfolioHandler, pendingProjection, time.Now,
+		settlement.Config{Interval: parseDurationOr("SETTLEMENT_TICK_INTERVAL", time.Minute)}, log)
+	go settlementReactor.Run(ctx)
+
 	go runSnapshotSweeper(ctx, snap, 5*time.Minute)
 
 	// In-process trader manager. Persists trader configs in PG and
@@ -279,9 +292,11 @@ func main() {
 	traderMgr := tradermgr.NewManager(traderStore, priceSrc, traderServerURL(listenAddr), log)
 
 	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, dailyCloseProjection, broker)
-	portfolioSrv := portfolio.NewServer(portfolioHandler, obHandler, portfolioProjection, pnlProjection, markProjection, marginCallsProjection, feesProjection, shortsProjection, portfolioBroker, log)
+	portfolioSrv := portfolio.NewServer(portfolioHandler, obHandler, portfolioProjection, pnlProjection, markProjection, marginCallsProjection, feesProjection, shortsProjection, portfolioBroker, log).
+		WithPendingSettlementsReader(pendingProjection)
 	sagaSrv := sagasvc.NewServer(orderSagaHandler, bracketHandler, ocoSagaHandler, twapHandler, obHandler, portfolioHandler, twapReactor, markProjection, sagaProjection, log)
-	diagnosticsSrv := diagnostics.NewServer(store, registry, projectionManager, accruer, rec, marginReactor, log)
+	diagnosticsSrv := diagnostics.NewServer(store, registry, projectionManager, accruer, rec, marginReactor, log).
+		WithSettlementReactor(settlementReactor, settlementPolicy)
 	traderSrv := tradermgr.NewServer(traderMgr)
 
 	mux := http.NewServeMux()
@@ -437,6 +452,18 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func envBoolOr(key string, fallback bool) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return fallback
+	}
+	return b
 }
 
 func parseDurationOr(key string, fallback time.Duration) time.Duration {

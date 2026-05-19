@@ -138,9 +138,10 @@ message ProjectionProgress {
 message GetOperationsStatusRequest {}
 
 message GetOperationsStatusResponse {
-  AccruerStatus       accruer        = 1;
-  ReconcilerStatus    reconciler     = 2;
-  MarginReactorStatus margin_reactor = 3;
+  AccruerStatus            accruer            = 1;
+  ReconcilerStatus         reconciler         = 2;
+  MarginReactorStatus      margin_reactor     = 3;
+  SettlementReactorStatus  settlement_reactor = 4;
 }
 
 // AccruerStatus mirrors internal/feesaccruer.Status. Durations are in
@@ -169,4 +170,19 @@ message ReconcilerStatus {
 message MarginReactorStatus {
   int64 grace_ms          = 1;
   int32 active_call_count = 2;
+}
+
+// SettlementReactorStatus mirrors internal/settlement.Status.
+// settlement_enabled=false means T+1 deferral is off (the reactor
+// still runs but always finds no work). interval_ms=0 surfaces
+// "settlement reactor disabled at the binary level."
+message SettlementReactorStatus {
+  bool                      settlement_enabled = 1;
+  int64                     window_ms          = 2;
+  int64                     interval_ms        = 3;
+  google.protobuf.Timestamp last_tick_at       = 4;
+  int64                     last_tick_ms       = 5;
+  int32                     last_tick_accounts = 6;
+  int32                     last_tick_cleared  = 7;
+  int32                     last_tick_failed   = 8;
 }

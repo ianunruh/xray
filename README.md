@@ -275,6 +275,9 @@ Environment variables:
 - `NATS_URL` — NATS connection string (default: `nats://127.0.0.1:4222`)
 - `LISTEN_ADDR` — Listen address (default: `:8080`)
 - `LOG_LEVEL` — `debug` / `info` / `warn` / `error` (default: `info`)
+- `SETTLEMENT_ENABLED` — Defer trade-date cash settlements to T+N (default: `true`). When `false`, every settlement clears instantly — same as the pre-T+1 behavior.
+- `SETTLEMENT_WINDOW` — How long after trade date the cash leg clears (default: `24h`)
+- `SETTLEMENT_TICK_INTERVAL` — How often the settlement reactor scans the projection for due legs (default: `1m`)
 
 ## API surface
 
@@ -355,6 +358,14 @@ The fees accruer ticks hourly (configurable) and emits one event per account per
 Both events advance `Portfolio.LastAccruedAt`, so duplicate ticks at the same wall-clock are no-ops, missed windows are caught up in one tick, and replay is safe.
 
 The margin-call reactor watches `TradeExecuted` (mark updates), `OfficialCloseSet` (session-end mark), and `ShortOpened` / `ShortCovered`. When portfolio equity falls below the maintenance requirement, it emits `MarginCallIssued` with a frozen snapshot (equity, requirement, trigger symbol/mark, grace expiry). After the grace period (default 30s), the reconciler invokes `EvaluateGraceExpiry` and the reactor spawns a forced-liquidation `OrderSaga` for the largest open position. On each subsequent tick while still breached it spawns another liquidation until equity is back above the requirement, at which point it emits `MarginCallCovered`. Liquidation saga IDs are deterministic (`liquidation:{account_id}:{trigger_id}`) so replays are idempotent.
+
+## T+1 settlement
+
+Every trade-date cash leg defers to T+1 by default (`SETTLEMENT_ENABLED=true`, `SETTLEMENT_WINDOW=24h`). The settlement events stamp `settles_at = trade_date + window`; the aggregate routes the cash through a `PendingLegs` slice and the `settlement.Reactor` (a 1-minute tick by default) issues `ClearSettlement` once `settles_at` passes, emitting `SettlementCleared` and rolling the leg's signed `cash_amount` into `SettledCash`.
+
+`CashBalance` keeps its existing "spendable cash" meaning, so margin math, buying power, the order-impact preview, and the strategy bots are unaffected. The new `settled_cash` field exposes the cleared portion separately; `Withdraw` requires `amount ≤ min(CashBalance, SettledCash)` so unsettled credits can be *traded against* but not withdrawn — same as a real margin account.
+
+Settlement is toggle-able per event (`settles_at` is stamped at emit time, not consulted at replay time) so flipping `SETTLEMENT_ENABLED=false` only affects newly emitted settlements; historical events replay exactly as they were recorded. The reactor still runs when disabled — it just finds no work — so operational paths stay consistent. Tick stats and disabled state surface on `/projections` alongside the existing accruer/reconciler/margin-reactor cards.
 
 ## Replay / time-travel
 

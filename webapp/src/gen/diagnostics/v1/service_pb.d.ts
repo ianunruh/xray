@@ -438,6 +438,11 @@ export declare type GetOperationsStatusResponse = Message<"diagnostics.v1.GetOpe
    * @generated from field: diagnostics.v1.MarginReactorStatus margin_reactor = 3;
    */
   marginReactor?: MarginReactorStatus | undefined;
+
+  /**
+   * @generated from field: diagnostics.v1.SettlementReactorStatus settlement_reactor = 4;
+   */
+  settlementReactor?: SettlementReactorStatus | undefined;
 };
 
 /**
@@ -556,6 +561,62 @@ export declare type MarginReactorStatus = Message<"diagnostics.v1.MarginReactorS
  * Use `create(MarginReactorStatusSchema)` to create a new message.
  */
 export declare const MarginReactorStatusSchema: GenMessage<MarginReactorStatus>;
+
+/**
+ * SettlementReactorStatus mirrors internal/settlement.Status.
+ * settlement_enabled=false means T+1 deferral is off (the reactor
+ * still runs but always finds no work). interval_ms=0 surfaces
+ * "settlement reactor disabled at the binary level."
+ *
+ * @generated from message diagnostics.v1.SettlementReactorStatus
+ */
+export declare type SettlementReactorStatus = Message<"diagnostics.v1.SettlementReactorStatus"> & {
+  /**
+   * @generated from field: bool settlement_enabled = 1;
+   */
+  settlementEnabled: boolean;
+
+  /**
+   * @generated from field: int64 window_ms = 2;
+   */
+  windowMs: bigint;
+
+  /**
+   * @generated from field: int64 interval_ms = 3;
+   */
+  intervalMs: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_tick_at = 4;
+   */
+  lastTickAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: int64 last_tick_ms = 5;
+   */
+  lastTickMs: bigint;
+
+  /**
+   * @generated from field: int32 last_tick_accounts = 6;
+   */
+  lastTickAccounts: number;
+
+  /**
+   * @generated from field: int32 last_tick_cleared = 7;
+   */
+  lastTickCleared: number;
+
+  /**
+   * @generated from field: int32 last_tick_failed = 8;
+   */
+  lastTickFailed: number;
+};
+
+/**
+ * Describes the message diagnostics.v1.SettlementReactorStatus.
+ * Use `create(SettlementReactorStatusSchema)` to create a new message.
+ */
+export declare const SettlementReactorStatusSchema: GenMessage<SettlementReactorStatus>;
 
 /**
  * @generated from enum diagnostics.v1.ProjectionPhase

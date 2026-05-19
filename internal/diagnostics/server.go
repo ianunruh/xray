@@ -15,7 +15,9 @@ import (
 	"github.com/ianunruh/xray/gen/diagnostics/v1/diagnosticsv1connect"
 	"github.com/ianunruh/xray/internal/feesaccruer"
 	"github.com/ianunruh/xray/internal/margincall"
+	"github.com/ianunruh/xray/internal/portfolio"
 	"github.com/ianunruh/xray/internal/reconciler"
+	"github.com/ianunruh/xray/internal/settlement"
 	"github.com/ianunruh/xray/pkg/es"
 	"github.com/ianunruh/xray/pkg/es/natsstore"
 	"github.com/ianunruh/xray/pkg/es/pgstore"
@@ -32,14 +34,24 @@ const (
 type Server struct {
 	diagnosticsv1connect.UnimplementedDiagnosticsServiceHandler
 
-	store         *pgstore.Store
-	registry      *es.Registry
-	projection    *natsstore.ProjectionManager
-	accruer       *feesaccruer.Accruer
-	reconciler    *reconciler.Reconciler
-	marginReactor *margincall.Reactor
-	marshal       protojson.MarshalOptions
-	log           *slog.Logger
+	store             *pgstore.Store
+	registry          *es.Registry
+	projection        *natsstore.ProjectionManager
+	accruer           *feesaccruer.Accruer
+	reconciler        *reconciler.Reconciler
+	marginReactor     *margincall.Reactor
+	settlementReactor SettlementStatusProvider
+	settlementPolicy  portfolio.SettlementPolicy
+	marshal           protojson.MarshalOptions
+	log               *slog.Logger
+}
+
+// SettlementStatusProvider is satisfied by *settlement.Reactor.
+// Kept as a small interface so this package doesn't import
+// internal/settlement (which itself imports internal/portfolio,
+// risking import cycles in the wider tree).
+type SettlementStatusProvider interface {
+	Status() settlement.Status
 }
 
 // NewServer constructs a diagnostics server backed by the given event store,
@@ -69,6 +81,15 @@ func NewServer(
 		},
 		log: log,
 	}
+}
+
+// WithSettlementReactor wires the T+1 settlement reactor and the
+// active SettlementPolicy. Optional so the server still boots without
+// it (GetOperationsStatus then surfaces a zero/disabled status).
+func (s *Server) WithSettlementReactor(r SettlementStatusProvider, policy portfolio.SettlementPolicy) *Server {
+	s.settlementReactor = r
+	s.settlementPolicy = policy
+	return s
 }
 
 func (s *Server) ListAggregates(ctx context.Context, req *connect.Request[diagnosticsv1.ListAggregatesRequest]) (*connect.Response[diagnosticsv1.ListAggregatesResponse], error) {
@@ -327,14 +348,15 @@ func progressToProto(evt natsstore.ProgressEvent) *diagnosticsv1.ProjectionProgr
 	return out
 }
 
-// GetOperationsStatus aggregates the live state of the three
-// background loops. Any unwired source surfaces as a zero-valued
-// message so the UI can render "—" rather than a partial response.
+// GetOperationsStatus aggregates the live state of the background
+// loops. Any unwired source surfaces as a zero-valued message so the
+// UI can render "—" rather than a partial response.
 func (s *Server) GetOperationsStatus(ctx context.Context, _ *connect.Request[diagnosticsv1.GetOperationsStatusRequest]) (*connect.Response[diagnosticsv1.GetOperationsStatusResponse], error) {
 	out := &diagnosticsv1.GetOperationsStatusResponse{
-		Accruer:       &diagnosticsv1.AccruerStatus{},
-		Reconciler:    &diagnosticsv1.ReconcilerStatus{},
-		MarginReactor: &diagnosticsv1.MarginReactorStatus{},
+		Accruer:           &diagnosticsv1.AccruerStatus{},
+		Reconciler:        &diagnosticsv1.ReconcilerStatus{},
+		MarginReactor:     &diagnosticsv1.MarginReactorStatus{},
+		SettlementReactor: &diagnosticsv1.SettlementReactorStatus{},
 	}
 	if s.accruer != nil {
 		a := s.accruer.Status()
@@ -362,6 +384,19 @@ func (s *Server) GetOperationsStatus(ctx context.Context, _ *connect.Request[dia
 		m := s.marginReactor.Status(ctx)
 		out.MarginReactor.GraceMs = m.Grace.Milliseconds()
 		out.MarginReactor.ActiveCallCount = int32(m.ActiveCallCount)
+	}
+	out.SettlementReactor.SettlementEnabled = s.settlementPolicy.Enabled
+	out.SettlementReactor.WindowMs = s.settlementPolicy.Window.Milliseconds()
+	if s.settlementReactor != nil {
+		sr := s.settlementReactor.Status()
+		out.SettlementReactor.IntervalMs = sr.Interval.Milliseconds()
+		if !sr.LastTickAt.IsZero() {
+			out.SettlementReactor.LastTickAt = timestamppb.New(sr.LastTickAt)
+		}
+		out.SettlementReactor.LastTickMs = sr.LastTickDuration.Milliseconds()
+		out.SettlementReactor.LastTickAccounts = int32(sr.LastTickAccounts)
+		out.SettlementReactor.LastTickCleared = int32(sr.LastTickCleared)
+		out.SettlementReactor.LastTickFailed = int32(sr.LastTickFailed)
 	}
 	return connect.NewResponse(out), nil
 }
