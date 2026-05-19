@@ -61,8 +61,12 @@ type PortfolioSnapshot struct {
 	// as the foundation for future cash-account / corporate-action
 	// / fail-to-deliver work.
 	PendingShareCredits map[string]int64 `protobuf:"bytes,19,rep,name=pending_share_credits,json=pendingShareCredits,proto3" json:"pending_share_credits,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// applied_actions is the dedup set of corporate-action IDs that
+	// have already been applied to this portfolio. Empty for portfolios
+	// that have never seen one.
+	AppliedActions []string `protobuf:"bytes,20,rep,name=applied_actions,json=appliedActions,proto3" json:"applied_actions,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *PortfolioSnapshot) Reset() {
@@ -224,6 +228,13 @@ func (x *PortfolioSnapshot) GetPendingLegs() []*PendingLegSnapshot {
 func (x *PortfolioSnapshot) GetPendingShareCredits() map[string]int64 {
 	if x != nil {
 		return x.PendingShareCredits
+	}
+	return nil
+}
+
+func (x *PortfolioSnapshot) GetAppliedActions() []string {
+	if x != nil {
+		return x.AppliedActions
 	}
 	return nil
 }
@@ -712,7 +723,7 @@ var File_portfolio_v1_snapshots_proto protoreflect.FileDescriptor
 
 const file_portfolio_v1_snapshots_proto_rawDesc = "" +
 	"\n" +
-	"\x1cportfolio/v1/snapshots.proto\x12\fportfolio.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19portfolio/v1/events.proto\"\xf6\x11\n" +
+	"\x1cportfolio/v1/snapshots.proto\x12\fportfolio.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19portfolio/v1/events.proto\"\x9f\x12\n" +
 	"\x11PortfolioSnapshot\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12!\n" +
@@ -735,7 +746,8 @@ const file_portfolio_v1_snapshots_proto_rawDesc = "" +
 	"\x0flast_accrued_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\rlastAccruedAt\x12!\n" +
 	"\fsettled_cash\x18\x11 \x01(\x03R\vsettledCash\x12C\n" +
 	"\fpending_legs\x18\x12 \x03(\v2 .portfolio.v1.PendingLegSnapshotR\vpendingLegs\x12l\n" +
-	"\x15pending_share_credits\x18\x13 \x03(\v28.portfolio.v1.PortfolioSnapshot.PendingShareCreditsEntryR\x13pendingShareCredits\x1aZ\n" +
+	"\x15pending_share_credits\x18\x13 \x03(\v28.portfolio.v1.PortfolioSnapshot.PendingShareCreditsEntryR\x13pendingShareCredits\x12'\n" +
+	"\x0fapplied_actions\x18\x14 \x03(\tR\x0eappliedActions\x1aZ\n" +
 	"\rHoldingsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x123\n" +
 	"\x05value\x18\x02 \x01(\v2\x1d.portfolio.v1.HoldingSnapshotR\x05value:\x028\x01\x1a>\n" +

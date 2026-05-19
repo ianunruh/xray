@@ -119,6 +119,12 @@ func (p *Portfolio) Snapshot() (proto.Message, error) {
 			snap.PendingShareCredits[sym] = qty
 		}
 	}
+	if len(p.AppliedActions) > 0 {
+		snap.AppliedActions = make([]string, 0, len(p.AppliedActions))
+		for id := range p.AppliedActions {
+			snap.AppliedActions = append(snap.AppliedActions, id)
+		}
+	}
 
 	return snap, nil
 }
@@ -240,6 +246,10 @@ func (p *Portfolio) RestoreSnapshot(msg proto.Message) error {
 	p.PendingShareCredits = make(map[string]int64, len(snap.PendingShareCredits))
 	for sym, qty := range snap.PendingShareCredits {
 		p.PendingShareCredits[sym] = qty
+	}
+	p.AppliedActions = make(map[string]struct{}, len(snap.AppliedActions))
+	for _, id := range snap.AppliedActions {
+		p.AppliedActions[id] = struct{}{}
 	}
 
 	return nil

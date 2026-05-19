@@ -1014,6 +1014,72 @@ export declare type TransactionFeeCharged = Message<"portfolio.v1.TransactionFee
 export declare const TransactionFeeChargedSchema: GenMessage<TransactionFeeCharged>;
 
 /**
+ * HoldingAdjusted records the result of applying a corporate action
+ * (split, currently) to a portfolio's per-symbol holding. Emitted
+ * per-account per-action. The applier moves Holdings.Quantity to
+ * new_quantity; TotalCost is preserved across splits (cost basis
+ * doesn't change), so avg_cost auto-scales by 1/ratio.
+ * `dropped_shares` is the truncation residue from reverse-split
+ * integer math (e.g. 1-for-10 of 105 shares yields 10 + 5 dropped).
+ *
+ * @generated from message portfolio.v1.HoldingAdjusted
+ */
+export declare type HoldingAdjusted = Message<"portfolio.v1.HoldingAdjusted"> & {
+  /**
+   * @generated from field: string account_id = 1;
+   */
+  accountId: string;
+
+  /**
+   * @generated from field: string action_id = 2;
+   */
+  actionId: string;
+
+  /**
+   * @generated from field: string symbol = 3;
+   */
+  symbol: string;
+
+  /**
+   * Ratio frozen on the event so replays are deterministic.
+   *
+   * @generated from field: int32 numerator = 4;
+   */
+  numerator: number;
+
+  /**
+   * @generated from field: int32 denominator = 5;
+   */
+  denominator: number;
+
+  /**
+   * @generated from field: int64 old_quantity = 6;
+   */
+  oldQuantity: bigint;
+
+  /**
+   * @generated from field: int64 new_quantity = 7;
+   */
+  newQuantity: bigint;
+
+  /**
+   * @generated from field: int64 dropped_shares = 8;
+   */
+  droppedShares: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp adjusted_at = 9;
+   */
+  adjustedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.HoldingAdjusted.
+ * Use `create(HoldingAdjustedSchema)` to create a new message.
+ */
+export declare const HoldingAdjustedSchema: GenMessage<HoldingAdjusted>;
+
+/**
  * SettlementCleared records that a pending settlement leg has cleared.
  * Emitted by the settlement reactor on or after the leg's settles_at.
  * Moves cash_amount from "pending" into SettledCash (CashBalance is

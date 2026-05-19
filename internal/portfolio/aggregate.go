@@ -148,6 +148,12 @@ type Portfolio struct {
 	// to CashBalance for a portfolio loaded from a pre-T+1 snapshot.
 	// Unexported because it has no semantic meaning outside Apply.
 	settledCashSeeded bool
+
+	// AppliedActions records which corporate-action IDs have already
+	// been applied to this portfolio, so replays + reactor retries
+	// are idempotent. Keyed by action_id; the value is unused (set
+	// semantics). Mirrors the SettledTrades dedup pattern.
+	AppliedActions map[string]struct{}
 }
 
 func NewPortfolio(id string) *Portfolio {
@@ -163,9 +169,29 @@ func NewPortfolio(id string) *Portfolio {
 		ShortCoverHoldsBySaga: make(map[string]*ShareHold),
 		PendingLegs:           make(map[PendingLegKey]*PendingLeg),
 		PendingShareCredits:   make(map[string]int64),
+		AppliedActions:        make(map[string]struct{}),
 	}
 	p.SetID(id)
 	return p
+}
+
+// HasAppliedAction reports whether the given corporate-action ID has
+// already been applied to this portfolio. The reactor checks this
+// before issuing AdjustHolding so a retry on a partially-applied
+// action doesn't double-adjust.
+func (p *Portfolio) HasAppliedAction(actionID string) bool {
+	if actionID == "" {
+		return false
+	}
+	_, ok := p.AppliedActions[actionID]
+	return ok
+}
+
+func (p *Portfolio) markActionApplied(actionID string) {
+	if actionID == "" {
+		return
+	}
+	p.AppliedActions[actionID] = struct{}{}
 }
 
 // MarginLoan returns the outstanding broker loan, derived from
@@ -268,6 +294,8 @@ func (p *Portfolio) Apply(evt es.Event) error {
 		p.applyTransactionFeeCharged(data)
 	case *portfoliov1.SettlementCleared:
 		p.applySettlementCleared(data)
+	case *portfoliov1.HoldingAdjusted:
+		p.applyHoldingAdjusted(data)
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}
@@ -639,6 +667,31 @@ func (p *Portfolio) advanceAccrualClock(end *timestamppb.Timestamp) {
 	}
 	if t := end.AsTime(); t.After(p.LastAccruedAt) {
 		p.LastAccruedAt = t
+	}
+}
+
+func (p *Portfolio) applyHoldingAdjusted(data *portfoliov1.HoldingAdjusted) {
+	// Idempotent: a replayed adjustment is a no-op. Marking happens
+	// regardless so AppliedActions correctly reflects the action's
+	// historical effect even if it had zero net impact on this
+	// account (e.g. position was closed before ex-date).
+	if p.HasAppliedAction(data.ActionId) {
+		return
+	}
+	p.markActionApplied(data.ActionId)
+
+	h, ok := p.Holdings[data.Symbol]
+	if !ok || h.Quantity <= 0 {
+		// Account no longer holds the symbol — applier records the
+		// action ID for audit but doesn't need to touch Holdings.
+		return
+	}
+	// TotalCost is preserved across splits — cost basis doesn't
+	// change, only how the shares are denominated. avg_cost auto-
+	// scales via TotalCost / new_quantity.
+	h.Quantity = data.NewQuantity
+	if h.Quantity <= 0 {
+		delete(p.Holdings, data.Symbol)
 	}
 }
 

@@ -1003,3 +1003,83 @@ func ExecuteClearSettlement(p *Portfolio, cmd ClearSettlement) ([]es.Event, erro
 	}
 	return []es.Event{evt}, nil
 }
+
+// AdjustHolding scales a portfolio's per-symbol holding by
+// numerator/denominator (a split ratio). Pre-computes new_quantity
+// and the truncation residue. Idempotent on the action_id —
+// re-issuing the same command is a no-op so the corpaction reactor
+// can safely retry.
+type AdjustHolding struct {
+	AccountID   string
+	ActionID    string
+	Symbol      string
+	Numerator   int32
+	Denominator int32
+}
+
+func (c AdjustHolding) AggregateID() string { return AggregateID(c.AccountID) }
+
+func ExecuteAdjustHolding(p *Portfolio, cmd AdjustHolding) ([]es.Event, error) {
+	if cmd.ActionID == "" {
+		return nil, errors.New("action_id required")
+	}
+	if cmd.Numerator <= 0 || cmd.Denominator <= 0 {
+		return nil, errors.New("ratio numerator and denominator must be positive")
+	}
+	if p.HasAppliedAction(cmd.ActionID) {
+		return nil, nil
+	}
+	h, ok := p.Holdings[cmd.Symbol]
+	if !ok || h.Quantity <= 0 {
+		// No position to adjust — still emit the event so the
+		// action is recorded as applied for this account (keeps
+		// the audit trail complete).
+		return emitHoldingAdjusted(p, cmd, 0, 0, 0)
+	}
+	// Forward split (numerator > denominator) multiplies; reverse
+	// (denominator > numerator) divides. Truncation residue from
+	// reverse splits is recorded separately so the UI can surface
+	// the loss.
+	oldQty := h.Quantity
+	scaled := oldQty * int64(cmd.Numerator)
+	newQty := scaled / int64(cmd.Denominator)
+	residueShares := scaled - (newQty * int64(cmd.Denominator))
+	// residueShares is denominated in the post-multiply space (i.e.
+	// at the new share scale); convert back to "shares we lost" in
+	// the pre-split denomination by dividing by numerator.
+	dropped := int64(0)
+	if residueShares > 0 {
+		dropped = residueShares / int64(cmd.Numerator)
+		if dropped == 0 {
+			// Sub-share residue still represents loss in the new
+			// denomination; round up to 1 share so the audit
+			// reflects that something was truncated.
+			dropped = 1
+		}
+	}
+	return emitHoldingAdjusted(p, cmd, oldQty, newQty, dropped)
+}
+
+func emitHoldingAdjusted(p *Portfolio, cmd AdjustHolding, oldQty, newQty, dropped int64) ([]es.Event, error) {
+	now := time.Now()
+	evt := es.Event{
+		AggregateID: p.AggregateID(),
+		Type:        EventHoldingAdjusted,
+		Timestamp:   now,
+		Data: &portfoliov1.HoldingAdjusted{
+			AccountId:     cmd.AccountID,
+			ActionId:      cmd.ActionID,
+			Symbol:        cmd.Symbol,
+			Numerator:     cmd.Numerator,
+			Denominator:   cmd.Denominator,
+			OldQuantity:   oldQty,
+			NewQuantity:   newQty,
+			DroppedShares: dropped,
+			AdjustedAt:    timestamppb.New(now),
+		},
+	}
+	if err := p.Apply(evt); err != nil {
+		return nil, err
+	}
+	return []es.Event{evt}, nil
+}

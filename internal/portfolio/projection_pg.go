@@ -212,6 +212,17 @@ func (p *PgPortfolioProjection) HandleEvents(ctx context.Context, events []es.Ev
 				`UPDATE projection_portfolios SET settled_cash = settled_cash + $1 WHERE account_id = $2`,
 				data.CashAmount, data.AccountId,
 			)
+		case *portfoliov1.HoldingAdjusted:
+			// Corporate-action split (incl. reverse). TotalCost
+			// preserved; only quantity moves. UPDATE-only — if the
+			// row doesn't exist the action had no effect for this
+			// account.
+			batch.Queue(
+				`UPDATE projection_holdings
+				 SET quantity = $1
+				 WHERE account_id = $2 AND symbol = $3`,
+				data.NewQuantity, data.AccountId, data.Symbol,
+			)
 		}
 	}
 

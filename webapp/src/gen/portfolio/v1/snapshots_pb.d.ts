@@ -132,6 +132,15 @@ export declare type PortfolioSnapshot = Message<"portfolio.v1.PortfolioSnapshot"
    * @generated from field: map<string, int64> pending_share_credits = 19;
    */
   pendingShareCredits: { [key: string]: bigint };
+
+  /**
+   * applied_actions is the dedup set of corporate-action IDs that
+   * have already been applied to this portfolio. Empty for portfolios
+   * that have never seen one.
+   *
+   * @generated from field: repeated string applied_actions = 20;
+   */
+  appliedActions: string[];
 };
 
 /**
