@@ -46,6 +46,29 @@ type CollateralHold struct {
 	Amount   int64
 }
 
+// PendingLeg is a settlement leg awaiting clearing. One per (TradeID,
+// Kind); on SettlementCleared the entry is removed and CashAmount is
+// rolled into SettledCash. CashBalance is unaffected on clear because
+// it already reflected the trade on trade date.
+type PendingLeg struct {
+	TradeID     string
+	OrderSagaID string
+	Kind        portfoliov1.SettlementLegKind
+	Symbol      string
+	CashAmount  int64 // signed: + = credit, - = debit
+	SettlesAt   time.Time
+	EmittedAt   time.Time
+}
+
+// PendingLegKey is the map key for PendingLegs: one entry per
+// (trade_id, kind). A single trade can spawn at most one leg of each
+// kind (e.g., SHORT_OPEN never coexists with CASH_DEBIT on the same
+// trade ID), so collisions are not possible in practice.
+type PendingLegKey struct {
+	TradeID string
+	Kind    portfoliov1.SettlementLegKind
+}
+
 // MarginCall records an active margin breach. At most one is active
 // per account — the reactor only emits MarginCallIssued when none is
 // open, and emits MarginCallCovered to clear it.
@@ -98,6 +121,24 @@ type Portfolio struct {
 	// the next accrual cycle. Initialized lazily in Apply() to the
 	// timestamp of the first event applied to the aggregate.
 	LastAccruedAt time.Time
+
+	// SettledCash is the cleared-settlement portion of CashBalance.
+	// Withdraw is gated against it. Invariant:
+	//   SettledCash + sum(PendingLegs.CashAmount) == CashBalance.
+	// Lazy-seeded equal to CashBalance for portfolios that pre-date
+	// T+1 settlement (legacy events emit SettlesAt == SettledAt and
+	// land directly in SettledCash).
+	SettledCash int64
+
+	// PendingLegs are settlement legs awaiting their settles_at
+	// instant. Keyed by (trade_id, kind) so clearing is an O(1)
+	// lookup and idempotent.
+	PendingLegs map[PendingLegKey]*PendingLeg
+
+	// settledCashSeeded marks that Apply() has lazily set SettledCash
+	// to CashBalance for a portfolio loaded from a pre-T+1 snapshot.
+	// Unexported because it has no semantic meaning outside Apply.
+	settledCashSeeded bool
 }
 
 func NewPortfolio(id string) *Portfolio {
@@ -111,6 +152,7 @@ func NewPortfolio(id string) *Portfolio {
 		CollateralHeldBySaga:  make(map[string]*CollateralHold),
 		ShortCoversHeld:       make(map[string]int64),
 		ShortCoverHoldsBySaga: make(map[string]*ShareHold),
+		PendingLegs:           make(map[PendingLegKey]*PendingLeg),
 	}
 	p.SetID(id)
 	return p
@@ -155,6 +197,15 @@ func (p *Portfolio) Apply(evt es.Event) error {
 	// apply since after the first one this is a no-op.
 	if p.LastAccruedAt.IsZero() {
 		p.LastAccruedAt = evt.Timestamp
+	}
+	// Seed SettledCash to CashBalance on first event for portfolios
+	// that pre-date T+1 settlement (snapshots may have SettledCash=0
+	// even though CashBalance is non-zero). After this seed, every
+	// applier moves the two in lockstep (instant path) or records a
+	// PendingLeg (deferred path).
+	if !p.settledCashSeeded {
+		p.SettledCash = p.CashBalance
+		p.settledCashSeeded = true
 	}
 	// Detect the idle->liable transition. If we go from "no shorts
 	// and no loan" to "has a liability" via this event, reset the
@@ -205,6 +256,8 @@ func (p *Portfolio) Apply(evt es.Event) error {
 		p.applyShortBorrowFeeAccrued(data)
 	case *portfoliov1.TransactionFeeCharged:
 		p.applyTransactionFeeCharged(data)
+	case *portfoliov1.SettlementCleared:
+		p.applySettlementCleared(data)
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}
@@ -220,14 +273,17 @@ func (p *Portfolio) Apply(evt es.Event) error {
 func (p *Portfolio) applyCashDeposited(data *portfoliov1.CashDeposited) {
 	p.AccountID = data.AccountId
 	p.CashBalance += data.Amount
+	p.SettledCash += data.Amount
 }
 
 func (p *Portfolio) applyCashWithdrawn(data *portfoliov1.CashWithdrawn) {
 	p.CashBalance -= data.Amount
+	p.SettledCash -= data.Amount
 }
 
 func (p *Portfolio) applyCashHeld(data *portfoliov1.CashHeld) {
 	p.CashBalance -= data.Amount
+	p.SettledCash -= data.Amount
 	p.CashHeld += data.Amount
 	p.HoldsBySaga[data.OrderSagaId] = data.Amount
 }
@@ -235,6 +291,7 @@ func (p *Portfolio) applyCashHeld(data *portfoliov1.CashHeld) {
 func (p *Portfolio) applyCashReleased(data *portfoliov1.CashReleased) {
 	p.CashHeld -= data.Amount
 	p.CashBalance += data.Amount
+	p.SettledCash += data.Amount
 	delete(p.HoldsBySaga, data.OrderSagaId)
 }
 
@@ -262,6 +319,24 @@ func (p *Portfolio) applyCashSettled(data *portfoliov1.CashSettled) {
 	h.TotalCost += data.CostPerShare * data.Quantity
 
 	p.markSettled(data.OrderSagaId, data.TradeId)
+
+	// Settled-cash bookkeeping. The full cost (fromHold + overflow)
+	// is the cash debit; on the instant path it leaves SettledCash
+	// now, on the deferred path it lands in a PendingLeg and clears
+	// later via SettlementCleared.
+	if isInstantSettlement(data.SettlesAt, data.SettledAt) {
+		p.SettledCash -= data.Amount
+	} else {
+		p.PendingLegs[PendingLegKey{TradeID: data.TradeId, Kind: portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_CASH_DEBIT}] = &PendingLeg{
+			TradeID:     data.TradeId,
+			OrderSagaID: data.OrderSagaId,
+			Kind:        portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_CASH_DEBIT,
+			Symbol:      data.Symbol,
+			CashAmount:  -data.Amount,
+			SettlesAt:   data.SettlesAt.AsTime(),
+			EmittedAt:   data.SettledAt.AsTime(),
+		}
+	}
 }
 
 func (p *Portfolio) applySharesCredited(data *portfoliov1.SharesCredited) {
@@ -333,11 +408,26 @@ func (p *Portfolio) applySharesSettled(data *portfoliov1.SharesSettled) {
 	p.CashBalance += data.Proceeds
 
 	p.markSettled(data.OrderSagaId, data.TradeId)
+
+	if isInstantSettlement(data.SettlesAt, data.SettledAt) {
+		p.SettledCash += data.Proceeds
+	} else {
+		p.PendingLegs[PendingLegKey{TradeID: data.TradeId, Kind: portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_CASH_CREDIT}] = &PendingLeg{
+			TradeID:     data.TradeId,
+			OrderSagaID: data.OrderSagaId,
+			Kind:        portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_CASH_CREDIT,
+			Symbol:      data.Symbol,
+			CashAmount:  data.Proceeds,
+			SettlesAt:   data.SettlesAt.AsTime(),
+			EmittedAt:   data.SettledAt.AsTime(),
+		}
+	}
 }
 
 func (p *Portfolio) applyCollateralHeld(data *portfoliov1.CollateralHeld) {
 	p.AccountID = data.AccountId
 	p.CashBalance -= data.Amount
+	p.SettledCash -= data.Amount
 	p.CollateralHeldBySaga[data.OrderSagaId] = &CollateralHold{
 		Symbol:   data.Symbol,
 		Quantity: data.Quantity,
@@ -347,6 +437,7 @@ func (p *Portfolio) applyCollateralHeld(data *portfoliov1.CollateralHeld) {
 
 func (p *Portfolio) applyCollateralReleased(data *portfoliov1.CollateralReleased) {
 	p.CashBalance += data.Amount
+	p.SettledCash += data.Amount
 	delete(p.CollateralHeldBySaga, data.OrderSagaId)
 }
 
@@ -381,6 +472,23 @@ func (p *Portfolio) applyShortOpened(data *portfoliov1.ShortOpened) {
 	p.CollateralPool += data.CollateralHeld
 
 	p.markSettled(data.OrderSagaId, data.TradeId)
+
+	// ShortOpened doesn't move CashBalance directly (the cash leg was
+	// the prior CollateralHeld), so no SettledCash bookkeeping is
+	// needed on the instant path. On the deferred path we still
+	// record a zero-amount audit leg so the settlement reactor and
+	// projection have a record that the trade is in-flight.
+	if !isInstantSettlement(data.SettlesAt, data.OpenedAt) {
+		p.PendingLegs[PendingLegKey{TradeID: data.TradeId, Kind: portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_SHORT_OPEN}] = &PendingLeg{
+			TradeID:     data.TradeId,
+			OrderSagaID: data.OrderSagaId,
+			Kind:        portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_SHORT_OPEN,
+			Symbol:      data.Symbol,
+			CashAmount:  0,
+			SettlesAt:   data.SettlesAt.AsTime(),
+			EmittedAt:   data.OpenedAt.AsTime(),
+		}
+	}
 }
 
 func (p *Portfolio) applyShortCoverHeld(data *portfoliov1.ShortCoverHeld) {
@@ -426,21 +534,39 @@ func (p *Portfolio) applyShortCovered(data *portfoliov1.ShortCovered) {
 	fromCollateral := min(paid, data.CollateralReleased)
 	paid -= fromCollateral
 	p.CashBalance -= paid
+	cashDelta := -paid
 
 	returned := (data.ProceedsReleased - fromProceeds) +
 		(data.CollateralReleased - fromCollateral)
 	p.CashBalance += returned
+	cashDelta += returned
 
 	short.Quantity -= data.Quantity
 	if short.Quantity <= 0 {
 		// Drain rounding remainders from prior partial covers.
-		p.CashBalance += short.ProceedsHeld + short.CollateralHeld
+		drain := short.ProceedsHeld + short.CollateralHeld
+		p.CashBalance += drain
+		cashDelta += drain
 		p.ProceedsPool -= short.ProceedsHeld
 		p.CollateralPool -= short.CollateralHeld
 		delete(p.ShortPositions, data.Symbol)
 	}
 
 	p.markSettled(data.OrderSagaId, data.TradeId)
+
+	if isInstantSettlement(data.SettlesAt, data.CoveredAt) {
+		p.SettledCash += cashDelta
+	} else {
+		p.PendingLegs[PendingLegKey{TradeID: data.TradeId, Kind: portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_SHORT_COVER}] = &PendingLeg{
+			TradeID:     data.TradeId,
+			OrderSagaID: data.OrderSagaId,
+			Kind:        portfoliov1.SettlementLegKind_SETTLEMENT_LEG_KIND_SHORT_COVER,
+			Symbol:      data.Symbol,
+			CashAmount:  cashDelta,
+			SettlesAt:   data.SettlesAt.AsTime(),
+			EmittedAt:   data.CoveredAt.AsTime(),
+		}
+	}
 }
 
 func (p *Portfolio) applyMarginCallIssued(data *portfoliov1.MarginCallIssued) {
@@ -485,4 +611,37 @@ func (p *Portfolio) advanceAccrualClock(end *timestamppb.Timestamp) {
 	if t := end.AsTime(); t.After(p.LastAccruedAt) {
 		p.LastAccruedAt = t
 	}
+}
+
+func (p *Portfolio) applySettlementCleared(data *portfoliov1.SettlementCleared) {
+	key := PendingLegKey{TradeID: data.TradeId, Kind: data.Kind}
+	if _, ok := p.PendingLegs[key]; !ok {
+		// Idempotent: already cleared, or the leg never existed
+		// (replay of a SettlementCleared whose event predates the
+		// snapshot we restored from). CashBalance was unaffected
+		// by clearing, so leaving SettledCash untouched preserves
+		// the invariant.
+		return
+	}
+	p.SettledCash += data.CashAmount
+	delete(p.PendingLegs, key)
+}
+
+// isInstantSettlement reports whether a trade-date settlement event
+// should apply its cash leg to SettledCash immediately (true) or defer
+// it to a SettlementCleared event (false). Treats a zero or equal-to-
+// trade-date settlesAt as instant; this keeps legacy events (no
+// settles_at field at all) on the existing fast path.
+func isInstantSettlement(settlesAt, tradeDate *timestamppb.Timestamp) bool {
+	if settlesAt == nil {
+		return true
+	}
+	s := settlesAt.AsTime()
+	if s.IsZero() {
+		return true
+	}
+	if tradeDate == nil {
+		return false
+	}
+	return !s.After(tradeDate.AsTime())
 }

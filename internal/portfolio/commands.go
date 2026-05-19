@@ -51,6 +51,8 @@ var (
 	ErrInsufficientShortQty = errors.New("cover quantity exceeds open short")
 	ErrShortHoldsLong       = errors.New("cannot open short while holding long in symbol")
 	ErrLongHoldsShort       = errors.New("cannot buy long while holding short in symbol")
+	ErrUnsettledFunds       = errors.New("withdrawal exceeds settled cash")
+	ErrSettlementNotDue     = errors.New("pending settlement leg is not yet due")
 )
 
 type DepositCash struct {
@@ -901,4 +903,46 @@ func ExecuteAccrueFees(p *Portfolio, cmd AccrueFees) ([]es.Event, error) {
 		events = append(events, feeEvt)
 	}
 	return events, nil
+}
+
+// ClearSettlement clears one pending settlement leg, emitting
+// SettlementCleared. Idempotent: a leg that's already cleared (or
+// never existed) returns no events without error. The settlement
+// reactor calls this once per due leg per tick.
+type ClearSettlement struct {
+	AccountID string
+	TradeID   string
+	Kind      portfoliov1.SettlementLegKind
+}
+
+func (c ClearSettlement) AggregateID() string {
+	return AggregateID(c.AccountID)
+}
+
+func ExecuteClearSettlement(p *Portfolio, cmd ClearSettlement) ([]es.Event, error) {
+	leg, ok := p.PendingLegs[PendingLegKey{TradeID: cmd.TradeID, Kind: cmd.Kind}]
+	if !ok {
+		return nil, nil
+	}
+	now := time.Now()
+	if leg.SettlesAt.After(now) {
+		return nil, ErrSettlementNotDue
+	}
+	evt := es.Event{
+		AggregateID: p.AggregateID(),
+		Type:        EventSettlementCleared,
+		Timestamp:   now,
+		Data: &portfoliov1.SettlementCleared{
+			AccountId:   cmd.AccountID,
+			OrderSagaId: leg.OrderSagaID,
+			TradeId:     cmd.TradeID,
+			Kind:        cmd.Kind,
+			CashAmount:  leg.CashAmount,
+			ClearedAt:   timestamppb.New(now),
+		},
+	}
+	if err := p.Apply(evt); err != nil {
+		return nil, err
+	}
+	return []es.Event{evt}, nil
 }

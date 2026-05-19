@@ -45,8 +45,17 @@ type PortfolioSnapshot struct {
 	ShortCoverHoldsBySaga map[string]*ShareHoldSnapshot      `protobuf:"bytes,14,rep,name=short_cover_holds_by_saga,json=shortCoverHoldsBySaga,proto3" json:"short_cover_holds_by_saga,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	ActiveMarginCall      *MarginCallSnapshot                `protobuf:"bytes,15,opt,name=active_margin_call,json=activeMarginCall,proto3" json:"active_margin_call,omitempty"`
 	LastAccruedAt         *timestamppb.Timestamp             `protobuf:"bytes,16,opt,name=last_accrued_at,json=lastAccruedAt,proto3" json:"last_accrued_at,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// settled_cash is the cleared-settlement portion of cash_balance.
+	// Snapshots from before T+1 settlement was introduced leave it
+	// zero — Apply() seeds it lazily from cash_balance on the next
+	// event applied, so old snapshots remain valid.
+	SettledCash int64 `protobuf:"varint,17,opt,name=settled_cash,json=settledCash,proto3" json:"settled_cash,omitempty"`
+	// pending_legs are settlement legs awaiting clearing, keyed by
+	// (trade_id, kind). Empty when settlement is disabled or the
+	// account has no in-flight trades.
+	PendingLegs   []*PendingLegSnapshot `protobuf:"bytes,18,rep,name=pending_legs,json=pendingLegs,proto3" json:"pending_legs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PortfolioSnapshot) Reset() {
@@ -191,6 +200,112 @@ func (x *PortfolioSnapshot) GetLastAccruedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *PortfolioSnapshot) GetSettledCash() int64 {
+	if x != nil {
+		return x.SettledCash
+	}
+	return 0
+}
+
+func (x *PortfolioSnapshot) GetPendingLegs() []*PendingLegSnapshot {
+	if x != nil {
+		return x.PendingLegs
+	}
+	return nil
+}
+
+type PendingLegSnapshot struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TradeId       string                 `protobuf:"bytes,1,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
+	OrderSagaId   string                 `protobuf:"bytes,2,opt,name=order_saga_id,json=orderSagaId,proto3" json:"order_saga_id,omitempty"`
+	Kind          SettlementLegKind      `protobuf:"varint,3,opt,name=kind,proto3,enum=portfolio.v1.SettlementLegKind" json:"kind,omitempty"`
+	Symbol        string                 `protobuf:"bytes,4,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	CashAmount    int64                  `protobuf:"varint,5,opt,name=cash_amount,json=cashAmount,proto3" json:"cash_amount,omitempty"` // signed
+	SettlesAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=settles_at,json=settlesAt,proto3" json:"settles_at,omitempty"`
+	EmittedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=emitted_at,json=emittedAt,proto3" json:"emitted_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PendingLegSnapshot) Reset() {
+	*x = PendingLegSnapshot{}
+	mi := &file_portfolio_v1_snapshots_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PendingLegSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PendingLegSnapshot) ProtoMessage() {}
+
+func (x *PendingLegSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_portfolio_v1_snapshots_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PendingLegSnapshot.ProtoReflect.Descriptor instead.
+func (*PendingLegSnapshot) Descriptor() ([]byte, []int) {
+	return file_portfolio_v1_snapshots_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *PendingLegSnapshot) GetTradeId() string {
+	if x != nil {
+		return x.TradeId
+	}
+	return ""
+}
+
+func (x *PendingLegSnapshot) GetOrderSagaId() string {
+	if x != nil {
+		return x.OrderSagaId
+	}
+	return ""
+}
+
+func (x *PendingLegSnapshot) GetKind() SettlementLegKind {
+	if x != nil {
+		return x.Kind
+	}
+	return SettlementLegKind_SETTLEMENT_LEG_KIND_UNSPECIFIED
+}
+
+func (x *PendingLegSnapshot) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *PendingLegSnapshot) GetCashAmount() int64 {
+	if x != nil {
+		return x.CashAmount
+	}
+	return 0
+}
+
+func (x *PendingLegSnapshot) GetSettlesAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SettlesAt
+	}
+	return nil
+}
+
+func (x *PendingLegSnapshot) GetEmittedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.EmittedAt
+	}
+	return nil
+}
+
 type HoldingSnapshot struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Quantity      int64                  `protobuf:"varint,1,opt,name=quantity,proto3" json:"quantity,omitempty"`
@@ -201,7 +316,7 @@ type HoldingSnapshot struct {
 
 func (x *HoldingSnapshot) Reset() {
 	*x = HoldingSnapshot{}
-	mi := &file_portfolio_v1_snapshots_proto_msgTypes[1]
+	mi := &file_portfolio_v1_snapshots_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -213,7 +328,7 @@ func (x *HoldingSnapshot) String() string {
 func (*HoldingSnapshot) ProtoMessage() {}
 
 func (x *HoldingSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_snapshots_proto_msgTypes[1]
+	mi := &file_portfolio_v1_snapshots_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -226,7 +341,7 @@ func (x *HoldingSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HoldingSnapshot.ProtoReflect.Descriptor instead.
 func (*HoldingSnapshot) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_snapshots_proto_rawDescGZIP(), []int{1}
+	return file_portfolio_v1_snapshots_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *HoldingSnapshot) GetQuantity() int64 {
@@ -253,7 +368,7 @@ type ShareHoldSnapshot struct {
 
 func (x *ShareHoldSnapshot) Reset() {
 	*x = ShareHoldSnapshot{}
-	mi := &file_portfolio_v1_snapshots_proto_msgTypes[2]
+	mi := &file_portfolio_v1_snapshots_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -265,7 +380,7 @@ func (x *ShareHoldSnapshot) String() string {
 func (*ShareHoldSnapshot) ProtoMessage() {}
 
 func (x *ShareHoldSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_snapshots_proto_msgTypes[2]
+	mi := &file_portfolio_v1_snapshots_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -278,7 +393,7 @@ func (x *ShareHoldSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShareHoldSnapshot.ProtoReflect.Descriptor instead.
 func (*ShareHoldSnapshot) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_snapshots_proto_rawDescGZIP(), []int{2}
+	return file_portfolio_v1_snapshots_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ShareHoldSnapshot) GetSymbol() string {
@@ -306,7 +421,7 @@ type CollateralHoldSnapshot struct {
 
 func (x *CollateralHoldSnapshot) Reset() {
 	*x = CollateralHoldSnapshot{}
-	mi := &file_portfolio_v1_snapshots_proto_msgTypes[3]
+	mi := &file_portfolio_v1_snapshots_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -318,7 +433,7 @@ func (x *CollateralHoldSnapshot) String() string {
 func (*CollateralHoldSnapshot) ProtoMessage() {}
 
 func (x *CollateralHoldSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_snapshots_proto_msgTypes[3]
+	mi := &file_portfolio_v1_snapshots_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -331,7 +446,7 @@ func (x *CollateralHoldSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollateralHoldSnapshot.ProtoReflect.Descriptor instead.
 func (*CollateralHoldSnapshot) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_snapshots_proto_rawDescGZIP(), []int{3}
+	return file_portfolio_v1_snapshots_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CollateralHoldSnapshot) GetSymbol() string {
@@ -367,7 +482,7 @@ type ShortPositionSnapshot struct {
 
 func (x *ShortPositionSnapshot) Reset() {
 	*x = ShortPositionSnapshot{}
-	mi := &file_portfolio_v1_snapshots_proto_msgTypes[4]
+	mi := &file_portfolio_v1_snapshots_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -379,7 +494,7 @@ func (x *ShortPositionSnapshot) String() string {
 func (*ShortPositionSnapshot) ProtoMessage() {}
 
 func (x *ShortPositionSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_snapshots_proto_msgTypes[4]
+	mi := &file_portfolio_v1_snapshots_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -392,7 +507,7 @@ func (x *ShortPositionSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShortPositionSnapshot.ProtoReflect.Descriptor instead.
 func (*ShortPositionSnapshot) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_snapshots_proto_rawDescGZIP(), []int{4}
+	return file_portfolio_v1_snapshots_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ShortPositionSnapshot) GetQuantity() int64 {
@@ -435,7 +550,7 @@ type SettledTradeSet struct {
 
 func (x *SettledTradeSet) Reset() {
 	*x = SettledTradeSet{}
-	mi := &file_portfolio_v1_snapshots_proto_msgTypes[5]
+	mi := &file_portfolio_v1_snapshots_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -447,7 +562,7 @@ func (x *SettledTradeSet) String() string {
 func (*SettledTradeSet) ProtoMessage() {}
 
 func (x *SettledTradeSet) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_snapshots_proto_msgTypes[5]
+	mi := &file_portfolio_v1_snapshots_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -460,7 +575,7 @@ func (x *SettledTradeSet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettledTradeSet.ProtoReflect.Descriptor instead.
 func (*SettledTradeSet) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_snapshots_proto_rawDescGZIP(), []int{5}
+	return file_portfolio_v1_snapshots_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *SettledTradeSet) GetTradeIds() []string {
@@ -486,7 +601,7 @@ type MarginCallSnapshot struct {
 
 func (x *MarginCallSnapshot) Reset() {
 	*x = MarginCallSnapshot{}
-	mi := &file_portfolio_v1_snapshots_proto_msgTypes[6]
+	mi := &file_portfolio_v1_snapshots_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -498,7 +613,7 @@ func (x *MarginCallSnapshot) String() string {
 func (*MarginCallSnapshot) ProtoMessage() {}
 
 func (x *MarginCallSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_portfolio_v1_snapshots_proto_msgTypes[6]
+	mi := &file_portfolio_v1_snapshots_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -511,7 +626,7 @@ func (x *MarginCallSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MarginCallSnapshot.ProtoReflect.Descriptor instead.
 func (*MarginCallSnapshot) Descriptor() ([]byte, []int) {
-	return file_portfolio_v1_snapshots_proto_rawDescGZIP(), []int{6}
+	return file_portfolio_v1_snapshots_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *MarginCallSnapshot) GetCallId() string {
@@ -574,7 +689,7 @@ var File_portfolio_v1_snapshots_proto protoreflect.FileDescriptor
 
 const file_portfolio_v1_snapshots_proto_rawDesc = "" +
 	"\n" +
-	"\x1cportfolio/v1/snapshots.proto\x12\fportfolio.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd8\x0f\n" +
+	"\x1cportfolio/v1/snapshots.proto\x12\fportfolio.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19portfolio/v1/events.proto\"\xc0\x10\n" +
 	"\x11PortfolioSnapshot\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12!\n" +
@@ -594,7 +709,9 @@ const file_portfolio_v1_snapshots_proto_rawDesc = "" +
 	"\x11short_covers_held\x18\r \x03(\v24.portfolio.v1.PortfolioSnapshot.ShortCoversHeldEntryR\x0fshortCoversHeld\x12t\n" +
 	"\x19short_cover_holds_by_saga\x18\x0e \x03(\v2:.portfolio.v1.PortfolioSnapshot.ShortCoverHoldsBySagaEntryR\x15shortCoverHoldsBySaga\x12N\n" +
 	"\x12active_margin_call\x18\x0f \x01(\v2 .portfolio.v1.MarginCallSnapshotR\x10activeMarginCall\x12B\n" +
-	"\x0flast_accrued_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\rlastAccruedAt\x1aZ\n" +
+	"\x0flast_accrued_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\rlastAccruedAt\x12!\n" +
+	"\fsettled_cash\x18\x11 \x01(\x03R\vsettledCash\x12C\n" +
+	"\fpending_legs\x18\x12 \x03(\v2 .portfolio.v1.PendingLegSnapshotR\vpendingLegs\x1aZ\n" +
 	"\rHoldingsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x123\n" +
 	"\x05value\x18\x02 \x01(\v2\x1d.portfolio.v1.HoldingSnapshotR\x05value:\x028\x01\x1a>\n" +
@@ -621,7 +738,18 @@ const file_portfolio_v1_snapshots_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01\x1ai\n" +
 	"\x1aShortCoverHoldsBySagaEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x125\n" +
-	"\x05value\x18\x02 \x01(\v2\x1f.portfolio.v1.ShareHoldSnapshotR\x05value:\x028\x01\"L\n" +
+	"\x05value\x18\x02 \x01(\v2\x1f.portfolio.v1.ShareHoldSnapshotR\x05value:\x028\x01\"\xb7\x02\n" +
+	"\x12PendingLegSnapshot\x12\x19\n" +
+	"\btrade_id\x18\x01 \x01(\tR\atradeId\x12\"\n" +
+	"\rorder_saga_id\x18\x02 \x01(\tR\vorderSagaId\x123\n" +
+	"\x04kind\x18\x03 \x01(\x0e2\x1f.portfolio.v1.SettlementLegKindR\x04kind\x12\x16\n" +
+	"\x06symbol\x18\x04 \x01(\tR\x06symbol\x12\x1f\n" +
+	"\vcash_amount\x18\x05 \x01(\x03R\n" +
+	"cashAmount\x129\n" +
+	"\n" +
+	"settles_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tsettlesAt\x129\n" +
+	"\n" +
+	"emitted_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\temittedAt\"L\n" +
 	"\x0fHoldingSnapshot\x12\x1a\n" +
 	"\bquantity\x18\x01 \x01(\x03R\bquantity\x12\x1d\n" +
 	"\n" +
@@ -663,51 +791,57 @@ func file_portfolio_v1_snapshots_proto_rawDescGZIP() []byte {
 	return file_portfolio_v1_snapshots_proto_rawDescData
 }
 
-var file_portfolio_v1_snapshots_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_portfolio_v1_snapshots_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_portfolio_v1_snapshots_proto_goTypes = []any{
 	(*PortfolioSnapshot)(nil),      // 0: portfolio.v1.PortfolioSnapshot
-	(*HoldingSnapshot)(nil),        // 1: portfolio.v1.HoldingSnapshot
-	(*ShareHoldSnapshot)(nil),      // 2: portfolio.v1.ShareHoldSnapshot
-	(*CollateralHoldSnapshot)(nil), // 3: portfolio.v1.CollateralHoldSnapshot
-	(*ShortPositionSnapshot)(nil),  // 4: portfolio.v1.ShortPositionSnapshot
-	(*SettledTradeSet)(nil),        // 5: portfolio.v1.SettledTradeSet
-	(*MarginCallSnapshot)(nil),     // 6: portfolio.v1.MarginCallSnapshot
-	nil,                            // 7: portfolio.v1.PortfolioSnapshot.HoldingsEntry
-	nil,                            // 8: portfolio.v1.PortfolioSnapshot.HoldsBySagaEntry
-	nil,                            // 9: portfolio.v1.PortfolioSnapshot.SharesHeldEntry
-	nil,                            // 10: portfolio.v1.PortfolioSnapshot.ShareHoldsBySagaEntry
-	nil,                            // 11: portfolio.v1.PortfolioSnapshot.SettledTradesEntry
-	nil,                            // 12: portfolio.v1.PortfolioSnapshot.ShortPositionsEntry
-	nil,                            // 13: portfolio.v1.PortfolioSnapshot.CollateralHeldBySagaEntry
-	nil,                            // 14: portfolio.v1.PortfolioSnapshot.ShortCoversHeldEntry
-	nil,                            // 15: portfolio.v1.PortfolioSnapshot.ShortCoverHoldsBySagaEntry
-	(*timestamppb.Timestamp)(nil),  // 16: google.protobuf.Timestamp
+	(*PendingLegSnapshot)(nil),     // 1: portfolio.v1.PendingLegSnapshot
+	(*HoldingSnapshot)(nil),        // 2: portfolio.v1.HoldingSnapshot
+	(*ShareHoldSnapshot)(nil),      // 3: portfolio.v1.ShareHoldSnapshot
+	(*CollateralHoldSnapshot)(nil), // 4: portfolio.v1.CollateralHoldSnapshot
+	(*ShortPositionSnapshot)(nil),  // 5: portfolio.v1.ShortPositionSnapshot
+	(*SettledTradeSet)(nil),        // 6: portfolio.v1.SettledTradeSet
+	(*MarginCallSnapshot)(nil),     // 7: portfolio.v1.MarginCallSnapshot
+	nil,                            // 8: portfolio.v1.PortfolioSnapshot.HoldingsEntry
+	nil,                            // 9: portfolio.v1.PortfolioSnapshot.HoldsBySagaEntry
+	nil,                            // 10: portfolio.v1.PortfolioSnapshot.SharesHeldEntry
+	nil,                            // 11: portfolio.v1.PortfolioSnapshot.ShareHoldsBySagaEntry
+	nil,                            // 12: portfolio.v1.PortfolioSnapshot.SettledTradesEntry
+	nil,                            // 13: portfolio.v1.PortfolioSnapshot.ShortPositionsEntry
+	nil,                            // 14: portfolio.v1.PortfolioSnapshot.CollateralHeldBySagaEntry
+	nil,                            // 15: portfolio.v1.PortfolioSnapshot.ShortCoversHeldEntry
+	nil,                            // 16: portfolio.v1.PortfolioSnapshot.ShortCoverHoldsBySagaEntry
+	(*timestamppb.Timestamp)(nil),  // 17: google.protobuf.Timestamp
+	(SettlementLegKind)(0),         // 18: portfolio.v1.SettlementLegKind
 }
 var file_portfolio_v1_snapshots_proto_depIdxs = []int32{
-	7,  // 0: portfolio.v1.PortfolioSnapshot.holdings:type_name -> portfolio.v1.PortfolioSnapshot.HoldingsEntry
-	8,  // 1: portfolio.v1.PortfolioSnapshot.holds_by_saga:type_name -> portfolio.v1.PortfolioSnapshot.HoldsBySagaEntry
-	9,  // 2: portfolio.v1.PortfolioSnapshot.shares_held:type_name -> portfolio.v1.PortfolioSnapshot.SharesHeldEntry
-	10, // 3: portfolio.v1.PortfolioSnapshot.share_holds_by_saga:type_name -> portfolio.v1.PortfolioSnapshot.ShareHoldsBySagaEntry
-	11, // 4: portfolio.v1.PortfolioSnapshot.settled_trades:type_name -> portfolio.v1.PortfolioSnapshot.SettledTradesEntry
-	12, // 5: portfolio.v1.PortfolioSnapshot.short_positions:type_name -> portfolio.v1.PortfolioSnapshot.ShortPositionsEntry
-	13, // 6: portfolio.v1.PortfolioSnapshot.collateral_held_by_saga:type_name -> portfolio.v1.PortfolioSnapshot.CollateralHeldBySagaEntry
-	14, // 7: portfolio.v1.PortfolioSnapshot.short_covers_held:type_name -> portfolio.v1.PortfolioSnapshot.ShortCoversHeldEntry
-	15, // 8: portfolio.v1.PortfolioSnapshot.short_cover_holds_by_saga:type_name -> portfolio.v1.PortfolioSnapshot.ShortCoverHoldsBySagaEntry
-	6,  // 9: portfolio.v1.PortfolioSnapshot.active_margin_call:type_name -> portfolio.v1.MarginCallSnapshot
-	16, // 10: portfolio.v1.PortfolioSnapshot.last_accrued_at:type_name -> google.protobuf.Timestamp
-	16, // 11: portfolio.v1.MarginCallSnapshot.issued_at:type_name -> google.protobuf.Timestamp
-	16, // 12: portfolio.v1.MarginCallSnapshot.grace_expires_at:type_name -> google.protobuf.Timestamp
-	1,  // 13: portfolio.v1.PortfolioSnapshot.HoldingsEntry.value:type_name -> portfolio.v1.HoldingSnapshot
-	2,  // 14: portfolio.v1.PortfolioSnapshot.ShareHoldsBySagaEntry.value:type_name -> portfolio.v1.ShareHoldSnapshot
-	5,  // 15: portfolio.v1.PortfolioSnapshot.SettledTradesEntry.value:type_name -> portfolio.v1.SettledTradeSet
-	4,  // 16: portfolio.v1.PortfolioSnapshot.ShortPositionsEntry.value:type_name -> portfolio.v1.ShortPositionSnapshot
-	3,  // 17: portfolio.v1.PortfolioSnapshot.CollateralHeldBySagaEntry.value:type_name -> portfolio.v1.CollateralHoldSnapshot
-	2,  // 18: portfolio.v1.PortfolioSnapshot.ShortCoverHoldsBySagaEntry.value:type_name -> portfolio.v1.ShareHoldSnapshot
-	19, // [19:19] is the sub-list for method output_type
-	19, // [19:19] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	8,  // 0: portfolio.v1.PortfolioSnapshot.holdings:type_name -> portfolio.v1.PortfolioSnapshot.HoldingsEntry
+	9,  // 1: portfolio.v1.PortfolioSnapshot.holds_by_saga:type_name -> portfolio.v1.PortfolioSnapshot.HoldsBySagaEntry
+	10, // 2: portfolio.v1.PortfolioSnapshot.shares_held:type_name -> portfolio.v1.PortfolioSnapshot.SharesHeldEntry
+	11, // 3: portfolio.v1.PortfolioSnapshot.share_holds_by_saga:type_name -> portfolio.v1.PortfolioSnapshot.ShareHoldsBySagaEntry
+	12, // 4: portfolio.v1.PortfolioSnapshot.settled_trades:type_name -> portfolio.v1.PortfolioSnapshot.SettledTradesEntry
+	13, // 5: portfolio.v1.PortfolioSnapshot.short_positions:type_name -> portfolio.v1.PortfolioSnapshot.ShortPositionsEntry
+	14, // 6: portfolio.v1.PortfolioSnapshot.collateral_held_by_saga:type_name -> portfolio.v1.PortfolioSnapshot.CollateralHeldBySagaEntry
+	15, // 7: portfolio.v1.PortfolioSnapshot.short_covers_held:type_name -> portfolio.v1.PortfolioSnapshot.ShortCoversHeldEntry
+	16, // 8: portfolio.v1.PortfolioSnapshot.short_cover_holds_by_saga:type_name -> portfolio.v1.PortfolioSnapshot.ShortCoverHoldsBySagaEntry
+	7,  // 9: portfolio.v1.PortfolioSnapshot.active_margin_call:type_name -> portfolio.v1.MarginCallSnapshot
+	17, // 10: portfolio.v1.PortfolioSnapshot.last_accrued_at:type_name -> google.protobuf.Timestamp
+	1,  // 11: portfolio.v1.PortfolioSnapshot.pending_legs:type_name -> portfolio.v1.PendingLegSnapshot
+	18, // 12: portfolio.v1.PendingLegSnapshot.kind:type_name -> portfolio.v1.SettlementLegKind
+	17, // 13: portfolio.v1.PendingLegSnapshot.settles_at:type_name -> google.protobuf.Timestamp
+	17, // 14: portfolio.v1.PendingLegSnapshot.emitted_at:type_name -> google.protobuf.Timestamp
+	17, // 15: portfolio.v1.MarginCallSnapshot.issued_at:type_name -> google.protobuf.Timestamp
+	17, // 16: portfolio.v1.MarginCallSnapshot.grace_expires_at:type_name -> google.protobuf.Timestamp
+	2,  // 17: portfolio.v1.PortfolioSnapshot.HoldingsEntry.value:type_name -> portfolio.v1.HoldingSnapshot
+	3,  // 18: portfolio.v1.PortfolioSnapshot.ShareHoldsBySagaEntry.value:type_name -> portfolio.v1.ShareHoldSnapshot
+	6,  // 19: portfolio.v1.PortfolioSnapshot.SettledTradesEntry.value:type_name -> portfolio.v1.SettledTradeSet
+	5,  // 20: portfolio.v1.PortfolioSnapshot.ShortPositionsEntry.value:type_name -> portfolio.v1.ShortPositionSnapshot
+	4,  // 21: portfolio.v1.PortfolioSnapshot.CollateralHeldBySagaEntry.value:type_name -> portfolio.v1.CollateralHoldSnapshot
+	3,  // 22: portfolio.v1.PortfolioSnapshot.ShortCoverHoldsBySagaEntry.value:type_name -> portfolio.v1.ShareHoldSnapshot
+	23, // [23:23] is the sub-list for method output_type
+	23, // [23:23] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_portfolio_v1_snapshots_proto_init() }
@@ -715,13 +849,14 @@ func file_portfolio_v1_snapshots_proto_init() {
 	if File_portfolio_v1_snapshots_proto != nil {
 		return
 	}
+	file_portfolio_v1_events_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_portfolio_v1_snapshots_proto_rawDesc), len(file_portfolio_v1_snapshots_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

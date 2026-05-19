@@ -5,6 +5,7 @@ package portfolio.v1;
 option go_package = "github.com/ianunruh/xray/gen/portfolio/v1;portfoliov1";
 
 import "google/protobuf/timestamp.proto";
+import "portfolio/v1/events.proto";
 
 // PortfolioSnapshot captures the full state of one Portfolio aggregate
 // for fast hydration. Field meanings track the corresponding fields on
@@ -31,6 +32,26 @@ message PortfolioSnapshot {
 
   MarginCallSnapshot active_margin_call = 15;
   google.protobuf.Timestamp last_accrued_at = 16;
+
+  // settled_cash is the cleared-settlement portion of cash_balance.
+  // Snapshots from before T+1 settlement was introduced leave it
+  // zero — Apply() seeds it lazily from cash_balance on the next
+  // event applied, so old snapshots remain valid.
+  int64 settled_cash = 17;
+  // pending_legs are settlement legs awaiting clearing, keyed by
+  // (trade_id, kind). Empty when settlement is disabled or the
+  // account has no in-flight trades.
+  repeated PendingLegSnapshot pending_legs = 18;
+}
+
+message PendingLegSnapshot {
+  string                       trade_id      = 1;
+  string                       order_saga_id = 2;
+  SettlementLegKind            kind          = 3;
+  string                       symbol        = 4;
+  int64                        cash_amount   = 5;   // signed
+  google.protobuf.Timestamp    settles_at    = 6;
+  google.protobuf.Timestamp    emitted_at    = 7;
 }
 
 message HoldingSnapshot {

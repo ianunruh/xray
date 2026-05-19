@@ -5,6 +5,7 @@
 import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import type { SettlementLegKind } from "./events_pb";
 
 /**
  * Describes the file portfolio/v1/snapshots.proto.
@@ -100,6 +101,25 @@ export declare type PortfolioSnapshot = Message<"portfolio.v1.PortfolioSnapshot"
    * @generated from field: google.protobuf.Timestamp last_accrued_at = 16;
    */
   lastAccruedAt?: Timestamp | undefined;
+
+  /**
+   * settled_cash is the cleared-settlement portion of cash_balance.
+   * Snapshots from before T+1 settlement was introduced leave it
+   * zero — Apply() seeds it lazily from cash_balance on the next
+   * event applied, so old snapshots remain valid.
+   *
+   * @generated from field: int64 settled_cash = 17;
+   */
+  settledCash: bigint;
+
+  /**
+   * pending_legs are settlement legs awaiting clearing, keyed by
+   * (trade_id, kind). Empty when settlement is disabled or the
+   * account has no in-flight trades.
+   *
+   * @generated from field: repeated portfolio.v1.PendingLegSnapshot pending_legs = 18;
+   */
+  pendingLegs: PendingLegSnapshot[];
 };
 
 /**
@@ -107,6 +127,54 @@ export declare type PortfolioSnapshot = Message<"portfolio.v1.PortfolioSnapshot"
  * Use `create(PortfolioSnapshotSchema)` to create a new message.
  */
 export declare const PortfolioSnapshotSchema: GenMessage<PortfolioSnapshot>;
+
+/**
+ * @generated from message portfolio.v1.PendingLegSnapshot
+ */
+export declare type PendingLegSnapshot = Message<"portfolio.v1.PendingLegSnapshot"> & {
+  /**
+   * @generated from field: string trade_id = 1;
+   */
+  tradeId: string;
+
+  /**
+   * @generated from field: string order_saga_id = 2;
+   */
+  orderSagaId: string;
+
+  /**
+   * @generated from field: portfolio.v1.SettlementLegKind kind = 3;
+   */
+  kind: SettlementLegKind;
+
+  /**
+   * @generated from field: string symbol = 4;
+   */
+  symbol: string;
+
+  /**
+   * signed
+   *
+   * @generated from field: int64 cash_amount = 5;
+   */
+  cashAmount: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp settles_at = 6;
+   */
+  settlesAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp emitted_at = 7;
+   */
+  emittedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message portfolio.v1.PendingLegSnapshot.
+ * Use `create(PendingLegSnapshotSchema)` to create a new message.
+ */
+export declare const PendingLegSnapshotSchema: GenMessage<PendingLegSnapshot>;
 
 /**
  * @generated from message portfolio.v1.HoldingSnapshot

@@ -95,6 +95,23 @@ func (p *Portfolio) Snapshot() (proto.Message, error) {
 	if !p.LastAccruedAt.IsZero() {
 		snap.LastAccruedAt = timestamppb.New(p.LastAccruedAt)
 	}
+	snap.SettledCash = p.SettledCash
+	for _, leg := range p.PendingLegs {
+		ls := &portfoliov1.PendingLegSnapshot{
+			TradeId:     leg.TradeID,
+			OrderSagaId: leg.OrderSagaID,
+			Kind:        leg.Kind,
+			Symbol:      leg.Symbol,
+			CashAmount:  leg.CashAmount,
+		}
+		if !leg.SettlesAt.IsZero() {
+			ls.SettlesAt = timestamppb.New(leg.SettlesAt)
+		}
+		if !leg.EmittedAt.IsZero() {
+			ls.EmittedAt = timestamppb.New(leg.EmittedAt)
+		}
+		snap.PendingLegs = append(snap.PendingLegs, ls)
+	}
 
 	return snap, nil
 }
@@ -183,6 +200,34 @@ func (p *Portfolio) RestoreSnapshot(msg proto.Message) error {
 
 	if snap.LastAccruedAt != nil {
 		p.LastAccruedAt = snap.LastAccruedAt.AsTime()
+	}
+
+	p.SettledCash = snap.SettledCash
+	// Mark the lazy seed as already done so Apply() doesn't clobber
+	// the snapshot's SettledCash on the next event. Snapshots written
+	// before T+1 settlement have SettledCash=0; Apply() will skip the
+	// seed for them too and they'll diverge from CashBalance on the
+	// first event applied. That's the intended migration story —
+	// existing snapshots get a one-time "settle everything older
+	// than this snapshot" effect, equivalent to flipping the toggle
+	// on at snapshot time.
+	p.settledCashSeeded = true
+	p.PendingLegs = make(map[PendingLegKey]*PendingLeg, len(snap.PendingLegs))
+	for _, ls := range snap.PendingLegs {
+		leg := &PendingLeg{
+			TradeID:     ls.TradeId,
+			OrderSagaID: ls.OrderSagaId,
+			Kind:        ls.Kind,
+			Symbol:      ls.Symbol,
+			CashAmount:  ls.CashAmount,
+		}
+		if ls.SettlesAt != nil {
+			leg.SettlesAt = ls.SettlesAt.AsTime()
+		}
+		if ls.EmittedAt != nil {
+			leg.EmittedAt = ls.EmittedAt.AsTime()
+		}
+		p.PendingLegs[PendingLegKey{TradeID: ls.TradeId, Kind: ls.Kind}] = leg
 	}
 
 	return nil
