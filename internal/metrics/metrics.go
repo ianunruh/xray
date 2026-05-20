@@ -27,11 +27,11 @@ var Meter metric.Meter = noop.NewMeterProvider().Meter("xray")
 // Instruments. Package-level so call sites don't need a reference; nil
 // until Init is called, in which case Record* helpers no-op.
 var (
-	CommandLockWaitSeconds   metric.Float64Histogram
-	CommandHandleSeconds     metric.Float64Histogram
-	CommandRetriesTotal      metric.Int64Counter
-	AggregateCacheHitsTotal  metric.Int64Counter
-	AggregateCacheMissTotal  metric.Int64Counter
+	CommandLockWaitSeconds  metric.Float64Histogram
+	CommandHandleSeconds    metric.Float64Histogram
+	CommandRetriesTotal     metric.Int64Counter
+	AggregateCacheHitsTotal metric.Int64Counter
+	AggregateCacheMissTotal metric.Int64Counter
 
 	StoreAppendSeconds       metric.Float64Histogram
 	StoreAppendEvents        metric.Int64Histogram
@@ -41,12 +41,12 @@ var (
 	PublisherPublishSeconds metric.Float64Histogram
 	PublisherErrorsTotal    metric.Int64Counter
 
-	AsyncPublisherQueueDepth   metric.Int64UpDownCounter
-	AsyncPublisherErrorsTotal  metric.Int64Counter
+	AsyncPublisherQueueDepth  metric.Int64UpDownCounter
+	AsyncPublisherErrorsTotal metric.Int64Counter
 
-	GroupCommitBatchSize       metric.Int64Histogram
-	GroupCommitFlushSeconds    metric.Float64Histogram
-	GroupCommitFallbacksTotal  metric.Int64Counter
+	GroupCommitBatchSize      metric.Int64Histogram
+	GroupCommitFlushSeconds   metric.Float64Histogram
+	GroupCommitFallbacksTotal metric.Int64Counter
 
 	RPCDurationSeconds metric.Float64Histogram
 	RPCErrorsTotal     metric.Int64Counter
@@ -62,7 +62,9 @@ func Init() (http.Handler, error) {
 		return nil, fmt.Errorf("create otel prometheus exporter: %w", err)
 	}
 
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(exporter))
+	provider := sdkmetric.NewMeterProvider(
+		append([]sdkmetric.Option{sdkmetric.WithReader(exporter)}, latencyViews()...)...,
+	)
 	Meter = provider.Meter("github.com/ianunruh/xray")
 
 	if err := buildInstruments(); err != nil {
@@ -70,6 +72,52 @@ func Init() (http.Handler, error) {
 	}
 
 	return promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}), nil
+}
+
+// latencyViews returns one explicit-bucket View per seconds-valued
+// histogram. Without these, every histogram inherits the OTel SDK's
+// default boundaries (0, 5, 10, ... 10000) which are tuned for
+// milliseconds — so every sub-5s latency collapses into the first
+// (0, 5] bucket and histogram_quantile can only report uniform
+// interpolation across it (p50≈2.5, p95≈4.9, p99≈5), a dead-flat line.
+// Boundaries below are in seconds and sized to each instrument's
+// expected range. Keep these aligned with the SLO threshold lines in
+// deploy/grafana/dashboards/xray.json.
+func latencyViews() []sdkmetric.Option {
+	type spec struct {
+		name       string
+		boundaries []float64
+	}
+	specs := []spec{
+		// End-to-end command: load + execute + append + publish.
+		{"xray.command.handle_seconds", []float64{.0005, .001, .0025, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5}},
+		// Lock wait is usually near-zero with occasional contention spikes.
+		{"xray.command.lock_wait_seconds", []float64{.0001, .00025, .0005, .001, .0025, .005, .01, .025, .05, .1, .25, .5, 1}},
+		// Postgres batch append, dominated by a single round trip + fsync.
+		{"xray.store.append_seconds", []float64{.0005, .001, .0025, .005, .01, .025, .05, .1, .25, .5, 1, 2.5}},
+		// NATS JetStream publish: sub-ms to tens of ms in the common case.
+		{"xray.publisher.publish_seconds", []float64{.0001, .00025, .0005, .001, .0025, .005, .01, .025, .05, .1, .25, .5, 1}},
+		// Group-commit flush tracks append closely (it wraps the same write).
+		{"xray.groupcommit.flush_seconds", []float64{.0005, .001, .0025, .005, .01, .025, .05, .1, .25, .5, 1, 2.5}},
+		// Widest range: full Connect RPC handler including transport.
+		{"xray.rpc.duration_seconds", []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10}},
+	}
+
+	opts := make([]sdkmetric.Option, 0, len(specs))
+	for _, s := range specs {
+		opts = append(opts, sdkmetric.WithView(sdkmetric.NewView(
+			sdkmetric.Instrument{
+				Name: s.name,
+				Kind: sdkmetric.InstrumentKindHistogram,
+			},
+			sdkmetric.Stream{
+				Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
+					Boundaries: s.boundaries,
+				},
+			},
+		)))
+	}
+	return opts
 }
 
 func buildInstruments() error {
