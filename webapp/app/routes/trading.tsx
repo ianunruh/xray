@@ -89,7 +89,7 @@ function parseTab(v: string | null): Tab {
 // the panel's null-checks.
 async function loadSymbolData(symbol: string) {
   const [phaseR, closeR, boundsR] = await Promise.allSettled([
-    orderBookClient.getOrderBook({ symbol }),
+    orderBookClient.getMarketStatus({ symbol }),
     orderBookClient.getOfficialClose({ symbol, sessionDate: "" }),
     orderBookClient.getReplayBounds({ symbol }),
   ]);

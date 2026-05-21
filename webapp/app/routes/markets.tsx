@@ -66,7 +66,7 @@ export async function loader() {
   const rows: MarketRow[] = await Promise.all(
     symbols.map(async (s) => {
       const [bookR, closeR] = await Promise.allSettled([
-        orderBookClient.getOrderBook({ symbol: s }),
+        orderBookClient.getMarketStatus({ symbol: s }),
         orderBookClient.getOfficialClose({ symbol: s, sessionDate: "" }),
       ]);
 
