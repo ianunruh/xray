@@ -26,6 +26,7 @@ service OrderBookService {
   rpc GetOfficialClose(GetOfficialCloseRequest) returns (GetOfficialCloseResponse);
   rpc ListOfficialCloses(ListOfficialClosesRequest) returns (ListOfficialClosesResponse);
   rpc GetOrderBook(GetOrderBookRequest) returns (GetOrderBookResponse);
+  rpc GetMarketStatus(GetMarketStatusRequest) returns (GetMarketStatusResponse);
   rpc GetMarketDepth(GetMarketDepthRequest) returns (GetMarketDepthResponse);
   rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
   rpc ListTrades(ListTradesRequest) returns (ListTradesResponse);
@@ -173,6 +174,23 @@ message OrderBookLevel {
   int64 quantity = 3;
   int64 remaining_quantity = 4;
   google.protobuf.Timestamp placed_at = 5;
+}
+
+// GetMarketStatus returns lightweight session metadata for a symbol
+// without enumerating the order book. Backed by an in-memory projection,
+// so the cost is independent of resting-order count (unlike GetOrderBook).
+message GetMarketStatusRequest {
+  string symbol = 1;
+}
+
+message GetMarketStatusResponse {
+  string symbol = 1;
+  MarketPhase phase = 2;
+  // Most recent continuous-trade print; 0 if no trade has executed yet.
+  int64 last_trade_price = 3;
+  // Cumulative traded quantity for the current session; resets to 0
+  // when the closing uncross emits OfficialCloseSet.
+  int64 session_volume = 4;
 }
 
 message GetMarketDepthRequest {

@@ -63,6 +63,9 @@ const (
 	// OrderBookServiceGetOrderBookProcedure is the fully-qualified name of the OrderBookService's
 	// GetOrderBook RPC.
 	OrderBookServiceGetOrderBookProcedure = "/orderbook.v1.OrderBookService/GetOrderBook"
+	// OrderBookServiceGetMarketStatusProcedure is the fully-qualified name of the OrderBookService's
+	// GetMarketStatus RPC.
+	OrderBookServiceGetMarketStatusProcedure = "/orderbook.v1.OrderBookService/GetMarketStatus"
 	// OrderBookServiceGetMarketDepthProcedure is the fully-qualified name of the OrderBookService's
 	// GetMarketDepth RPC.
 	OrderBookServiceGetMarketDepthProcedure = "/orderbook.v1.OrderBookService/GetMarketDepth"
@@ -113,6 +116,7 @@ type OrderBookServiceClient interface {
 	GetOfficialClose(context.Context, *connect.Request[v1.GetOfficialCloseRequest]) (*connect.Response[v1.GetOfficialCloseResponse], error)
 	ListOfficialCloses(context.Context, *connect.Request[v1.ListOfficialClosesRequest]) (*connect.Response[v1.ListOfficialClosesResponse], error)
 	GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error)
+	GetMarketStatus(context.Context, *connect.Request[v1.GetMarketStatusRequest]) (*connect.Response[v1.GetMarketStatusResponse], error)
 	GetMarketDepth(context.Context, *connect.Request[v1.GetMarketDepthRequest]) (*connect.Response[v1.GetMarketDepthResponse], error)
 	GetOrder(context.Context, *connect.Request[v1.GetOrderRequest]) (*connect.Response[v1.GetOrderResponse], error)
 	ListTrades(context.Context, *connect.Request[v1.ListTradesRequest]) (*connect.Response[v1.ListTradesResponse], error)
@@ -196,6 +200,12 @@ func NewOrderBookServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			httpClient,
 			baseURL+OrderBookServiceGetOrderBookProcedure,
 			connect.WithSchema(orderBookServiceMethods.ByName("GetOrderBook")),
+			connect.WithClientOptions(opts...),
+		),
+		getMarketStatus: connect.NewClient[v1.GetMarketStatusRequest, v1.GetMarketStatusResponse](
+			httpClient,
+			baseURL+OrderBookServiceGetMarketStatusProcedure,
+			connect.WithSchema(orderBookServiceMethods.ByName("GetMarketStatus")),
 			connect.WithClientOptions(opts...),
 		),
 		getMarketDepth: connect.NewClient[v1.GetMarketDepthRequest, v1.GetMarketDepthResponse](
@@ -285,6 +295,7 @@ type orderBookServiceClient struct {
 	getOfficialClose             *connect.Client[v1.GetOfficialCloseRequest, v1.GetOfficialCloseResponse]
 	listOfficialCloses           *connect.Client[v1.ListOfficialClosesRequest, v1.ListOfficialClosesResponse]
 	getOrderBook                 *connect.Client[v1.GetOrderBookRequest, v1.GetOrderBookResponse]
+	getMarketStatus              *connect.Client[v1.GetMarketStatusRequest, v1.GetMarketStatusResponse]
 	getMarketDepth               *connect.Client[v1.GetMarketDepthRequest, v1.GetMarketDepthResponse]
 	getOrder                     *connect.Client[v1.GetOrderRequest, v1.GetOrderResponse]
 	listTrades                   *connect.Client[v1.ListTradesRequest, v1.ListTradesResponse]
@@ -347,6 +358,11 @@ func (c *orderBookServiceClient) ListOfficialCloses(ctx context.Context, req *co
 // GetOrderBook calls orderbook.v1.OrderBookService.GetOrderBook.
 func (c *orderBookServiceClient) GetOrderBook(ctx context.Context, req *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error) {
 	return c.getOrderBook.CallUnary(ctx, req)
+}
+
+// GetMarketStatus calls orderbook.v1.OrderBookService.GetMarketStatus.
+func (c *orderBookServiceClient) GetMarketStatus(ctx context.Context, req *connect.Request[v1.GetMarketStatusRequest]) (*connect.Response[v1.GetMarketStatusResponse], error) {
+	return c.getMarketStatus.CallUnary(ctx, req)
 }
 
 // GetMarketDepth calls orderbook.v1.OrderBookService.GetMarketDepth.
@@ -421,6 +437,7 @@ type OrderBookServiceHandler interface {
 	GetOfficialClose(context.Context, *connect.Request[v1.GetOfficialCloseRequest]) (*connect.Response[v1.GetOfficialCloseResponse], error)
 	ListOfficialCloses(context.Context, *connect.Request[v1.ListOfficialClosesRequest]) (*connect.Response[v1.ListOfficialClosesResponse], error)
 	GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error)
+	GetMarketStatus(context.Context, *connect.Request[v1.GetMarketStatusRequest]) (*connect.Response[v1.GetMarketStatusResponse], error)
 	GetMarketDepth(context.Context, *connect.Request[v1.GetMarketDepthRequest]) (*connect.Response[v1.GetMarketDepthResponse], error)
 	GetOrder(context.Context, *connect.Request[v1.GetOrderRequest]) (*connect.Response[v1.GetOrderResponse], error)
 	ListTrades(context.Context, *connect.Request[v1.ListTradesRequest]) (*connect.Response[v1.ListTradesResponse], error)
@@ -500,6 +517,12 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 		OrderBookServiceGetOrderBookProcedure,
 		svc.GetOrderBook,
 		connect.WithSchema(orderBookServiceMethods.ByName("GetOrderBook")),
+		connect.WithHandlerOptions(opts...),
+	)
+	orderBookServiceGetMarketStatusHandler := connect.NewUnaryHandler(
+		OrderBookServiceGetMarketStatusProcedure,
+		svc.GetMarketStatus,
+		connect.WithSchema(orderBookServiceMethods.ByName("GetMarketStatus")),
 		connect.WithHandlerOptions(opts...),
 	)
 	orderBookServiceGetMarketDepthHandler := connect.NewUnaryHandler(
@@ -596,6 +619,8 @@ func NewOrderBookServiceHandler(svc OrderBookServiceHandler, opts ...connect.Han
 			orderBookServiceListOfficialClosesHandler.ServeHTTP(w, r)
 		case OrderBookServiceGetOrderBookProcedure:
 			orderBookServiceGetOrderBookHandler.ServeHTTP(w, r)
+		case OrderBookServiceGetMarketStatusProcedure:
+			orderBookServiceGetMarketStatusHandler.ServeHTTP(w, r)
 		case OrderBookServiceGetMarketDepthProcedure:
 			orderBookServiceGetMarketDepthHandler.ServeHTTP(w, r)
 		case OrderBookServiceGetOrderProcedure:
@@ -667,6 +692,10 @@ func (UnimplementedOrderBookServiceHandler) ListOfficialCloses(context.Context, 
 
 func (UnimplementedOrderBookServiceHandler) GetOrderBook(context.Context, *connect.Request[v1.GetOrderBookRequest]) (*connect.Response[v1.GetOrderBookResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.GetOrderBook is not implemented"))
+}
+
+func (UnimplementedOrderBookServiceHandler) GetMarketStatus(context.Context, *connect.Request[v1.GetMarketStatusRequest]) (*connect.Response[v1.GetMarketStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("orderbook.v1.OrderBookService.GetMarketStatus is not implemented"))
 }
 
 func (UnimplementedOrderBookServiceHandler) GetMarketDepth(context.Context, *connect.Request[v1.GetMarketDepthRequest]) (*connect.Response[v1.GetMarketDepthResponse], error) {

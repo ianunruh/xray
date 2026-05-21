@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { BeginClosingAuctionRequest, BeginClosingAuctionResponse, CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetOfficialCloseRequest, GetOfficialCloseResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, GetReplayBoundsRequest, GetReplayBoundsResponse, IndicativeAuctionState, ListOfficialClosesRequest, ListOfficialClosesResponse, ListOrdersRequest, ListOrdersResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, OpenAuctionRequest, OpenAuctionResponse, PlaceOrderRequest, PlaceOrderResponse, ReplaceOrderRequest, ReplaceOrderResponse, ReplayOrderBookRequest, ReplayOrderBookResponse, StreamCandlesRequest, StreamIndicativeAuctionStateRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade, UncrossRequest, UncrossResponse } from "./service_pb.js";
+import { BeginClosingAuctionRequest, BeginClosingAuctionResponse, CancelOrderRequest, CancelOrderResponse, Candle, CloseMarketRequest, CloseMarketResponse, GetCandlesRequest, GetCandlesResponse, GetMarketDepthRequest, GetMarketDepthResponse, GetMarketStatusRequest, GetMarketStatusResponse, GetOfficialCloseRequest, GetOfficialCloseResponse, GetOrderBookRequest, GetOrderBookResponse, GetOrderRequest, GetOrderResponse, GetReplayBoundsRequest, GetReplayBoundsResponse, IndicativeAuctionState, ListOfficialClosesRequest, ListOfficialClosesResponse, ListOrdersRequest, ListOrdersResponse, ListSymbolsRequest, ListSymbolsResponse, ListTradesRequest, ListTradesResponse, OpenAuctionRequest, OpenAuctionResponse, PlaceOrderRequest, PlaceOrderResponse, ReplaceOrderRequest, ReplaceOrderResponse, ReplayOrderBookRequest, ReplayOrderBookResponse, StreamCandlesRequest, StreamIndicativeAuctionStateRequest, StreamMarketDepthRequest, StreamTradesRequest, Trade, UncrossRequest, UncrossResponse } from "./service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -100,6 +100,15 @@ export const OrderBookService = {
       name: "GetOrderBook",
       I: GetOrderBookRequest,
       O: GetOrderBookResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc orderbook.v1.OrderBookService.GetMarketStatus
+     */
+    getMarketStatus: {
+      name: "GetMarketStatus",
+      I: GetMarketStatusRequest,
+      O: GetMarketStatusResponse,
       kind: MethodKind.Unary,
     },
     /**

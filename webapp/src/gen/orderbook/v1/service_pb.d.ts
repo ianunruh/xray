@@ -582,6 +582,62 @@ export declare type OrderBookLevel = Message<"orderbook.v1.OrderBookLevel"> & {
 export declare const OrderBookLevelSchema: GenMessage<OrderBookLevel>;
 
 /**
+ * GetMarketStatus returns lightweight session metadata for a symbol
+ * without enumerating the order book. Backed by an in-memory projection,
+ * so the cost is independent of resting-order count (unlike GetOrderBook).
+ *
+ * @generated from message orderbook.v1.GetMarketStatusRequest
+ */
+export declare type GetMarketStatusRequest = Message<"orderbook.v1.GetMarketStatusRequest"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+};
+
+/**
+ * Describes the message orderbook.v1.GetMarketStatusRequest.
+ * Use `create(GetMarketStatusRequestSchema)` to create a new message.
+ */
+export declare const GetMarketStatusRequestSchema: GenMessage<GetMarketStatusRequest>;
+
+/**
+ * @generated from message orderbook.v1.GetMarketStatusResponse
+ */
+export declare type GetMarketStatusResponse = Message<"orderbook.v1.GetMarketStatusResponse"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: orderbook.v1.MarketPhase phase = 2;
+   */
+  phase: MarketPhase;
+
+  /**
+   * Most recent continuous-trade print; 0 if no trade has executed yet.
+   *
+   * @generated from field: int64 last_trade_price = 3;
+   */
+  lastTradePrice: bigint;
+
+  /**
+   * Cumulative traded quantity for the current session; resets to 0
+   * when the closing uncross emits OfficialCloseSet.
+   *
+   * @generated from field: int64 session_volume = 4;
+   */
+  sessionVolume: bigint;
+};
+
+/**
+ * Describes the message orderbook.v1.GetMarketStatusResponse.
+ * Use `create(GetMarketStatusResponseSchema)` to create a new message.
+ */
+export declare const GetMarketStatusResponseSchema: GenMessage<GetMarketStatusResponse>;
+
+/**
  * @generated from message orderbook.v1.GetMarketDepthRequest
  */
 export declare type GetMarketDepthRequest = Message<"orderbook.v1.GetMarketDepthRequest"> & {
@@ -1558,6 +1614,14 @@ export declare const OrderBookService: GenService<{
     methodKind: "unary";
     input: typeof GetOrderBookRequestSchema;
     output: typeof GetOrderBookResponseSchema;
+  },
+  /**
+   * @generated from rpc orderbook.v1.OrderBookService.GetMarketStatus
+   */
+  getMarketStatus: {
+    methodKind: "unary";
+    input: typeof GetMarketStatusRequestSchema;
+    output: typeof GetMarketStatusResponseSchema;
   },
   /**
    * @generated from rpc orderbook.v1.OrderBookService.GetMarketDepth
