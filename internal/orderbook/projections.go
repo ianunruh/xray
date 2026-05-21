@@ -22,6 +22,12 @@ type DepthReader interface {
 	GetDepth(symbol string, depth int32) (bids, asks []*orderbookv1.PriceLevel)
 }
 
+// StatusReader provides read access to the per-symbol session metadata
+// projection backing GetMarketStatus.
+type StatusReader interface {
+	GetStatus(symbol string) (phase orderbookv1.MarketPhase, lastTradePrice, sessionVolume int64)
+}
+
 // CandleReader provides read access to the OHLC candle projection.
 type CandleReader interface {
 	GetCandles(symbol string, interval orderbookv1.CandleInterval, from, to time.Time) []*orderbookv1.Candle

@@ -214,6 +214,7 @@ func main() {
 	pnlProjection := portfolio.NewPgPnLProjection(pool)
 	sagaProjection := sagasvc.NewPgProjection(pool)
 	depthProjection := orderbook.NewDepthProjection()
+	statusProjection := orderbook.NewMarketStatusProjection()
 	candleProjection := orderbook.NewCandleProjection()
 	markProjection := orderbook.NewMarkProjection()
 	shortsProjection := portfolio.NewPgShortsBySymbolProjection(pool)
@@ -248,7 +249,7 @@ func main() {
 	// state rebuilds from the start of the stream.
 	consumers := []*natsstore.ProjectionConsumer{
 		natsstore.NewProjectionConsumer(js, registry, log, "ephemeral").
-			WithEphemeral(depthProjection, candleProjection, markProjection, activeCallsProjection, accruableAccounts, broker),
+			WithEphemeral(depthProjection, statusProjection, candleProjection, markProjection, activeCallsProjection, accruableAccounts, broker),
 		// shortsProjection MUST precede marginReactor here: the
 		// reactor queries the shorts table the projection writes,
 		// and the consumer dispatches projections in slice order
@@ -377,7 +378,7 @@ func main() {
 	}()
 	traderMgr := tradermgr.NewManager(traderStore, priceSrc, traderServerURL(listenAddr), log)
 
-	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, dailyCloseProjection, broker)
+	srv := orderbook.NewServer(obHandler, log, tradeProjection, orderProjection, orderProjection, depthProjection, statusProjection, candleProjection, dailyCloseProjection, broker)
 	portfolioSrv := portfolio.NewServer(portfolioHandler, obHandler, portfolioProjection, pnlProjection, markProjection, marginCallsProjection, feesProjection, shortsProjection, portfolioBroker, log).
 		WithPendingSettlementsReader(pendingProjection)
 	diagnosticsSrv := diagnostics.NewServer(store, registry, projectionManager, accruer, rec, marginReactor, log).

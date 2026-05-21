@@ -24,13 +24,14 @@ type Server struct {
 	orders  OrderReader
 	symbols SymbolReader
 	depth   DepthReader
+	status  StatusReader
 	candles CandleReader
 	closes  OfficialCloseReader
 	broker  *Broker
 }
 
 // NewServer creates a new Server with the given dependencies.
-func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeReader, orders OrderReader, symbols SymbolReader, depth DepthReader, candles CandleReader, closes OfficialCloseReader, broker *Broker) *Server {
+func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeReader, orders OrderReader, symbols SymbolReader, depth DepthReader, status StatusReader, candles CandleReader, closes OfficialCloseReader, broker *Broker) *Server {
 	return &Server{
 		handler: handler,
 		log:     log,
@@ -38,6 +39,7 @@ func NewServer(handler *es.Handler[*OrderBook], log *slog.Logger, trades TradeRe
 		orders:  orders,
 		symbols: symbols,
 		depth:   depth,
+		status:  status,
 		candles: candles,
 		closes:  closes,
 		broker:  broker,
@@ -335,6 +337,21 @@ func (s *Server) GetOrderBook(ctx context.Context, req *connect.Request[orderboo
 	}
 
 	s.log.Info("GetOrderBook", "symbol", req.Msg.Symbol, "bid_count", len(resp.Bids), "ask_count", len(resp.Asks))
+
+	return connect.NewResponse(resp), nil
+}
+
+func (s *Server) GetMarketStatus(ctx context.Context, req *connect.Request[orderbookv1.GetMarketStatusRequest]) (*connect.Response[orderbookv1.GetMarketStatusResponse], error) {
+	phase, lastTradePrice, sessionVolume := s.status.GetStatus(req.Msg.Symbol)
+
+	resp := &orderbookv1.GetMarketStatusResponse{
+		Symbol:         req.Msg.Symbol,
+		Phase:          phase,
+		LastTradePrice: lastTradePrice,
+		SessionVolume:  sessionVolume,
+	}
+
+	s.log.Info("GetMarketStatus", "symbol", req.Msg.Symbol, "phase", phase, "last_trade_price", lastTradePrice, "session_volume", sessionVolume)
 
 	return connect.NewResponse(resp), nil
 }

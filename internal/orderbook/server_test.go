@@ -27,9 +27,10 @@ func newTestServer(t *testing.T) (orderbookv1connect.OrderBookServiceClient, *ht
 	tradeProjection := orderbook.NewTradeProjection()
 	orderProjection := orderbook.NewOrderProjection()
 	depthProjection := orderbook.NewDepthProjection()
+	statusProjection := orderbook.NewMarketStatusProjection()
 	candleProjection := orderbook.NewCandleProjection()
 
-	publisher := es.NewFanOutPublisher(slog.Default(), tradeProjection, orderProjection, depthProjection, candleProjection)
+	publisher := es.NewFanOutPublisher(slog.Default(), tradeProjection, orderProjection, depthProjection, statusProjection, candleProjection)
 
 	handler := es.NewHandler(store, registry, func(id string) *orderbook.OrderBook {
 		return orderbook.NewOrderBook(id)
@@ -37,7 +38,7 @@ func newTestServer(t *testing.T) (orderbookv1connect.OrderBookServiceClient, *ht
 
 	broker := orderbook.NewBroker()
 
-	srv := orderbook.NewServer(handler, slog.Default(), tradeProjection, orderProjection, orderProjection, depthProjection, candleProjection, nil, broker)
+	srv := orderbook.NewServer(handler, slog.Default(), tradeProjection, orderProjection, orderProjection, depthProjection, statusProjection, candleProjection, nil, broker)
 
 	mux := http.NewServeMux()
 	path, h := orderbookv1connect.NewOrderBookServiceHandler(srv)
@@ -199,6 +200,51 @@ func TestServer_GetOrderBook_WithOrders(t *testing.T) {
 	require.Len(t, resp.Msg.Asks, 1)
 	assert.Equal(t, int64(1510000), resp.Msg.Asks[0].Price)
 	assert.Equal(t, int64(50), resp.Msg.Asks[0].RemainingQuantity)
+}
+
+func TestServer_GetMarketStatus_Empty(t *testing.T) {
+	client, _ := newTestServer(t)
+	ctx := context.Background()
+
+	// An unseen symbol reports the same defaults as a fresh aggregate:
+	// continuous phase, zero last-trade price, zero session volume.
+	resp, err := client.GetMarketStatus(ctx, connect.NewRequest(&orderbookv1.GetMarketStatusRequest{
+		Symbol: "AAPL",
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, "AAPL", resp.Msg.Symbol)
+	assert.Equal(t, orderbookv1.MarketPhase_MARKET_PHASE_CONTINUOUS, resp.Msg.Phase)
+	assert.Zero(t, resp.Msg.LastTradePrice)
+	assert.Zero(t, resp.Msg.SessionVolume)
+}
+
+func TestServer_GetMarketStatus_AfterTrade(t *testing.T) {
+	client, _ := newTestServer(t)
+	ctx := context.Background()
+
+	// Rest a sell, then cross it with a buy to print a trade.
+	_, err := client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_SELL,
+		Price:    1500000,
+		Quantity: 30,
+	}))
+	require.NoError(t, err)
+
+	_, err = client.PlaceOrder(ctx, connect.NewRequest(&orderbookv1.PlaceOrderRequest{
+		Symbol:   "AAPL",
+		Side:     orderbookv1.Side_SIDE_BUY,
+		Price:    1500000,
+		Quantity: 20,
+	}))
+	require.NoError(t, err)
+
+	resp, err := client.GetMarketStatus(ctx, connect.NewRequest(&orderbookv1.GetMarketStatusRequest{
+		Symbol: "AAPL",
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, int64(1500000), resp.Msg.LastTradePrice)
+	assert.Equal(t, int64(20), resp.Msg.SessionVolume)
 }
 
 func TestServer_GetOrder_Success(t *testing.T) {
