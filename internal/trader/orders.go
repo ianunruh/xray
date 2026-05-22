@@ -126,6 +126,20 @@ func (t *OrderTracker) RemoveFilledOrder(trade *orderbookv1.Trade) {
 	}
 }
 
+// RecognizeFill reports whether trade involves one of our tracked orders,
+// logging it as a fill when it does. Callers decide how to react (e.g. drop
+// the filled order, requote, or re-evaluate a signal).
+func (t *OrderTracker) RecognizeFill(trade *orderbookv1.Trade) bool {
+	if !t.IsOwnTrade(trade) {
+		return false
+	}
+	t.Log.Info("fill detected",
+		"trade_id", trade.TradeId,
+		"price", trade.Price,
+		"quantity", trade.Quantity)
+	return true
+}
+
 func (t *OrderTracker) CancelTracked(ctx context.Context, sagaID string) {
 	tracked, ok := t.Orders[sagaID]
 	if !ok {
@@ -153,6 +167,16 @@ func (t *OrderTracker) CancelAll(ctx context.Context) {
 	for _, sagaID := range sagaIDs {
 		t.CancelTracked(ctx, sagaID)
 	}
+}
+
+// Shutdown drains any pending order-ID resolutions and cancels every order
+// still resting in the book. Engines call this from their ctx.Done() branch.
+// It uses a background context so the cancels still go through after the
+// engine's own context has been cancelled.
+func (t *OrderTracker) Shutdown() {
+	t.DrainResolves()
+	t.Log.Info("shutting down, cancelling orders", "tracked_orders", len(t.Orders))
+	t.CancelAll(context.Background())
 }
 
 func (t *OrderTracker) ReplaceOrder(

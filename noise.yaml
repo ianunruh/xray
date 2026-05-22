@@ -15,6 +15,7 @@ symbols:
     market_order_pct: 0.5 # 50% market orders, 50% limit
     max_position: 1000
     buy_bias: 0.5 # neutral — 50/50 buy/sell
+    order_timeout: 5m # cancel resting GTC limit orders older than this
 
 polygon:
   base_url: "https://api.massive.com"

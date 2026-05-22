@@ -35,6 +35,7 @@ type SymbolConfig struct {
 	MarketOrderPct      float64       `yaml:"market_order_pct"`
 	MaxPosition         int64         `yaml:"max_position"`
 	BuyBias             float64       `yaml:"buy_bias"`
+	OrderTimeout        time.Duration `yaml:"order_timeout"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -90,6 +91,9 @@ func (c *Config) applyDefaults() {
 		}
 		if s.BuyBias == 0 {
 			s.BuyBias = 0.5
+		}
+		if s.OrderTimeout == 0 {
+			s.OrderTimeout = 5 * time.Minute
 		}
 	}
 }

@@ -19,13 +19,12 @@ import (
 )
 
 type Engine struct {
-	cfg        SymbolConfig
-	prices     pricesource.PriceSource
-	pfClient   portfoliov1connect.PortfolioServiceClient
-	sagaClient sagav1connect.SagaServiceClient
-	obClient   orderbookv1connect.OrderBookServiceClient
-	phase      *trader.PhaseWatcher
-	log        *slog.Logger
+	cfg      SymbolConfig
+	prices   pricesource.PriceSource
+	pfClient portfoliov1connect.PortfolioServiceClient
+	tracker  *trader.OrderTracker
+	phase    *trader.PhaseWatcher
+	log      *slog.Logger
 }
 
 func NewEngine(
@@ -36,14 +35,14 @@ func NewEngine(
 	obClient orderbookv1connect.OrderBookServiceClient,
 	log *slog.Logger,
 ) *Engine {
+	log = log.With("symbol", cfg.Symbol, "account", cfg.AccountID)
 	return &Engine{
-		cfg:        cfg,
-		prices:     prices,
-		pfClient:   pfClient,
-		sagaClient: sagaClient,
-		obClient:   obClient,
-		phase:      trader.NewPhaseWatcher(cfg.Symbol),
-		log:        log.With("symbol", cfg.Symbol, "account", cfg.AccountID),
+		cfg:      cfg,
+		prices:   prices,
+		pfClient: pfClient,
+		tracker:  trader.NewOrderTracker(cfg.Symbol, obClient, sagaClient, log),
+		phase:    trader.NewPhaseWatcher(cfg.Symbol),
+		log:      log,
 	}
 }
 
@@ -56,18 +55,56 @@ func (e *Engine) Run(ctx context.Context) error {
 		RandomInitialShares: e.cfg.RandomInitialShares,
 	}, e.prices, e.pfClient, e.log)
 
-	go e.phase.Watch(ctx, e.obClient, 5*time.Second, e.log)
+	e.tracker.CleanupOrphans(ctx, e.cfg.AccountID)
 
-	ticker := time.NewTicker(e.cfg.OrderInterval)
-	defer ticker.Stop()
+	fillCh := make(chan *orderbookv1.Trade, 64)
+	go trader.StreamTrades(ctx, e.tracker.ObClient, e.cfg.Symbol, fillCh, e.log)
+	go e.phase.Watch(ctx, e.tracker.ObClient, 5*time.Second, e.log)
+
+	orderTicker := time.NewTicker(e.cfg.OrderInterval)
+	defer orderTicker.Stop()
+
+	expireTicker := time.NewTicker(5 * time.Second)
+	defer expireTicker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
+			e.tracker.Shutdown()
 			return ctx.Err()
-		case <-ticker.C:
+
+		case <-orderTicker.C:
 			e.placeRandomOrder(ctx)
+
+		case trade, ok := <-fillCh:
+			if !ok {
+				fillCh = make(chan *orderbookv1.Trade, 64)
+				go trader.StreamTrades(ctx, e.tracker.ObClient, e.cfg.Symbol, fillCh, e.log)
+				continue
+			}
+			if ctx.Err() != nil {
+				continue
+			}
+			e.handleFill(trade)
+
+		case res := <-e.tracker.ResolveCh:
+			e.tracker.HandleResolve(res)
+
+		case <-expireTicker.C:
+			if ctx.Err() != nil {
+				continue
+			}
+			e.tracker.ExpireStaleOrders(ctx, e.cfg.OrderTimeout)
 		}
+	}
+}
+
+// handleFill drops a tracked order from the book once it trades, so the
+// tracker reflects only live resting orders (and ExpireStaleOrders doesn't
+// waste a cancel RPC on an order that's already gone).
+func (e *Engine) handleFill(trade *orderbookv1.Trade) {
+	if e.tracker.RecognizeFill(trade) {
+		e.tracker.RemoveFilledOrder(trade)
 	}
 }
 
@@ -158,32 +195,48 @@ func (e *Engine) placeRandomOrder(ctx context.Context) {
 		return
 	}
 
-	resp, err := e.sagaClient.Place(ctx, connect.NewRequest(&sagav1.PlaceSagaRequest{
-		AccountId: e.cfg.AccountID,
-		Plan: &sagav1.PlaceSagaRequest_SingleOrder{
-			SingleOrder: &sagav1.SingleOrderPlan{
-				Symbol:      e.cfg.Symbol,
-				Side:        side,
-				Price:       price,
-				Quantity:    qty,
-				OrderType:   orderType,
-				TimeInForce: tif,
+	// Market/IOC orders execute immediately and never rest in the book, so
+	// there's nothing to time out — place them directly without tracking.
+	if orderType == orderbookv1.OrderType_ORDER_TYPE_MARKET {
+		resp, err := e.tracker.SagaClient.Place(ctx, connect.NewRequest(&sagav1.PlaceSagaRequest{
+			AccountId: e.cfg.AccountID,
+			Plan: &sagav1.PlaceSagaRequest_SingleOrder{
+				SingleOrder: &sagav1.SingleOrderPlan{
+					Symbol:      e.cfg.Symbol,
+					Side:        side,
+					Price:       price,
+					Quantity:    qty,
+					OrderType:   orderType,
+					TimeInForce: tif,
+				},
 			},
-		},
-	}))
-	if err != nil {
-		e.log.Error("failed to place order", "error", err)
+		}))
+		if err != nil {
+			e.log.Error("failed to place order", "error", err)
+			return
+		}
+
+		e.log.Info("placed order",
+			"saga_id", resp.Msg.SagaId,
+			"side", side,
+			"price", price,
+			"quantity", qty,
+			"order_type", orderType,
+			"position", position,
+			"cash_available", portfolio.CashBalance)
 		return
 	}
 
-	e.log.Info("placed order",
-		"saga_id", resp.Msg.SagaId,
+	// GTC limit orders rest in the book; track them so ExpireStaleOrders
+	// can cancel any that linger past OrderTimeout.
+	e.log.Info("placing order",
 		"side", side,
 		"price", price,
 		"quantity", qty,
 		"order_type", orderType,
 		"position", position,
 		"cash_available", portfolio.CashBalance)
+	e.tracker.PlaceOrder(ctx, e.cfg.AccountID, side, price, qty)
 }
 
 // marketBuyAffordabilityPadBps pads the reference-price estimate of a market

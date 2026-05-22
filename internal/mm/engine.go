@@ -71,9 +71,7 @@ func (e *Engine) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			e.tracker.DrainResolves()
-			e.log.Info("shutting down, cancelling orders", "tracked_orders", len(e.tracker.Orders))
-			e.tracker.CancelAll(context.Background())
+			e.tracker.Shutdown()
 			return ctx.Err()
 
 		case <-requoteTicker.C:
@@ -210,16 +208,9 @@ func (e *Engine) replaceOrders(ctx context.Context, oldSagaIDs []string, newLeve
 }
 
 func (e *Engine) handleFill(ctx context.Context, trade *orderbookv1.Trade) {
-	if !e.tracker.IsOwnTrade(trade) {
-		return
+	if e.tracker.RecognizeFill(trade) {
+		e.requote(ctx)
 	}
-
-	e.log.Info("fill detected",
-		"trade_id", trade.TradeId,
-		"price", trade.Price,
-		"quantity", trade.Quantity)
-
-	e.requote(ctx)
 }
 
 func (e *Engine) checkPriceMove(ctx context.Context) {
