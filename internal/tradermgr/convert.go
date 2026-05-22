@@ -81,7 +81,7 @@ func noiseConfigFromProto(p *traderv1.NoiseConfig) (noise.SymbolConfig, error) {
 		MaxPosition:         p.MaxPosition,
 		BuyBias:             p.BuyBias,
 	}
-	applyNoiseDefaults(&out)
+	noise.ApplyDefaults(&out)
 	if err := validateNoise(out); err != nil {
 		return noise.SymbolConfig{}, err
 	}
@@ -120,21 +120,6 @@ func validateMM(s mm.SymbolConfig) error {
 		return fmt.Errorf("max_position must be positive")
 	}
 	return nil
-}
-
-func applyNoiseDefaults(s *noise.SymbolConfig) {
-	if s.OrderInterval == 0 {
-		s.OrderInterval = 5 * time.Second
-	}
-	if s.MinQuantity == 0 {
-		s.MinQuantity = 1
-	}
-	if s.MaxQuantity == 0 {
-		s.MaxQuantity = s.MinQuantity
-	}
-	if s.BuyBias == 0 {
-		s.BuyBias = 0.5
-	}
 }
 
 func validateNoise(s noise.SymbolConfig) error {

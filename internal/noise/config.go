@@ -80,21 +80,30 @@ func (c *Config) applyDefaults() {
 		if s.Instances == 0 {
 			s.Instances = 1
 		}
-		if s.OrderInterval == 0 {
-			s.OrderInterval = 5 * time.Second
-		}
-		if s.MinQuantity == 0 {
-			s.MinQuantity = 1
-		}
-		if s.MaxQuantity == 0 {
-			s.MaxQuantity = s.MinQuantity
-		}
-		if s.BuyBias == 0 {
-			s.BuyBias = 0.5
-		}
-		if s.OrderTimeout == 0 {
-			s.OrderTimeout = 5 * time.Minute
-		}
+		ApplyDefaults(s)
+	}
+}
+
+// ApplyDefaults fills zero-valued per-symbol fields with their defaults. It is
+// shared by the YAML loader and the runtime trader manager (UI-created
+// traders) so both construction paths agree on the same defaults — notably
+// OrderTimeout, whose zero value would otherwise make ExpireStaleOrders cancel
+// every resting order immediately.
+func ApplyDefaults(s *SymbolConfig) {
+	if s.OrderInterval == 0 {
+		s.OrderInterval = 5 * time.Second
+	}
+	if s.MinQuantity == 0 {
+		s.MinQuantity = 1
+	}
+	if s.MaxQuantity == 0 {
+		s.MaxQuantity = s.MinQuantity
+	}
+	if s.BuyBias == 0 {
+		s.BuyBias = 0.5
+	}
+	if s.OrderTimeout == 0 {
+		s.OrderTimeout = 5 * time.Minute
 	}
 }
 
