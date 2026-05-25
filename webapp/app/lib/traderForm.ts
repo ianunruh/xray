@@ -35,6 +35,7 @@ export type NoiseFormFields = {
   marketOrderPct: number | "";
   maxPosition: number | "";
   buyBias: number | "";
+  orderTimeoutMs: number | "";
 };
 
 export type FormState = {
@@ -76,6 +77,7 @@ export function emptyForm(): FormState {
       marketOrderPct: 0.5,
       maxPosition: 1000,
       buyBias: 0.5,
+      orderTimeoutMs: 300_000,
     },
   };
 }
@@ -111,6 +113,7 @@ export function noiseFromProto(c: NoiseConfig): NoiseFormFields {
     marketOrderPct: c.marketOrderPct,
     maxPosition: Number(c.maxPosition),
     buyBias: c.buyBias,
+    orderTimeoutMs: Number(c.orderTimeoutMs),
   };
 }
 
@@ -170,6 +173,7 @@ export function buildConfig(f: FormState): TraderConfig {
     marketOrderPct: num(f.noise.marketOrderPct),
     maxPosition: BigInt(num(f.noise.maxPosition)),
     buyBias: num(f.noise.buyBias),
+    orderTimeoutMs: BigInt(num(f.noise.orderTimeoutMs)),
   };
   return {
     $typeName: "trader.v1.TraderConfig",

@@ -85,6 +85,9 @@ message NoiseConfig {
   double market_order_pct = 10;
   int64 max_position = 11;
   double buy_bias = 12;
+  // How long a resting limit order may sit before it's cancelled, as a
+  // duration in milliseconds. 0 applies the default (5 minutes).
+  int64 order_timeout_ms = 13;
 }
 
 message ListTradersRequest {}

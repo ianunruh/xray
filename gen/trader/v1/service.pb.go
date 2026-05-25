@@ -466,8 +466,11 @@ type NoiseConfig struct {
 	MarketOrderPct  float64 `protobuf:"fixed64,10,opt,name=market_order_pct,json=marketOrderPct,proto3" json:"market_order_pct,omitempty"`
 	MaxPosition     int64   `protobuf:"varint,11,opt,name=max_position,json=maxPosition,proto3" json:"max_position,omitempty"`
 	BuyBias         float64 `protobuf:"fixed64,12,opt,name=buy_bias,json=buyBias,proto3" json:"buy_bias,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// How long a resting limit order may sit before it's cancelled, as a
+	// duration in milliseconds. 0 applies the default (5 minutes).
+	OrderTimeoutMs int64 `protobuf:"varint,13,opt,name=order_timeout_ms,json=orderTimeoutMs,proto3" json:"order_timeout_ms,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *NoiseConfig) Reset() {
@@ -580,6 +583,13 @@ func (x *NoiseConfig) GetMaxPosition() int64 {
 func (x *NoiseConfig) GetBuyBias() float64 {
 	if x != nil {
 		return x.BuyBias
+	}
+	return 0
+}
+
+func (x *NoiseConfig) GetOrderTimeoutMs() int64 {
+	if x != nil {
+		return x.OrderTimeoutMs
 	}
 	return 0
 }
@@ -1212,7 +1222,7 @@ const file_trader_v1_service_proto_rawDesc = "" +
 	"\x13requote_interval_ms\x18\n" +
 	" \x01(\x03R\x11requoteIntervalMs\x120\n" +
 	"\x14price_move_threshold\x18\v \x01(\x03R\x12priceMoveThreshold\x12\x19\n" +
-	"\bmax_skew\x18\f \x01(\x03R\amaxSkew\"\xc5\x03\n" +
+	"\bmax_skew\x18\f \x01(\x03R\amaxSkew\"\xef\x03\n" +
 	"\vNoiseConfig\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x1d\n" +
 	"\n" +
@@ -1227,7 +1237,8 @@ const file_trader_v1_service_proto_rawDesc = "" +
 	"\x10market_order_pct\x18\n" +
 	" \x01(\x01R\x0emarketOrderPct\x12!\n" +
 	"\fmax_position\x18\v \x01(\x03R\vmaxPosition\x12\x19\n" +
-	"\bbuy_bias\x18\f \x01(\x01R\abuyBias\"\x14\n" +
+	"\bbuy_bias\x18\f \x01(\x01R\abuyBias\x12(\n" +
+	"\x10order_timeout_ms\x18\r \x01(\x03R\x0eorderTimeoutMs\"\x14\n" +
 	"\x12ListTradersRequest\"B\n" +
 	"\x13ListTradersResponse\x12+\n" +
 	"\atraders\x18\x01 \x03(\v2\x11.trader.v1.TraderR\atraders\"\"\n" +

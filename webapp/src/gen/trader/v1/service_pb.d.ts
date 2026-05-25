@@ -241,6 +241,14 @@ export declare type NoiseConfig = Message<"trader.v1.NoiseConfig"> & {
    * @generated from field: double buy_bias = 12;
    */
   buyBias: number;
+
+  /**
+   * How long a resting limit order may sit before it's cancelled, as a
+   * duration in milliseconds. 0 applies the default (5 minutes).
+   *
+   * @generated from field: int64 order_timeout_ms = 13;
+   */
+  orderTimeoutMs: bigint;
 };
 
 /**

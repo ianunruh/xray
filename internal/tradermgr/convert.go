@@ -80,6 +80,7 @@ func noiseConfigFromProto(p *traderv1.NoiseConfig) (noise.SymbolConfig, error) {
 		MarketOrderPct:      p.MarketOrderPct,
 		MaxPosition:         p.MaxPosition,
 		BuyBias:             p.BuyBias,
+		OrderTimeout:        time.Duration(p.OrderTimeoutMs) * time.Millisecond,
 	}
 	noise.ApplyDefaults(&out)
 	if err := validateNoise(out); err != nil {

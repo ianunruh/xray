@@ -761,16 +761,26 @@ function NoiseFormSection({
           decimalScale={2}
         />
       </Group>
-      <NumberInput
-        label="Buy bias"
-        description="0.0 = always sell, 0.5 = neutral, 1.0 = always buy"
-        value={value.buyBias}
-        onChange={(v) => set("buyBias", v as number | "")}
-        min={0}
-        max={1}
-        step={0.05}
-        decimalScale={2}
-      />
+      <Group grow>
+        <NumberInput
+          label="Buy bias"
+          description="0.0 = always sell, 0.5 = neutral, 1.0 = always buy"
+          value={value.buyBias}
+          onChange={(v) => set("buyBias", v as number | "")}
+          min={0}
+          max={1}
+          step={0.05}
+          decimalScale={2}
+        />
+        <NumberInput
+          label="Order timeout (ms)"
+          description="Cancel resting limit orders older than this (0 = default 5m)"
+          value={value.orderTimeoutMs}
+          onChange={(v) => set("orderTimeoutMs", v as number | "")}
+          min={0}
+          step={30000}
+        />
+      </Group>
     </Stack>
   );
 }
