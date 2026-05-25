@@ -44,6 +44,57 @@ export declare type OrderBookSnapshot = Message<"orderbook.v1.OrderBookSnapshot"
    * @generated from field: int64 session_volume = 4;
    */
   sessionVolume: bigint;
+
+  /**
+   * LULD state. All default to 0 / unset for snapshots taken before
+   * LULD existed — replay against post-LULD events then re-populates.
+   *
+   * @generated from field: int64 luld_reference_price = 5;
+   */
+  luldReferencePrice: bigint;
+
+  /**
+   * @generated from field: int64 luld_upper_band = 6;
+   */
+  luldUpperBand: bigint;
+
+  /**
+   * @generated from field: int64 luld_lower_band = 7;
+   */
+  luldLowerBand: bigint;
+
+  /**
+   * @generated from field: int32 luld_band_bps = 8;
+   */
+  luldBandBps: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp luld_limit_state_started_at = 9;
+   */
+  luldLimitStateStartedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp luld_halt_deadline = 10;
+   */
+  luldHaltDeadline?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp luld_halt_started_at = 11;
+   */
+  luldHaltStartedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp luld_reopen_at = 12;
+   */
+  luldReopenAt?: Timestamp | undefined;
+
+  /**
+   * luld_rearm_at is set on a halt-reopen and prevents the matcher from
+   * re-tripping LIMIT_STATE on the first few prints after resume.
+   *
+   * @generated from field: google.protobuf.Timestamp luld_rearm_at = 13;
+   */
+  luldRearmAt?: Timestamp | undefined;
 };
 
 /**

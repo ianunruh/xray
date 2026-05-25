@@ -530,6 +530,205 @@ export declare type SymbolRenamed = Message<"orderbook.v1.SymbolRenamed"> & {
 export declare const SymbolRenamedSchema: GenMessage<SymbolRenamed>;
 
 /**
+ * LULDBandsSet announces a new reference price and the upper/lower
+ * limit bands derived from band_bps (basis points). Reason is one of
+ * "initial", "reference_update", "tier_change", "split_reanchor",
+ * "halt_reopen". The reactor emits this whenever the rolling reference
+ * moves enough to shift the bands by at least one tick.
+ *
+ * @generated from message orderbook.v1.LULDBandsSet
+ */
+export declare type LULDBandsSet = Message<"orderbook.v1.LULDBandsSet"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: int64 reference_price = 2;
+   */
+  referencePrice: bigint;
+
+  /**
+   * @generated from field: int64 upper_band = 3;
+   */
+  upperBand: bigint;
+
+  /**
+   * @generated from field: int64 lower_band = 4;
+   */
+  lowerBand: bigint;
+
+  /**
+   * @generated from field: int32 band_bps = 5;
+   */
+  bandBps: number;
+
+  /**
+   * @generated from field: string reason = 6;
+   */
+  reason: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp at = 7;
+   */
+  at?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.LULDBandsSet.
+ * Use `create(LULDBandsSetSchema)` to create a new message.
+ */
+export declare const LULDBandsSetSchema: GenMessage<LULDBandsSet>;
+
+/**
+ * LULDLimitStateEntered is emitted when a would-be trade pierces a
+ * band: the trade is cancelled, the aggressor's remainder is cancelled
+ * with reason "luld_band", and the symbol moves to MARKET_PHASE_LIMIT_STATE.
+ * band_side is Buy if the pierced band is the upper one (buy pressure),
+ * Sell otherwise. halt_deadline = at + grace; if the reactor still sees
+ * limit-state at halt_deadline, it triggers TradingHalted.
+ *
+ * @generated from message orderbook.v1.LULDLimitStateEntered
+ */
+export declare type LULDLimitStateEntered = Message<"orderbook.v1.LULDLimitStateEntered"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: orderbook.v1.Side band_side = 2;
+   */
+  bandSide: Side;
+
+  /**
+   * @generated from field: int64 band_price = 3;
+   */
+  bandPrice: bigint;
+
+  /**
+   * @generated from field: string trigger_order_id = 4;
+   */
+  triggerOrderId: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp at = 5;
+   */
+  at?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp halt_deadline = 6;
+   */
+  haltDeadline?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.LULDLimitStateEntered.
+ * Use `create(LULDLimitStateEnteredSchema)` to create a new message.
+ */
+export declare const LULDLimitStateEnteredSchema: GenMessage<LULDLimitStateEntered>;
+
+/**
+ * LULDLimitStateExited records the end of a limit-state episode.
+ * reason ∈ {"price_returned_in_band", "halt_triggered", "manual"}.
+ * When reason == "halt_triggered", TradingHalted follows in the same
+ * batch; when reason == "price_returned_in_band", a
+ * MarketPhaseChanged(CONTINUOUS) follows.
+ *
+ * @generated from message orderbook.v1.LULDLimitStateExited
+ */
+export declare type LULDLimitStateExited = Message<"orderbook.v1.LULDLimitStateExited"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: string reason = 2;
+   */
+  reason: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp at = 3;
+   */
+  at?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.LULDLimitStateExited.
+ * Use `create(LULDLimitStateExitedSchema)` to create a new message.
+ */
+export declare const LULDLimitStateExitedSchema: GenMessage<LULDLimitStateExited>;
+
+/**
+ * TradingHalted moves the symbol to MARKET_PHASE_HALTED — every new
+ * PlaceOrder is rejected with ErrSymbolHalted. reopen_at is the wall
+ * clock at which the reactor will open a reopening auction.
+ *
+ * @generated from message orderbook.v1.TradingHalted
+ */
+export declare type TradingHalted = Message<"orderbook.v1.TradingHalted"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: string reason = 2;
+   */
+  reason: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp at = 3;
+   */
+  at?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp reopen_at = 4;
+   */
+  reopenAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message orderbook.v1.TradingHalted.
+ * Use `create(TradingHaltedSchema)` to create a new message.
+ */
+export declare const TradingHaltedSchema: GenMessage<TradingHalted>;
+
+/**
+ * TradingResumed is a marker event emitted right after a halt-reopen
+ * auction's MarketPhaseChanged(CONTINUOUS), tagged with the cross_type
+ * of the reopening uncross (usually CROSS_TYPE_HALT_REOPEN). Projections
+ * and brokers anchor on this to lift halt banners and re-arm LULD with
+ * a post-reopen grace window.
+ *
+ * @generated from message orderbook.v1.TradingResumed
+ */
+export declare type TradingResumed = Message<"orderbook.v1.TradingResumed"> & {
+  /**
+   * @generated from field: string symbol = 1;
+   */
+  symbol: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp at = 2;
+   */
+  at?: Timestamp | undefined;
+
+  /**
+   * @generated from field: orderbook.v1.CrossType cross_type = 3;
+   */
+  crossType: CrossType;
+};
+
+/**
+ * Describes the message orderbook.v1.TradingResumed.
+ * Use `create(TradingResumedSchema)` to create a new message.
+ */
+export declare const TradingResumedSchema: GenMessage<TradingResumed>;
+
+/**
  * @generated from message orderbook.v1.SagaStarted
  */
 export declare type SagaStarted = Message<"orderbook.v1.SagaStarted"> & {
@@ -1146,6 +1345,12 @@ export declare const TimeInForceSchema: GenEnum<TimeInForce>;
  * flips back to CONTINUOUS. CLOSING_AUCTION is the same but flips to
  * CLOSED on uncross.
  *
+ * LIMIT_STATE and HALTED are LULD (limit-up/limit-down) volatility
+ * states. LIMIT_STATE lets limit orders at-or-better than the band rest
+ * but rejects anything that would trade through it; if the symbol stays
+ * pinned past the grace window, the LULD reactor transitions to HALTED,
+ * which rejects every new order until a reopening auction completes.
+ *
  * @generated from enum orderbook.v1.MarketPhase
  */
 export enum MarketPhase {
@@ -1173,6 +1378,16 @@ export enum MarketPhase {
    * @generated from enum value: MARKET_PHASE_CLOSED = 4;
    */
   CLOSED = 4,
+
+  /**
+   * @generated from enum value: MARKET_PHASE_LIMIT_STATE = 5;
+   */
+  LIMIT_STATE = 5,
+
+  /**
+   * @generated from enum value: MARKET_PHASE_HALTED = 6;
+   */
+  HALTED = 6,
 }
 
 /**

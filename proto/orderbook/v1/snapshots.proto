@@ -19,6 +19,19 @@ message OrderBookSnapshot {
   // from zero, which mis-counts only events between the snapshot and
   // the next close.
   int64 session_volume = 4;
+  // LULD state. All default to 0 / unset for snapshots taken before
+  // LULD existed — replay against post-LULD events then re-populates.
+  int64                     luld_reference_price        = 5;
+  int64                     luld_upper_band             = 6;
+  int64                     luld_lower_band             = 7;
+  int32                     luld_band_bps               = 8;
+  google.protobuf.Timestamp luld_limit_state_started_at = 9;
+  google.protobuf.Timestamp luld_halt_deadline          = 10;
+  google.protobuf.Timestamp luld_halt_started_at        = 11;
+  google.protobuf.Timestamp luld_reopen_at              = 12;
+  // luld_rearm_at is set on a halt-reopen and prevents the matcher from
+  // re-tripping LIMIT_STATE on the first few prints after resume.
+  google.protobuf.Timestamp luld_rearm_at               = 13;
 }
 
 message OrderSnapshot {

@@ -62,12 +62,20 @@ enum TimeInForce {
 // without crossing; Uncross runs an equilibrium-price algorithm and
 // flips back to CONTINUOUS. CLOSING_AUCTION is the same but flips to
 // CLOSED on uncross.
+//
+// LIMIT_STATE and HALTED are LULD (limit-up/limit-down) volatility
+// states. LIMIT_STATE lets limit orders at-or-better than the band rest
+// but rejects anything that would trade through it; if the symbol stays
+// pinned past the grace window, the LULD reactor transitions to HALTED,
+// which rejects every new order until a reopening auction completes.
 enum MarketPhase {
   MARKET_PHASE_UNSPECIFIED = 0;
   MARKET_PHASE_CONTINUOUS = 1;
   MARKET_PHASE_AUCTION = 2;
   MARKET_PHASE_CLOSING_AUCTION = 3;
   MARKET_PHASE_CLOSED = 4;
+  MARKET_PHASE_LIMIT_STATE = 5;
+  MARKET_PHASE_HALTED = 6;
 }
 
 // CrossType marks how a trade was produced. NONE = ordinary continuous
@@ -232,6 +240,73 @@ message SymbolRenamed {
   string                    new_symbol = 2;
   string                    action_id  = 3;
   google.protobuf.Timestamp renamed_at = 4;
+}
+
+// LULD (Limit-Up/Limit-Down) volatility-moderator events. The price-band
+// math and timer state live on the OrderBook aggregate so replay is
+// deterministic; the LULD reactor (internal/luld) drives band updates
+// and timer-based transitions.
+
+// LULDBandsSet announces a new reference price and the upper/lower
+// limit bands derived from band_bps (basis points). Reason is one of
+// "initial", "reference_update", "tier_change", "split_reanchor",
+// "halt_reopen". The reactor emits this whenever the rolling reference
+// moves enough to shift the bands by at least one tick.
+message LULDBandsSet {
+  string                    symbol          = 1;
+  int64                     reference_price = 2;
+  int64                     upper_band      = 3;
+  int64                     lower_band      = 4;
+  int32                     band_bps        = 5;
+  string                    reason          = 6;
+  google.protobuf.Timestamp at              = 7;
+}
+
+// LULDLimitStateEntered is emitted when a would-be trade pierces a
+// band: the trade is cancelled, the aggressor's remainder is cancelled
+// with reason "luld_band", and the symbol moves to MARKET_PHASE_LIMIT_STATE.
+// band_side is Buy if the pierced band is the upper one (buy pressure),
+// Sell otherwise. halt_deadline = at + grace; if the reactor still sees
+// limit-state at halt_deadline, it triggers TradingHalted.
+message LULDLimitStateEntered {
+  string                    symbol           = 1;
+  Side                      band_side        = 2;
+  int64                     band_price       = 3;
+  string                    trigger_order_id = 4;
+  google.protobuf.Timestamp at               = 5;
+  google.protobuf.Timestamp halt_deadline    = 6;
+}
+
+// LULDLimitStateExited records the end of a limit-state episode.
+// reason ∈ {"price_returned_in_band", "halt_triggered", "manual"}.
+// When reason == "halt_triggered", TradingHalted follows in the same
+// batch; when reason == "price_returned_in_band", a
+// MarketPhaseChanged(CONTINUOUS) follows.
+message LULDLimitStateExited {
+  string                    symbol = 1;
+  string                    reason = 2;
+  google.protobuf.Timestamp at     = 3;
+}
+
+// TradingHalted moves the symbol to MARKET_PHASE_HALTED — every new
+// PlaceOrder is rejected with ErrSymbolHalted. reopen_at is the wall
+// clock at which the reactor will open a reopening auction.
+message TradingHalted {
+  string                    symbol    = 1;
+  string                    reason    = 2;
+  google.protobuf.Timestamp at        = 3;
+  google.protobuf.Timestamp reopen_at = 4;
+}
+
+// TradingResumed is a marker event emitted right after a halt-reopen
+// auction's MarketPhaseChanged(CONTINUOUS), tagged with the cross_type
+// of the reopening uncross (usually CROSS_TYPE_HALT_REOPEN). Projections
+// and brokers anchor on this to lift halt banners and re-arm LULD with
+// a post-reopen grace window.
+message TradingResumed {
+  string                    symbol     = 1;
+  google.protobuf.Timestamp at         = 2;
+  CrossType                 cross_type = 3;
 }
 
 // Saga lifecycle events — stored under aggregate ID "saga:{uuid}".

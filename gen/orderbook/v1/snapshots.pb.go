@@ -35,6 +35,19 @@ type OrderBookSnapshot struct {
 	// from zero, which mis-counts only events between the snapshot and
 	// the next close.
 	SessionVolume int64 `protobuf:"varint,4,opt,name=session_volume,json=sessionVolume,proto3" json:"session_volume,omitempty"`
+	// LULD state. All default to 0 / unset for snapshots taken before
+	// LULD existed — replay against post-LULD events then re-populates.
+	LuldReferencePrice      int64                  `protobuf:"varint,5,opt,name=luld_reference_price,json=luldReferencePrice,proto3" json:"luld_reference_price,omitempty"`
+	LuldUpperBand           int64                  `protobuf:"varint,6,opt,name=luld_upper_band,json=luldUpperBand,proto3" json:"luld_upper_band,omitempty"`
+	LuldLowerBand           int64                  `protobuf:"varint,7,opt,name=luld_lower_band,json=luldLowerBand,proto3" json:"luld_lower_band,omitempty"`
+	LuldBandBps             int32                  `protobuf:"varint,8,opt,name=luld_band_bps,json=luldBandBps,proto3" json:"luld_band_bps,omitempty"`
+	LuldLimitStateStartedAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=luld_limit_state_started_at,json=luldLimitStateStartedAt,proto3" json:"luld_limit_state_started_at,omitempty"`
+	LuldHaltDeadline        *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=luld_halt_deadline,json=luldHaltDeadline,proto3" json:"luld_halt_deadline,omitempty"`
+	LuldHaltStartedAt       *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=luld_halt_started_at,json=luldHaltStartedAt,proto3" json:"luld_halt_started_at,omitempty"`
+	LuldReopenAt            *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=luld_reopen_at,json=luldReopenAt,proto3" json:"luld_reopen_at,omitempty"`
+	// luld_rearm_at is set on a halt-reopen and prevents the matcher from
+	// re-tripping LIMIT_STATE on the first few prints after resume.
+	LuldRearmAt   *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=luld_rearm_at,json=luldRearmAt,proto3" json:"luld_rearm_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -95,6 +108,69 @@ func (x *OrderBookSnapshot) GetSessionVolume() int64 {
 		return x.SessionVolume
 	}
 	return 0
+}
+
+func (x *OrderBookSnapshot) GetLuldReferencePrice() int64 {
+	if x != nil {
+		return x.LuldReferencePrice
+	}
+	return 0
+}
+
+func (x *OrderBookSnapshot) GetLuldUpperBand() int64 {
+	if x != nil {
+		return x.LuldUpperBand
+	}
+	return 0
+}
+
+func (x *OrderBookSnapshot) GetLuldLowerBand() int64 {
+	if x != nil {
+		return x.LuldLowerBand
+	}
+	return 0
+}
+
+func (x *OrderBookSnapshot) GetLuldBandBps() int32 {
+	if x != nil {
+		return x.LuldBandBps
+	}
+	return 0
+}
+
+func (x *OrderBookSnapshot) GetLuldLimitStateStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LuldLimitStateStartedAt
+	}
+	return nil
+}
+
+func (x *OrderBookSnapshot) GetLuldHaltDeadline() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LuldHaltDeadline
+	}
+	return nil
+}
+
+func (x *OrderBookSnapshot) GetLuldHaltStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LuldHaltStartedAt
+	}
+	return nil
+}
+
+func (x *OrderBookSnapshot) GetLuldReopenAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LuldReopenAt
+	}
+	return nil
+}
+
+func (x *OrderBookSnapshot) GetLuldRearmAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LuldRearmAt
+	}
+	return nil
 }
 
 type OrderSnapshot struct {
@@ -263,12 +339,22 @@ var File_orderbook_v1_snapshots_proto protoreflect.FileDescriptor
 
 const file_orderbook_v1_snapshots_proto_rawDesc = "" +
 	"\n" +
-	"\x1corderbook/v1/snapshots.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"\xb8\x01\n" +
+	"\x1corderbook/v1/snapshots.proto\x12\forderbook.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x19orderbook/v1/events.proto\"\xd1\x05\n" +
 	"\x11OrderBookSnapshot\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x123\n" +
 	"\x06orders\x18\x02 \x03(\v2\x1b.orderbook.v1.OrderSnapshotR\x06orders\x12/\n" +
 	"\x05phase\x18\x03 \x01(\x0e2\x19.orderbook.v1.MarketPhaseR\x05phase\x12%\n" +
-	"\x0esession_volume\x18\x04 \x01(\x03R\rsessionVolume\"\xed\x04\n" +
+	"\x0esession_volume\x18\x04 \x01(\x03R\rsessionVolume\x120\n" +
+	"\x14luld_reference_price\x18\x05 \x01(\x03R\x12luldReferencePrice\x12&\n" +
+	"\x0fluld_upper_band\x18\x06 \x01(\x03R\rluldUpperBand\x12&\n" +
+	"\x0fluld_lower_band\x18\a \x01(\x03R\rluldLowerBand\x12\"\n" +
+	"\rluld_band_bps\x18\b \x01(\x05R\vluldBandBps\x12X\n" +
+	"\x1bluld_limit_state_started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\x17luldLimitStateStartedAt\x12H\n" +
+	"\x12luld_halt_deadline\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\x10luldHaltDeadline\x12K\n" +
+	"\x14luld_halt_started_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\x11luldHaltStartedAt\x12@\n" +
+	"\x0eluld_reopen_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\fluldReopenAt\x12>\n" +
+	"\rluld_rearm_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\vluldRearmAt\"\xed\x04\n" +
 	"\rOrderSnapshot\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12&\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\x04side\x12\x14\n" +
@@ -307,23 +393,28 @@ var file_orderbook_v1_snapshots_proto_goTypes = []any{
 	(*OrderBookSnapshot)(nil),     // 0: orderbook.v1.OrderBookSnapshot
 	(*OrderSnapshot)(nil),         // 1: orderbook.v1.OrderSnapshot
 	(MarketPhase)(0),              // 2: orderbook.v1.MarketPhase
-	(Side)(0),                     // 3: orderbook.v1.Side
-	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(Side)(0),                     // 4: orderbook.v1.Side
 	(OrderType)(0),                // 5: orderbook.v1.OrderType
 	(TimeInForce)(0),              // 6: orderbook.v1.TimeInForce
 }
 var file_orderbook_v1_snapshots_proto_depIdxs = []int32{
-	1, // 0: orderbook.v1.OrderBookSnapshot.orders:type_name -> orderbook.v1.OrderSnapshot
-	2, // 1: orderbook.v1.OrderBookSnapshot.phase:type_name -> orderbook.v1.MarketPhase
-	3, // 2: orderbook.v1.OrderSnapshot.side:type_name -> orderbook.v1.Side
-	4, // 3: orderbook.v1.OrderSnapshot.placed_at:type_name -> google.protobuf.Timestamp
-	5, // 4: orderbook.v1.OrderSnapshot.order_type:type_name -> orderbook.v1.OrderType
-	6, // 5: orderbook.v1.OrderSnapshot.time_in_force:type_name -> orderbook.v1.TimeInForce
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	1,  // 0: orderbook.v1.OrderBookSnapshot.orders:type_name -> orderbook.v1.OrderSnapshot
+	2,  // 1: orderbook.v1.OrderBookSnapshot.phase:type_name -> orderbook.v1.MarketPhase
+	3,  // 2: orderbook.v1.OrderBookSnapshot.luld_limit_state_started_at:type_name -> google.protobuf.Timestamp
+	3,  // 3: orderbook.v1.OrderBookSnapshot.luld_halt_deadline:type_name -> google.protobuf.Timestamp
+	3,  // 4: orderbook.v1.OrderBookSnapshot.luld_halt_started_at:type_name -> google.protobuf.Timestamp
+	3,  // 5: orderbook.v1.OrderBookSnapshot.luld_reopen_at:type_name -> google.protobuf.Timestamp
+	3,  // 6: orderbook.v1.OrderBookSnapshot.luld_rearm_at:type_name -> google.protobuf.Timestamp
+	4,  // 7: orderbook.v1.OrderSnapshot.side:type_name -> orderbook.v1.Side
+	3,  // 8: orderbook.v1.OrderSnapshot.placed_at:type_name -> google.protobuf.Timestamp
+	5,  // 9: orderbook.v1.OrderSnapshot.order_type:type_name -> orderbook.v1.OrderType
+	6,  // 10: orderbook.v1.OrderSnapshot.time_in_force:type_name -> orderbook.v1.TimeInForce
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_orderbook_v1_snapshots_proto_init() }

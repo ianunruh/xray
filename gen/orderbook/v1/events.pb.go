@@ -266,6 +266,12 @@ func (TimeInForce) EnumDescriptor() ([]byte, []int) {
 // without crossing; Uncross runs an equilibrium-price algorithm and
 // flips back to CONTINUOUS. CLOSING_AUCTION is the same but flips to
 // CLOSED on uncross.
+//
+// LIMIT_STATE and HALTED are LULD (limit-up/limit-down) volatility
+// states. LIMIT_STATE lets limit orders at-or-better than the band rest
+// but rejects anything that would trade through it; if the symbol stays
+// pinned past the grace window, the LULD reactor transitions to HALTED,
+// which rejects every new order until a reopening auction completes.
 type MarketPhase int32
 
 const (
@@ -274,6 +280,8 @@ const (
 	MarketPhase_MARKET_PHASE_AUCTION         MarketPhase = 2
 	MarketPhase_MARKET_PHASE_CLOSING_AUCTION MarketPhase = 3
 	MarketPhase_MARKET_PHASE_CLOSED          MarketPhase = 4
+	MarketPhase_MARKET_PHASE_LIMIT_STATE     MarketPhase = 5
+	MarketPhase_MARKET_PHASE_HALTED          MarketPhase = 6
 )
 
 // Enum value maps for MarketPhase.
@@ -284,6 +292,8 @@ var (
 		2: "MARKET_PHASE_AUCTION",
 		3: "MARKET_PHASE_CLOSING_AUCTION",
 		4: "MARKET_PHASE_CLOSED",
+		5: "MARKET_PHASE_LIMIT_STATE",
+		6: "MARKET_PHASE_HALTED",
 	}
 	MarketPhase_value = map[string]int32{
 		"MARKET_PHASE_UNSPECIFIED":     0,
@@ -291,6 +301,8 @@ var (
 		"MARKET_PHASE_AUCTION":         2,
 		"MARKET_PHASE_CLOSING_AUCTION": 3,
 		"MARKET_PHASE_CLOSED":          4,
+		"MARKET_PHASE_LIMIT_STATE":     5,
+		"MARKET_PHASE_HALTED":          6,
 	}
 )
 
@@ -1355,6 +1367,394 @@ func (x *SymbolRenamed) GetRenamedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// LULDBandsSet announces a new reference price and the upper/lower
+// limit bands derived from band_bps (basis points). Reason is one of
+// "initial", "reference_update", "tier_change", "split_reanchor",
+// "halt_reopen". The reactor emits this whenever the rolling reference
+// moves enough to shift the bands by at least one tick.
+type LULDBandsSet struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Symbol         string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	ReferencePrice int64                  `protobuf:"varint,2,opt,name=reference_price,json=referencePrice,proto3" json:"reference_price,omitempty"`
+	UpperBand      int64                  `protobuf:"varint,3,opt,name=upper_band,json=upperBand,proto3" json:"upper_band,omitempty"`
+	LowerBand      int64                  `protobuf:"varint,4,opt,name=lower_band,json=lowerBand,proto3" json:"lower_band,omitempty"`
+	BandBps        int32                  `protobuf:"varint,5,opt,name=band_bps,json=bandBps,proto3" json:"band_bps,omitempty"`
+	Reason         string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
+	At             *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=at,proto3" json:"at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *LULDBandsSet) Reset() {
+	*x = LULDBandsSet{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LULDBandsSet) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LULDBandsSet) ProtoMessage() {}
+
+func (x *LULDBandsSet) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LULDBandsSet.ProtoReflect.Descriptor instead.
+func (*LULDBandsSet) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *LULDBandsSet) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *LULDBandsSet) GetReferencePrice() int64 {
+	if x != nil {
+		return x.ReferencePrice
+	}
+	return 0
+}
+
+func (x *LULDBandsSet) GetUpperBand() int64 {
+	if x != nil {
+		return x.UpperBand
+	}
+	return 0
+}
+
+func (x *LULDBandsSet) GetLowerBand() int64 {
+	if x != nil {
+		return x.LowerBand
+	}
+	return 0
+}
+
+func (x *LULDBandsSet) GetBandBps() int32 {
+	if x != nil {
+		return x.BandBps
+	}
+	return 0
+}
+
+func (x *LULDBandsSet) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *LULDBandsSet) GetAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.At
+	}
+	return nil
+}
+
+// LULDLimitStateEntered is emitted when a would-be trade pierces a
+// band: the trade is cancelled, the aggressor's remainder is cancelled
+// with reason "luld_band", and the symbol moves to MARKET_PHASE_LIMIT_STATE.
+// band_side is Buy if the pierced band is the upper one (buy pressure),
+// Sell otherwise. halt_deadline = at + grace; if the reactor still sees
+// limit-state at halt_deadline, it triggers TradingHalted.
+type LULDLimitStateEntered struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Symbol         string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	BandSide       Side                   `protobuf:"varint,2,opt,name=band_side,json=bandSide,proto3,enum=orderbook.v1.Side" json:"band_side,omitempty"`
+	BandPrice      int64                  `protobuf:"varint,3,opt,name=band_price,json=bandPrice,proto3" json:"band_price,omitempty"`
+	TriggerOrderId string                 `protobuf:"bytes,4,opt,name=trigger_order_id,json=triggerOrderId,proto3" json:"trigger_order_id,omitempty"`
+	At             *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=at,proto3" json:"at,omitempty"`
+	HaltDeadline   *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=halt_deadline,json=haltDeadline,proto3" json:"halt_deadline,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *LULDLimitStateEntered) Reset() {
+	*x = LULDLimitStateEntered{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LULDLimitStateEntered) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LULDLimitStateEntered) ProtoMessage() {}
+
+func (x *LULDLimitStateEntered) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LULDLimitStateEntered.ProtoReflect.Descriptor instead.
+func (*LULDLimitStateEntered) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *LULDLimitStateEntered) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *LULDLimitStateEntered) GetBandSide() Side {
+	if x != nil {
+		return x.BandSide
+	}
+	return Side_SIDE_UNSPECIFIED
+}
+
+func (x *LULDLimitStateEntered) GetBandPrice() int64 {
+	if x != nil {
+		return x.BandPrice
+	}
+	return 0
+}
+
+func (x *LULDLimitStateEntered) GetTriggerOrderId() string {
+	if x != nil {
+		return x.TriggerOrderId
+	}
+	return ""
+}
+
+func (x *LULDLimitStateEntered) GetAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.At
+	}
+	return nil
+}
+
+func (x *LULDLimitStateEntered) GetHaltDeadline() *timestamppb.Timestamp {
+	if x != nil {
+		return x.HaltDeadline
+	}
+	return nil
+}
+
+// LULDLimitStateExited records the end of a limit-state episode.
+// reason ∈ {"price_returned_in_band", "halt_triggered", "manual"}.
+// When reason == "halt_triggered", TradingHalted follows in the same
+// batch; when reason == "price_returned_in_band", a
+// MarketPhaseChanged(CONTINUOUS) follows.
+type LULDLimitStateExited struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	At            *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=at,proto3" json:"at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LULDLimitStateExited) Reset() {
+	*x = LULDLimitStateExited{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LULDLimitStateExited) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LULDLimitStateExited) ProtoMessage() {}
+
+func (x *LULDLimitStateExited) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LULDLimitStateExited.ProtoReflect.Descriptor instead.
+func (*LULDLimitStateExited) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *LULDLimitStateExited) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *LULDLimitStateExited) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *LULDLimitStateExited) GetAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.At
+	}
+	return nil
+}
+
+// TradingHalted moves the symbol to MARKET_PHASE_HALTED — every new
+// PlaceOrder is rejected with ErrSymbolHalted. reopen_at is the wall
+// clock at which the reactor will open a reopening auction.
+type TradingHalted struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	At            *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=at,proto3" json:"at,omitempty"`
+	ReopenAt      *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=reopen_at,json=reopenAt,proto3" json:"reopen_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TradingHalted) Reset() {
+	*x = TradingHalted{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TradingHalted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TradingHalted) ProtoMessage() {}
+
+func (x *TradingHalted) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TradingHalted.ProtoReflect.Descriptor instead.
+func (*TradingHalted) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *TradingHalted) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *TradingHalted) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *TradingHalted) GetAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.At
+	}
+	return nil
+}
+
+func (x *TradingHalted) GetReopenAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ReopenAt
+	}
+	return nil
+}
+
+// TradingResumed is a marker event emitted right after a halt-reopen
+// auction's MarketPhaseChanged(CONTINUOUS), tagged with the cross_type
+// of the reopening uncross (usually CROSS_TYPE_HALT_REOPEN). Projections
+// and brokers anchor on this to lift halt banners and re-arm LULD with
+// a post-reopen grace window.
+type TradingResumed struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	At            *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=at,proto3" json:"at,omitempty"`
+	CrossType     CrossType              `protobuf:"varint,3,opt,name=cross_type,json=crossType,proto3,enum=orderbook.v1.CrossType" json:"cross_type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TradingResumed) Reset() {
+	*x = TradingResumed{}
+	mi := &file_orderbook_v1_events_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TradingResumed) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TradingResumed) ProtoMessage() {}
+
+func (x *TradingResumed) ProtoReflect() protoreflect.Message {
+	mi := &file_orderbook_v1_events_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TradingResumed.ProtoReflect.Descriptor instead.
+func (*TradingResumed) Descriptor() ([]byte, []int) {
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *TradingResumed) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *TradingResumed) GetAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.At
+	}
+	return nil
+}
+
+func (x *TradingResumed) GetCrossType() CrossType {
+	if x != nil {
+		return x.CrossType
+	}
+	return CrossType_CROSS_TYPE_NONE
+}
+
 type SagaStarted struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	SagaId          string                 `protobuf:"bytes,1,opt,name=saga_id,json=sagaId,proto3" json:"saga_id,omitempty"`
@@ -1379,7 +1779,7 @@ type SagaStarted struct {
 
 func (x *SagaStarted) Reset() {
 	*x = SagaStarted{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[11]
+	mi := &file_orderbook_v1_events_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1391,7 +1791,7 @@ func (x *SagaStarted) String() string {
 func (*SagaStarted) ProtoMessage() {}
 
 func (x *SagaStarted) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[11]
+	mi := &file_orderbook_v1_events_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1404,7 +1804,7 @@ func (x *SagaStarted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SagaStarted.ProtoReflect.Descriptor instead.
 func (*SagaStarted) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{11}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *SagaStarted) GetSagaId() string {
@@ -1496,7 +1896,7 @@ type EntryFilled struct {
 
 func (x *EntryFilled) Reset() {
 	*x = EntryFilled{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[12]
+	mi := &file_orderbook_v1_events_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1508,7 +1908,7 @@ func (x *EntryFilled) String() string {
 func (*EntryFilled) ProtoMessage() {}
 
 func (x *EntryFilled) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[12]
+	mi := &file_orderbook_v1_events_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1521,7 +1921,7 @@ func (x *EntryFilled) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntryFilled.ProtoReflect.Descriptor instead.
 func (*EntryFilled) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{12}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *EntryFilled) GetSagaId() string {
@@ -1564,7 +1964,7 @@ type ExitFilled struct {
 
 func (x *ExitFilled) Reset() {
 	*x = ExitFilled{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[13]
+	mi := &file_orderbook_v1_events_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1576,7 +1976,7 @@ func (x *ExitFilled) String() string {
 func (*ExitFilled) ProtoMessage() {}
 
 func (x *ExitFilled) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[13]
+	mi := &file_orderbook_v1_events_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1589,7 +1989,7 @@ func (x *ExitFilled) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExitFilled.ProtoReflect.Descriptor instead.
 func (*ExitFilled) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{13}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ExitFilled) GetSagaId() string {
@@ -1630,7 +2030,7 @@ type SagaCompleted struct {
 
 func (x *SagaCompleted) Reset() {
 	*x = SagaCompleted{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[14]
+	mi := &file_orderbook_v1_events_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1642,7 +2042,7 @@ func (x *SagaCompleted) String() string {
 func (*SagaCompleted) ProtoMessage() {}
 
 func (x *SagaCompleted) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[14]
+	mi := &file_orderbook_v1_events_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1655,7 +2055,7 @@ func (x *SagaCompleted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SagaCompleted.ProtoReflect.Descriptor instead.
 func (*SagaCompleted) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{14}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *SagaCompleted) GetSagaId() string {
@@ -1683,7 +2083,7 @@ type SagaFailed struct {
 
 func (x *SagaFailed) Reset() {
 	*x = SagaFailed{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[15]
+	mi := &file_orderbook_v1_events_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1695,7 +2095,7 @@ func (x *SagaFailed) String() string {
 func (*SagaFailed) ProtoMessage() {}
 
 func (x *SagaFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[15]
+	mi := &file_orderbook_v1_events_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1708,7 +2108,7 @@ func (x *SagaFailed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SagaFailed.ProtoReflect.Descriptor instead.
 func (*SagaFailed) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{15}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SagaFailed) GetSagaId() string {
@@ -1744,7 +2144,7 @@ type SagaActionFailed struct {
 
 func (x *SagaActionFailed) Reset() {
 	*x = SagaActionFailed{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[16]
+	mi := &file_orderbook_v1_events_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1756,7 +2156,7 @@ func (x *SagaActionFailed) String() string {
 func (*SagaActionFailed) ProtoMessage() {}
 
 func (x *SagaActionFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[16]
+	mi := &file_orderbook_v1_events_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1769,7 +2169,7 @@ func (x *SagaActionFailed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SagaActionFailed.ProtoReflect.Descriptor instead.
 func (*SagaActionFailed) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{16}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *SagaActionFailed) GetSagaId() string {
@@ -1823,7 +2223,7 @@ type OCOSagaStarted struct {
 
 func (x *OCOSagaStarted) Reset() {
 	*x = OCOSagaStarted{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[17]
+	mi := &file_orderbook_v1_events_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1835,7 +2235,7 @@ func (x *OCOSagaStarted) String() string {
 func (*OCOSagaStarted) ProtoMessage() {}
 
 func (x *OCOSagaStarted) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[17]
+	mi := &file_orderbook_v1_events_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1848,7 +2248,7 @@ func (x *OCOSagaStarted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OCOSagaStarted.ProtoReflect.Descriptor instead.
 func (*OCOSagaStarted) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{17}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *OCOSagaStarted) GetSagaId() string {
@@ -1924,7 +2324,7 @@ type OCOSagaSharesHeld struct {
 
 func (x *OCOSagaSharesHeld) Reset() {
 	*x = OCOSagaSharesHeld{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[18]
+	mi := &file_orderbook_v1_events_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1936,7 +2336,7 @@ func (x *OCOSagaSharesHeld) String() string {
 func (*OCOSagaSharesHeld) ProtoMessage() {}
 
 func (x *OCOSagaSharesHeld) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[18]
+	mi := &file_orderbook_v1_events_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1949,7 +2349,7 @@ func (x *OCOSagaSharesHeld) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OCOSagaSharesHeld.ProtoReflect.Descriptor instead.
 func (*OCOSagaSharesHeld) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{18}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *OCOSagaSharesHeld) GetSagaId() string {
@@ -1978,7 +2378,7 @@ type OCOSagaExitPlaced struct {
 
 func (x *OCOSagaExitPlaced) Reset() {
 	*x = OCOSagaExitPlaced{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[19]
+	mi := &file_orderbook_v1_events_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1990,7 +2390,7 @@ func (x *OCOSagaExitPlaced) String() string {
 func (*OCOSagaExitPlaced) ProtoMessage() {}
 
 func (x *OCOSagaExitPlaced) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[19]
+	mi := &file_orderbook_v1_events_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2003,7 +2403,7 @@ func (x *OCOSagaExitPlaced) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OCOSagaExitPlaced.ProtoReflect.Descriptor instead.
 func (*OCOSagaExitPlaced) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{19}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *OCOSagaExitPlaced) GetSagaId() string {
@@ -2048,7 +2448,7 @@ type OCOSagaFillRecorded struct {
 
 func (x *OCOSagaFillRecorded) Reset() {
 	*x = OCOSagaFillRecorded{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[20]
+	mi := &file_orderbook_v1_events_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2060,7 +2460,7 @@ func (x *OCOSagaFillRecorded) String() string {
 func (*OCOSagaFillRecorded) ProtoMessage() {}
 
 func (x *OCOSagaFillRecorded) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[20]
+	mi := &file_orderbook_v1_events_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2073,7 +2473,7 @@ func (x *OCOSagaFillRecorded) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OCOSagaFillRecorded.ProtoReflect.Descriptor instead.
 func (*OCOSagaFillRecorded) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{20}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *OCOSagaFillRecorded) GetSagaId() string {
@@ -2128,7 +2528,7 @@ type OCOSagaCompleted struct {
 
 func (x *OCOSagaCompleted) Reset() {
 	*x = OCOSagaCompleted{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[21]
+	mi := &file_orderbook_v1_events_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2140,7 +2540,7 @@ func (x *OCOSagaCompleted) String() string {
 func (*OCOSagaCompleted) ProtoMessage() {}
 
 func (x *OCOSagaCompleted) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[21]
+	mi := &file_orderbook_v1_events_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2153,7 +2553,7 @@ func (x *OCOSagaCompleted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OCOSagaCompleted.ProtoReflect.Descriptor instead.
 func (*OCOSagaCompleted) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{21}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *OCOSagaCompleted) GetSagaId() string {
@@ -2181,7 +2581,7 @@ type OCOSagaFailed struct {
 
 func (x *OCOSagaFailed) Reset() {
 	*x = OCOSagaFailed{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[22]
+	mi := &file_orderbook_v1_events_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2193,7 +2593,7 @@ func (x *OCOSagaFailed) String() string {
 func (*OCOSagaFailed) ProtoMessage() {}
 
 func (x *OCOSagaFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[22]
+	mi := &file_orderbook_v1_events_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2206,7 +2606,7 @@ func (x *OCOSagaFailed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OCOSagaFailed.ProtoReflect.Descriptor instead.
 func (*OCOSagaFailed) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{22}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *OCOSagaFailed) GetSagaId() string {
@@ -2242,7 +2642,7 @@ type OCOSagaActionFailed struct {
 
 func (x *OCOSagaActionFailed) Reset() {
 	*x = OCOSagaActionFailed{}
-	mi := &file_orderbook_v1_events_proto_msgTypes[23]
+	mi := &file_orderbook_v1_events_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2254,7 +2654,7 @@ func (x *OCOSagaActionFailed) String() string {
 func (*OCOSagaActionFailed) ProtoMessage() {}
 
 func (x *OCOSagaActionFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_orderbook_v1_events_proto_msgTypes[23]
+	mi := &file_orderbook_v1_events_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2267,7 +2667,7 @@ func (x *OCOSagaActionFailed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OCOSagaActionFailed.ProtoReflect.Descriptor instead.
 func (*OCOSagaActionFailed) Descriptor() ([]byte, []int) {
-	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{23}
+	return file_orderbook_v1_events_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *OCOSagaActionFailed) GetSagaId() string {
@@ -2396,7 +2796,39 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"new_symbol\x18\x02 \x01(\tR\tnewSymbol\x12\x1b\n" +
 	"\taction_id\x18\x03 \x01(\tR\bactionId\x129\n" +
 	"\n" +
-	"renamed_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\trenamedAt\"\xce\x03\n" +
+	"renamed_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\trenamedAt\"\xec\x01\n" +
+	"\fLULDBandsSet\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12'\n" +
+	"\x0freference_price\x18\x02 \x01(\x03R\x0ereferencePrice\x12\x1d\n" +
+	"\n" +
+	"upper_band\x18\x03 \x01(\x03R\tupperBand\x12\x1d\n" +
+	"\n" +
+	"lower_band\x18\x04 \x01(\x03R\tlowerBand\x12\x19\n" +
+	"\bband_bps\x18\x05 \x01(\x05R\abandBps\x12\x16\n" +
+	"\x06reason\x18\x06 \x01(\tR\x06reason\x12*\n" +
+	"\x02at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x02at\"\x96\x02\n" +
+	"\x15LULDLimitStateEntered\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12/\n" +
+	"\tband_side\x18\x02 \x01(\x0e2\x12.orderbook.v1.SideR\bbandSide\x12\x1d\n" +
+	"\n" +
+	"band_price\x18\x03 \x01(\x03R\tbandPrice\x12(\n" +
+	"\x10trigger_order_id\x18\x04 \x01(\tR\x0etriggerOrderId\x12*\n" +
+	"\x02at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\x12?\n" +
+	"\rhalt_deadline\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\fhaltDeadline\"r\n" +
+	"\x14LULDLimitStateExited\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\x12*\n" +
+	"\x02at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\"\xa4\x01\n" +
+	"\rTradingHalted\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\x12*\n" +
+	"\x02at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\x127\n" +
+	"\treopen_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\breopenAt\"\x8c\x01\n" +
+	"\x0eTradingResumed\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12*\n" +
+	"\x02at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\x126\n" +
+	"\n" +
+	"cross_type\x18\x03 \x01(\x0e2\x17.orderbook.v1.CrossTypeR\tcrossType\"\xce\x03\n" +
 	"\vSagaStarted\x12\x17\n" +
 	"\asaga_id\x18\x01 \x01(\tR\x06sagaId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x121\n" +
@@ -2502,13 +2934,15 @@ const file_orderbook_v1_events_proto_rawDesc = "" +
 	"\x11TIME_IN_FORCE_FOK\x10\x03\x12\x15\n" +
 	"\x11TIME_IN_FORCE_DAY\x10\x04\x12\x19\n" +
 	"\x15TIME_IN_FORCE_AT_OPEN\x10\x05\x12\x1a\n" +
-	"\x16TIME_IN_FORCE_AT_CLOSE\x10\x06*\x9d\x01\n" +
+	"\x16TIME_IN_FORCE_AT_CLOSE\x10\x06*\xd4\x01\n" +
 	"\vMarketPhase\x12\x1c\n" +
 	"\x18MARKET_PHASE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17MARKET_PHASE_CONTINUOUS\x10\x01\x12\x18\n" +
 	"\x14MARKET_PHASE_AUCTION\x10\x02\x12 \n" +
 	"\x1cMARKET_PHASE_CLOSING_AUCTION\x10\x03\x12\x17\n" +
-	"\x13MARKET_PHASE_CLOSED\x10\x04*l\n" +
+	"\x13MARKET_PHASE_CLOSED\x10\x04\x12\x1c\n" +
+	"\x18MARKET_PHASE_LIMIT_STATE\x10\x05\x12\x17\n" +
+	"\x13MARKET_PHASE_HALTED\x10\x06*l\n" +
 	"\tCrossType\x12\x13\n" +
 	"\x0fCROSS_TYPE_NONE\x10\x00\x12\x16\n" +
 	"\x12CROSS_TYPE_OPENING\x10\x01\x12\x16\n" +
@@ -2528,7 +2962,7 @@ func file_orderbook_v1_events_proto_rawDescGZIP() []byte {
 }
 
 var file_orderbook_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_orderbook_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_orderbook_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_orderbook_v1_events_proto_goTypes = []any{
 	(Side)(0),                       // 0: orderbook.v1.Side
 	(PositionSide)(0),               // 1: orderbook.v1.PositionSide
@@ -2547,62 +2981,76 @@ var file_orderbook_v1_events_proto_goTypes = []any{
 	(*AuctionUncrossed)(nil),        // 14: orderbook.v1.AuctionUncrossed
 	(*OfficialCloseSet)(nil),        // 15: orderbook.v1.OfficialCloseSet
 	(*SymbolRenamed)(nil),           // 16: orderbook.v1.SymbolRenamed
-	(*SagaStarted)(nil),             // 17: orderbook.v1.SagaStarted
-	(*EntryFilled)(nil),             // 18: orderbook.v1.EntryFilled
-	(*ExitFilled)(nil),              // 19: orderbook.v1.ExitFilled
-	(*SagaCompleted)(nil),           // 20: orderbook.v1.SagaCompleted
-	(*SagaFailed)(nil),              // 21: orderbook.v1.SagaFailed
-	(*SagaActionFailed)(nil),        // 22: orderbook.v1.SagaActionFailed
-	(*OCOSagaStarted)(nil),          // 23: orderbook.v1.OCOSagaStarted
-	(*OCOSagaSharesHeld)(nil),       // 24: orderbook.v1.OCOSagaSharesHeld
-	(*OCOSagaExitPlaced)(nil),       // 25: orderbook.v1.OCOSagaExitPlaced
-	(*OCOSagaFillRecorded)(nil),     // 26: orderbook.v1.OCOSagaFillRecorded
-	(*OCOSagaCompleted)(nil),        // 27: orderbook.v1.OCOSagaCompleted
-	(*OCOSagaFailed)(nil),           // 28: orderbook.v1.OCOSagaFailed
-	(*OCOSagaActionFailed)(nil),     // 29: orderbook.v1.OCOSagaActionFailed
-	(*timestamppb.Timestamp)(nil),   // 30: google.protobuf.Timestamp
+	(*LULDBandsSet)(nil),            // 17: orderbook.v1.LULDBandsSet
+	(*LULDLimitStateEntered)(nil),   // 18: orderbook.v1.LULDLimitStateEntered
+	(*LULDLimitStateExited)(nil),    // 19: orderbook.v1.LULDLimitStateExited
+	(*TradingHalted)(nil),           // 20: orderbook.v1.TradingHalted
+	(*TradingResumed)(nil),          // 21: orderbook.v1.TradingResumed
+	(*SagaStarted)(nil),             // 22: orderbook.v1.SagaStarted
+	(*EntryFilled)(nil),             // 23: orderbook.v1.EntryFilled
+	(*ExitFilled)(nil),              // 24: orderbook.v1.ExitFilled
+	(*SagaCompleted)(nil),           // 25: orderbook.v1.SagaCompleted
+	(*SagaFailed)(nil),              // 26: orderbook.v1.SagaFailed
+	(*SagaActionFailed)(nil),        // 27: orderbook.v1.SagaActionFailed
+	(*OCOSagaStarted)(nil),          // 28: orderbook.v1.OCOSagaStarted
+	(*OCOSagaSharesHeld)(nil),       // 29: orderbook.v1.OCOSagaSharesHeld
+	(*OCOSagaExitPlaced)(nil),       // 30: orderbook.v1.OCOSagaExitPlaced
+	(*OCOSagaFillRecorded)(nil),     // 31: orderbook.v1.OCOSagaFillRecorded
+	(*OCOSagaCompleted)(nil),        // 32: orderbook.v1.OCOSagaCompleted
+	(*OCOSagaFailed)(nil),           // 33: orderbook.v1.OCOSagaFailed
+	(*OCOSagaActionFailed)(nil),     // 34: orderbook.v1.OCOSagaActionFailed
+	(*timestamppb.Timestamp)(nil),   // 35: google.protobuf.Timestamp
 }
 var file_orderbook_v1_events_proto_depIdxs = []int32{
 	0,  // 0: orderbook.v1.OrderPlaced.side:type_name -> orderbook.v1.Side
-	30, // 1: orderbook.v1.OrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
+	35, // 1: orderbook.v1.OrderPlaced.placed_at:type_name -> google.protobuf.Timestamp
 	2,  // 2: orderbook.v1.OrderPlaced.order_type:type_name -> orderbook.v1.OrderType
 	3,  // 3: orderbook.v1.OrderPlaced.time_in_force:type_name -> orderbook.v1.TimeInForce
-	30, // 4: orderbook.v1.TradeExecuted.executed_at:type_name -> google.protobuf.Timestamp
+	35, // 4: orderbook.v1.TradeExecuted.executed_at:type_name -> google.protobuf.Timestamp
 	5,  // 5: orderbook.v1.TradeExecuted.cross_type:type_name -> orderbook.v1.CrossType
-	30, // 6: orderbook.v1.IcebergSliceReplenished.replenished_at:type_name -> google.protobuf.Timestamp
+	35, // 6: orderbook.v1.IcebergSliceReplenished.replenished_at:type_name -> google.protobuf.Timestamp
 	0,  // 7: orderbook.v1.IcebergSliceReplenished.side:type_name -> orderbook.v1.Side
 	2,  // 8: orderbook.v1.StopTriggered.activated_as:type_name -> orderbook.v1.OrderType
-	30, // 9: orderbook.v1.TrailingStopAdjusted.adjusted_at:type_name -> google.protobuf.Timestamp
-	30, // 10: orderbook.v1.MarketClosed.closed_at:type_name -> google.protobuf.Timestamp
+	35, // 9: orderbook.v1.TrailingStopAdjusted.adjusted_at:type_name -> google.protobuf.Timestamp
+	35, // 10: orderbook.v1.MarketClosed.closed_at:type_name -> google.protobuf.Timestamp
 	4,  // 11: orderbook.v1.MarketPhaseChanged.phase:type_name -> orderbook.v1.MarketPhase
-	30, // 12: orderbook.v1.MarketPhaseChanged.at:type_name -> google.protobuf.Timestamp
+	35, // 12: orderbook.v1.MarketPhaseChanged.at:type_name -> google.protobuf.Timestamp
 	0,  // 13: orderbook.v1.AuctionUncrossed.imbalance_side:type_name -> orderbook.v1.Side
 	5,  // 14: orderbook.v1.AuctionUncrossed.cross_type:type_name -> orderbook.v1.CrossType
-	30, // 15: orderbook.v1.AuctionUncrossed.at:type_name -> google.protobuf.Timestamp
-	30, // 16: orderbook.v1.OfficialCloseSet.at:type_name -> google.protobuf.Timestamp
-	30, // 17: orderbook.v1.SymbolRenamed.renamed_at:type_name -> google.protobuf.Timestamp
-	0,  // 18: orderbook.v1.SagaStarted.entry_side:type_name -> orderbook.v1.Side
-	30, // 19: orderbook.v1.SagaStarted.started_at:type_name -> google.protobuf.Timestamp
-	1,  // 20: orderbook.v1.SagaStarted.position_side:type_name -> orderbook.v1.PositionSide
-	30, // 21: orderbook.v1.EntryFilled.filled_at:type_name -> google.protobuf.Timestamp
-	30, // 22: orderbook.v1.ExitFilled.filled_at:type_name -> google.protobuf.Timestamp
-	30, // 23: orderbook.v1.SagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
-	30, // 24: orderbook.v1.SagaFailed.failed_at:type_name -> google.protobuf.Timestamp
-	30, // 25: orderbook.v1.SagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
-	0,  // 26: orderbook.v1.OCOSagaStarted.exit_side:type_name -> orderbook.v1.Side
-	30, // 27: orderbook.v1.OCOSagaStarted.started_at:type_name -> google.protobuf.Timestamp
-	1,  // 28: orderbook.v1.OCOSagaStarted.position_side:type_name -> orderbook.v1.PositionSide
-	30, // 29: orderbook.v1.OCOSagaSharesHeld.held_at:type_name -> google.protobuf.Timestamp
-	30, // 30: orderbook.v1.OCOSagaExitPlaced.placed_at:type_name -> google.protobuf.Timestamp
-	30, // 31: orderbook.v1.OCOSagaFillRecorded.recorded_at:type_name -> google.protobuf.Timestamp
-	30, // 32: orderbook.v1.OCOSagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
-	30, // 33: orderbook.v1.OCOSagaFailed.failed_at:type_name -> google.protobuf.Timestamp
-	30, // 34: orderbook.v1.OCOSagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
-	35, // [35:35] is the sub-list for method output_type
-	35, // [35:35] is the sub-list for method input_type
-	35, // [35:35] is the sub-list for extension type_name
-	35, // [35:35] is the sub-list for extension extendee
-	0,  // [0:35] is the sub-list for field type_name
+	35, // 15: orderbook.v1.AuctionUncrossed.at:type_name -> google.protobuf.Timestamp
+	35, // 16: orderbook.v1.OfficialCloseSet.at:type_name -> google.protobuf.Timestamp
+	35, // 17: orderbook.v1.SymbolRenamed.renamed_at:type_name -> google.protobuf.Timestamp
+	35, // 18: orderbook.v1.LULDBandsSet.at:type_name -> google.protobuf.Timestamp
+	0,  // 19: orderbook.v1.LULDLimitStateEntered.band_side:type_name -> orderbook.v1.Side
+	35, // 20: orderbook.v1.LULDLimitStateEntered.at:type_name -> google.protobuf.Timestamp
+	35, // 21: orderbook.v1.LULDLimitStateEntered.halt_deadline:type_name -> google.protobuf.Timestamp
+	35, // 22: orderbook.v1.LULDLimitStateExited.at:type_name -> google.protobuf.Timestamp
+	35, // 23: orderbook.v1.TradingHalted.at:type_name -> google.protobuf.Timestamp
+	35, // 24: orderbook.v1.TradingHalted.reopen_at:type_name -> google.protobuf.Timestamp
+	35, // 25: orderbook.v1.TradingResumed.at:type_name -> google.protobuf.Timestamp
+	5,  // 26: orderbook.v1.TradingResumed.cross_type:type_name -> orderbook.v1.CrossType
+	0,  // 27: orderbook.v1.SagaStarted.entry_side:type_name -> orderbook.v1.Side
+	35, // 28: orderbook.v1.SagaStarted.started_at:type_name -> google.protobuf.Timestamp
+	1,  // 29: orderbook.v1.SagaStarted.position_side:type_name -> orderbook.v1.PositionSide
+	35, // 30: orderbook.v1.EntryFilled.filled_at:type_name -> google.protobuf.Timestamp
+	35, // 31: orderbook.v1.ExitFilled.filled_at:type_name -> google.protobuf.Timestamp
+	35, // 32: orderbook.v1.SagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
+	35, // 33: orderbook.v1.SagaFailed.failed_at:type_name -> google.protobuf.Timestamp
+	35, // 34: orderbook.v1.SagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
+	0,  // 35: orderbook.v1.OCOSagaStarted.exit_side:type_name -> orderbook.v1.Side
+	35, // 36: orderbook.v1.OCOSagaStarted.started_at:type_name -> google.protobuf.Timestamp
+	1,  // 37: orderbook.v1.OCOSagaStarted.position_side:type_name -> orderbook.v1.PositionSide
+	35, // 38: orderbook.v1.OCOSagaSharesHeld.held_at:type_name -> google.protobuf.Timestamp
+	35, // 39: orderbook.v1.OCOSagaExitPlaced.placed_at:type_name -> google.protobuf.Timestamp
+	35, // 40: orderbook.v1.OCOSagaFillRecorded.recorded_at:type_name -> google.protobuf.Timestamp
+	35, // 41: orderbook.v1.OCOSagaCompleted.completed_at:type_name -> google.protobuf.Timestamp
+	35, // 42: orderbook.v1.OCOSagaFailed.failed_at:type_name -> google.protobuf.Timestamp
+	35, // 43: orderbook.v1.OCOSagaActionFailed.failed_at:type_name -> google.protobuf.Timestamp
+	44, // [44:44] is the sub-list for method output_type
+	44, // [44:44] is the sub-list for method input_type
+	44, // [44:44] is the sub-list for extension type_name
+	44, // [44:44] is the sub-list for extension extendee
+	0,  // [0:44] is the sub-list for field type_name
 }
 
 func init() { file_orderbook_v1_events_proto_init() }
@@ -2616,7 +3064,7 @@ func file_orderbook_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_orderbook_v1_events_proto_rawDesc), len(file_orderbook_v1_events_proto_rawDesc)),
 			NumEnums:      6,
-			NumMessages:   24,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
