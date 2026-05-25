@@ -19,6 +19,11 @@ const (
 	EventAuctionUncrossed        = "AuctionUncrossed"
 	EventOfficialCloseSet        = "OfficialCloseSet"
 	EventSymbolRenamed           = "SymbolRenamed"
+	EventLULDBandsSet            = "LULDBandsSet"
+	EventLULDLimitStateEntered   = "LULDLimitStateEntered"
+	EventLULDLimitStateExited    = "LULDLimitStateExited"
+	EventTradingHalted           = "TradingHalted"
+	EventTradingResumed          = "TradingResumed"
 )
 
 func RegisterEvents(r *es.Registry) {
@@ -33,4 +38,9 @@ func RegisterEvents(r *es.Registry) {
 	r.Register(EventAuctionUncrossed, func() proto.Message { return new(orderbookv1.AuctionUncrossed) })
 	r.Register(EventOfficialCloseSet, func() proto.Message { return new(orderbookv1.OfficialCloseSet) })
 	r.Register(EventSymbolRenamed, func() proto.Message { return new(orderbookv1.SymbolRenamed) })
+	r.Register(EventLULDBandsSet, func() proto.Message { return new(orderbookv1.LULDBandsSet) })
+	r.Register(EventLULDLimitStateEntered, func() proto.Message { return new(orderbookv1.LULDLimitStateEntered) })
+	r.Register(EventLULDLimitStateExited, func() proto.Message { return new(orderbookv1.LULDLimitStateExited) })
+	r.Register(EventTradingHalted, func() proto.Message { return new(orderbookv1.TradingHalted) })
+	r.Register(EventTradingResumed, func() proto.Message { return new(orderbookv1.TradingResumed) })
 }

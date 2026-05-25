@@ -50,6 +50,12 @@ const (
 // value is PhaseContinuous, so a freshly-created OrderBook (or one
 // whose event stream contains no MarketPhaseChanged events) behaves
 // exactly as before.
+//
+// PhaseLimitState and PhaseHalted are LULD (limit-up/limit-down)
+// volatility states. LimitState accepts limit orders priced at-or-better
+// than the active band but rejects anything that would trade through
+// it; Halted rejects every new order until a reopening auction
+// completes.
 type MarketPhase int
 
 const (
@@ -57,7 +63,23 @@ const (
 	PhaseAuction        MarketPhase = 1
 	PhaseClosingAuction MarketPhase = 2
 	PhaseClosed         MarketPhase = 3
+	PhaseLimitState     MarketPhase = 4
+	PhaseHalted         MarketPhase = 5
 )
+
+// IsHalted reports whether the symbol is fully paused — every new order
+// is rejected until a reopening auction runs.
+func (p MarketPhase) IsHalted() bool { return p == PhaseHalted }
+
+// IsLimitState reports whether the symbol is in an LULD limit state —
+// limit orders may still rest at-or-better than the band, but
+// through-the-band orders are rejected.
+func (p MarketPhase) IsLimitState() bool { return p == PhaseLimitState }
+
+// CanTrade reports whether continuous matching can produce trades
+// against this phase right now. Used by strategy bots to skip cycles
+// when the symbol is auctioning, halted, or in a limit state.
+func (p MarketPhase) CanTrade() bool { return p == PhaseContinuous }
 
 // CrossType marks how a trade was produced.
 type CrossType int

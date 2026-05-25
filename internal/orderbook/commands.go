@@ -44,6 +44,9 @@ var (
 	ErrTrailingStopAmbiguousTrail     = errors.New("trailing stops must specify trail_amount OR trail_offset_bps, not both")
 	ErrTrailingStopLimitRequiresOffset = errors.New("trailing-stop-limit orders require a positive limit_offset")
 	ErrTrailingStopRejectsLimitOffset = errors.New("trailing-stop-market orders must not specify limit_offset")
+	ErrSymbolHalted                   = errors.New("symbol is halted; no new orders accepted until reopening auction")
+	ErrLULDMarketRejected             = errors.New("market orders are not accepted in LULD limit state")
+	ErrLULDPriceOutsideBand           = errors.New("order price is outside the active LULD band")
 )
 
 // PlaceOrder is a command to place a new order on the book.
@@ -205,6 +208,38 @@ func ExecutePlaceOrder(book *OrderBook, cmd PlaceOrder) ([]es.Event, error) {
 	switch book.Phase {
 	case PhaseClosed:
 		return nil, ErrMarketClosed
+
+	case PhaseHalted:
+		// Full halt: every new order is rejected until a reopening
+		// auction completes and transitions back to PhaseContinuous.
+		return nil, ErrSymbolHalted
+
+	case PhaseLimitState:
+		// LULD limit state — accept limits priced at-or-better than the
+		// pierced band; reject anything else. AT_OPEN/AT_CLOSE/stops
+		// are also rejected (they have no useful semantics here).
+		if tif == AtOpen || tif == AtClose {
+			return nil, ErrSymbolHalted
+		}
+		if cmd.OrderType == Market {
+			return nil, ErrLULDMarketRejected
+		}
+		if cmd.OrderType.IsStop() {
+			return nil, ErrSymbolHalted
+		}
+		// Decide acceptable price by the side that pierced the band:
+		// upper-band trip (buy pressure) means buys must rest at-or-below
+		// the upper band — they cannot trade through; sells at any price
+		// at-or-above the lower band are fine. Symmetric for lower-band
+		// trips. With both bands set we enforce the simple invariant
+		// that no resting limit may sit through the band on the trip side.
+		// The matcher then enforces the rest (no actual through-band trades).
+		if book.LULDUpperBand > 0 && cmd.Side == Buy && cmd.Price > book.LULDUpperBand {
+			return nil, ErrLULDPriceOutsideBand
+		}
+		if book.LULDLowerBand > 0 && cmd.Side == Sell && cmd.Price < book.LULDLowerBand {
+			return nil, ErrLULDPriceOutsideBand
+		}
 
 	case PhaseContinuous:
 		// AT_OPEN can't be staged outside the opening auction.
@@ -618,10 +653,13 @@ func ExecuteReplaceOrder(book *OrderBook, cmd ReplaceOrder) ([]es.Event, error) 
 		return nil, ErrAccountMismatch
 	}
 	// Replace assumes continuous matching semantics; it's not meaningful
-	// mid-auction. Callers should Cancel + Place instead during an auction.
+	// mid-auction, mid-halt, or mid-limit-state. Callers should Cancel
+	// + Place once the symbol returns to PhaseContinuous.
 	switch book.Phase {
 	case PhaseClosed:
 		return nil, ErrMarketClosed
+	case PhaseHalted, PhaseLimitState:
+		return nil, ErrSymbolHalted
 	case PhaseAuction, PhaseClosingAuction:
 		return nil, ErrAuctionRejectsIOC
 	}

@@ -107,6 +107,10 @@ func MarketPhaseFromProto(p orderbookv1.MarketPhase) MarketPhase {
 		return PhaseClosingAuction
 	case orderbookv1.MarketPhase_MARKET_PHASE_CLOSED:
 		return PhaseClosed
+	case orderbookv1.MarketPhase_MARKET_PHASE_LIMIT_STATE:
+		return PhaseLimitState
+	case orderbookv1.MarketPhase_MARKET_PHASE_HALTED:
+		return PhaseHalted
 	default:
 		return PhaseContinuous
 	}
@@ -120,6 +124,10 @@ func MarketPhaseToProto(p MarketPhase) orderbookv1.MarketPhase {
 		return orderbookv1.MarketPhase_MARKET_PHASE_CLOSING_AUCTION
 	case PhaseClosed:
 		return orderbookv1.MarketPhase_MARKET_PHASE_CLOSED
+	case PhaseLimitState:
+		return orderbookv1.MarketPhase_MARKET_PHASE_LIMIT_STATE
+	case PhaseHalted:
+		return orderbookv1.MarketPhase_MARKET_PHASE_HALTED
 	default:
 		return orderbookv1.MarketPhase_MARKET_PHASE_CONTINUOUS
 	}

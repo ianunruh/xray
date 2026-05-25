@@ -654,7 +654,8 @@ func mapError(err error) *connect.Error {
 		ErrAlreadyInAuction, ErrNotInAuction, ErrCannotOpenAuction,
 		ErrAtOpenOutsideAuction, ErrAtCloseOutsideAcceptanceWindow,
 		ErrAuctionStopNotAllowed, ErrCannotBeginClosing,
-		ErrClosingAuctionRejectsRegular:
+		ErrClosingAuctionRejectsRegular,
+		ErrSymbolHalted, ErrLULDMarketRejected, ErrLULDPriceOutsideBand:
 		return connect.NewError(connect.CodeFailedPrecondition, unwrapped)
 	case ErrOrderNotFound, ErrNoRemainingQty:
 		return connect.NewError(connect.CodeNotFound, unwrapped)

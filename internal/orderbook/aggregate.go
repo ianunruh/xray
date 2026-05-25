@@ -2,6 +2,7 @@ package orderbook
 
 import (
 	"fmt"
+	"time"
 
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	"github.com/ianunruh/xray/pkg/es"
@@ -52,6 +53,29 @@ type OrderBook struct {
 	// reject with ErrSymbolRenamed. The new symbol is a fresh
 	// aggregate created lazily on first order against it.
 	RenamedTo string
+
+	// LULD (limit-up/limit-down) volatility-moderator state. Bands are
+	// computed by the luld reactor from a rolling-reference projection
+	// and stamped onto the aggregate via LULDBandsSet so replay is
+	// deterministic. The matcher consults LULDUpperBand / LULDLowerBand
+	// to trip LIMIT_STATE on would-be through-the-band trades. Timer
+	// fields drive the reactor's transitions:
+	//   LimitStateStartedAt → HaltDeadline (limit-state grace)
+	//   HaltStartedAt       → ReopenAt     (halt duration)
+	//   RearmAt             — bands are not enforced before this wall
+	//   clock, giving the post-reopen price discovery a brief grace
+	//   so the first prints don't instantly re-trip a halt.
+	// Zero-valued fields mean "not set / not active". The matcher only
+	// trips bands when LULDUpperBand > 0.
+	LULDReferencePrice      int64
+	LULDUpperBand           int64
+	LULDLowerBand           int64
+	LULDBandBps             int32
+	LULDLimitStateStartedAt time.Time
+	LULDHaltDeadline        time.Time
+	LULDHaltStartedAt       time.Time
+	LULDReopenAt            time.Time
+	LULDRearmAt             time.Time
 }
 
 // NewOrderBook creates a new OrderBook aggregate with the given ID.
@@ -163,12 +187,47 @@ func (ob *OrderBook) Apply(evt es.Event) error {
 		// pointer.
 		ob.Phase = PhaseClosed
 		ob.RenamedTo = data.NewSymbol
+	case *orderbookv1.LULDBandsSet:
+		ob.LULDReferencePrice = data.ReferencePrice
+		ob.LULDUpperBand = data.UpperBand
+		ob.LULDLowerBand = data.LowerBand
+		ob.LULDBandBps = data.BandBps
+	case *orderbookv1.LULDLimitStateEntered:
+		ob.Phase = PhaseLimitState
+		ob.LULDLimitStateStartedAt = data.At.AsTime()
+		ob.LULDHaltDeadline = data.HaltDeadline.AsTime()
+	case *orderbookv1.LULDLimitStateExited:
+		// LimitState resolves in one of two ways:
+		//   reason="price_returned_in_band" → followed by
+		//     MarketPhaseChanged(CONTINUOUS); leave phase to that event.
+		//   reason="halt_triggered" → followed by TradingHalted; leave
+		//     phase to that event.
+		// Either way we clear the limit-state timers here.
+		ob.LULDLimitStateStartedAt = time.Time{}
+		ob.LULDHaltDeadline = time.Time{}
+	case *orderbookv1.TradingHalted:
+		ob.Phase = PhaseHalted
+		ob.LULDHaltStartedAt = data.At.AsTime()
+		ob.LULDReopenAt = data.ReopenAt.AsTime()
+	case *orderbookv1.TradingResumed:
+		// Marker event that follows MarketPhaseChanged(CONTINUOUS) on a
+		// halt-reopen uncross. Clear the halt timers and arm the
+		// re-arm grace so the matcher gives the reopening prints a few
+		// seconds before band enforcement kicks back in.
+		ob.LULDHaltStartedAt = time.Time{}
+		ob.LULDReopenAt = time.Time{}
+		ob.LULDRearmAt = data.At.AsTime().Add(LULDPostReopenRearm)
 	default:
 		return fmt.Errorf("unknown event type: %T", evt.Data)
 	}
 	ob.IncrementVersion()
 	return nil
 }
+
+// LULDPostReopenRearm is the window after a halt-reopen during which
+// the matcher does not enforce LULD bands. Gives the reopening price
+// discovery space to settle before the moderator re-arms.
+const LULDPostReopenRearm = 30 * time.Second
 
 func (ob *OrderBook) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 	ob.Symbol = data.Symbol
