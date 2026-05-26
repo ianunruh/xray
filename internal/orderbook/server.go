@@ -343,12 +343,19 @@ func (s *Server) GetOrderBook(ctx context.Context, req *connect.Request[orderboo
 
 func (s *Server) GetMarketStatus(ctx context.Context, req *connect.Request[orderbookv1.GetMarketStatusRequest]) (*connect.Response[orderbookv1.GetMarketStatusResponse], error) {
 	phase, lastTradePrice, sessionVolume := s.status.GetStatus(req.Msg.Symbol)
+	luld := s.status.GetLULDStatus(req.Msg.Symbol)
 
 	resp := &orderbookv1.GetMarketStatusResponse{
-		Symbol:         req.Msg.Symbol,
-		Phase:          phase,
-		LastTradePrice: lastTradePrice,
-		SessionVolume:  sessionVolume,
+		Symbol:             req.Msg.Symbol,
+		Phase:              phase,
+		LastTradePrice:     lastTradePrice,
+		SessionVolume:      sessionVolume,
+		LuldReferencePrice: luld.ReferencePrice,
+		LuldUpperBand:      luld.UpperBand,
+		LuldLowerBand:      luld.LowerBand,
+		LuldBandBps:        luld.BandBps,
+		LuldHaltDeadline:   timeToProto(luld.HaltDeadline),
+		LuldReopenAt:       timeToProto(luld.ReopenAt),
 	}
 
 	s.log.Info("GetMarketStatus", "symbol", req.Msg.Symbol, "phase", phase, "last_trade_price", lastTradePrice, "session_volume", sessionVolume)

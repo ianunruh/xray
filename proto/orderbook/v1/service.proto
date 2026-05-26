@@ -191,6 +191,16 @@ message GetMarketStatusResponse {
   // Cumulative traded quantity for the current session; resets to 0
   // when the closing uncross emits OfficialCloseSet.
   int64 session_volume = 4;
+  // LULD volatility-moderator state. luld_upper_band / luld_lower_band
+  // are zero when bands haven't been computed yet (insufficient
+  // reference data). luld_halt_deadline is set while phase is
+  // LIMIT_STATE; luld_reopen_at is set while phase is HALTED.
+  int64                     luld_reference_price = 5;
+  int64                     luld_upper_band      = 6;
+  int64                     luld_lower_band      = 7;
+  int32                     luld_band_bps        = 8;
+  google.protobuf.Timestamp luld_halt_deadline   = 9;
+  google.protobuf.Timestamp luld_reopen_at       = 10;
 }
 
 message GetMarketDepthRequest {
@@ -400,6 +410,15 @@ message ReplayOrderBookResponse {
   // Most recent trades at or before at_version (oldest-first), up to
   // trade_limit. Drawn from a bounded look-back window for cheap reads.
   repeated Trade recent_trades = 8;
+  // LULD state at at_version — same shape as GetMarketStatusResponse
+  // so the replay UI can render the halt banner / band shading exactly
+  // as it appeared at that historical instant.
+  int64                     luld_reference_price = 9;
+  int64                     luld_upper_band      = 10;
+  int64                     luld_lower_band      = 11;
+  int32                     luld_band_bps        = 12;
+  google.protobuf.Timestamp luld_halt_deadline   = 13;
+  google.protobuf.Timestamp luld_reopen_at       = 14;
 }
 
 // Saga RPCs moved to saga.v1.SagaService.

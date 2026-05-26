@@ -629,6 +629,41 @@ export declare type GetMarketStatusResponse = Message<"orderbook.v1.GetMarketSta
    * @generated from field: int64 session_volume = 4;
    */
   sessionVolume: bigint;
+
+  /**
+   * LULD volatility-moderator state. luld_upper_band / luld_lower_band
+   * are zero when bands haven't been computed yet (insufficient
+   * reference data). luld_halt_deadline is set while phase is
+   * LIMIT_STATE; luld_reopen_at is set while phase is HALTED.
+   *
+   * @generated from field: int64 luld_reference_price = 5;
+   */
+  luldReferencePrice: bigint;
+
+  /**
+   * @generated from field: int64 luld_upper_band = 6;
+   */
+  luldUpperBand: bigint;
+
+  /**
+   * @generated from field: int64 luld_lower_band = 7;
+   */
+  luldLowerBand: bigint;
+
+  /**
+   * @generated from field: int32 luld_band_bps = 8;
+   */
+  luldBandBps: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp luld_halt_deadline = 9;
+   */
+  luldHaltDeadline?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp luld_reopen_at = 10;
+   */
+  luldReopenAt?: Timestamp | undefined;
 };
 
 /**
@@ -1448,6 +1483,40 @@ export declare type ReplayOrderBookResponse = Message<"orderbook.v1.ReplayOrderB
    * @generated from field: repeated orderbook.v1.Trade recent_trades = 8;
    */
   recentTrades: Trade[];
+
+  /**
+   * LULD state at at_version — same shape as GetMarketStatusResponse
+   * so the replay UI can render the halt banner / band shading exactly
+   * as it appeared at that historical instant.
+   *
+   * @generated from field: int64 luld_reference_price = 9;
+   */
+  luldReferencePrice: bigint;
+
+  /**
+   * @generated from field: int64 luld_upper_band = 10;
+   */
+  luldUpperBand: bigint;
+
+  /**
+   * @generated from field: int64 luld_lower_band = 11;
+   */
+  luldLowerBand: bigint;
+
+  /**
+   * @generated from field: int32 luld_band_bps = 12;
+   */
+  luldBandBps: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp luld_halt_deadline = 13;
+   */
+  luldHaltDeadline?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp luld_reopen_at = 14;
+   */
+  luldReopenAt?: Timestamp | undefined;
 };
 
 /**

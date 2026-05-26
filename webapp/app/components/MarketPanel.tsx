@@ -32,6 +32,8 @@ import type {
 } from "../../src/gen/orderbook/v1/service_pb";
 import { useIndicativeAuctionState } from "../hooks/useIndicativeAuctionState";
 import type { ReplayBounds } from "~/lib/replay";
+import type { LULDState } from "~/lib/luld";
+import { HaltBanner } from "./HaltBanner";
 
 type Mode = "live" | "replay";
 
@@ -41,6 +43,7 @@ export function MarketPanel({
   sessionVolume,
   officialClose,
   replayBounds,
+  luld,
   onRefreshReplay,
 }: {
   symbol: string;
@@ -48,6 +51,7 @@ export function MarketPanel({
   sessionVolume: bigint;
   officialClose: GetOfficialCloseResponse | null;
   replayBounds: ReplayBounds | null;
+  luld: LULDState;
   onRefreshReplay: () => void;
 }) {
   const [mode, setMode] = useState<Mode>("live");
@@ -78,6 +82,10 @@ export function MarketPanel({
             </Badge>
           )}
         </Group>
+
+        {mode === "live" && (
+          <HaltBanner symbol={symbol} phase={phase} luld={luld} />
+        )}
 
         {mode === "live" ? (
           <LiveBody

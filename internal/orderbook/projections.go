@@ -23,9 +23,11 @@ type DepthReader interface {
 }
 
 // StatusReader provides read access to the per-symbol session metadata
-// projection backing GetMarketStatus.
+// projection backing GetMarketStatus. LULD bands and halt-timer state
+// ride alongside on GetLULDStatus.
 type StatusReader interface {
 	GetStatus(symbol string) (phase orderbookv1.MarketPhase, lastTradePrice, sessionVolume int64)
+	GetLULDStatus(symbol string) LULDStatus
 }
 
 // CandleReader provides read access to the OHLC candle projection.

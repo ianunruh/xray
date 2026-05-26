@@ -99,13 +99,19 @@ func (s *Server) ReplayOrderBook(ctx context.Context, req *connect.Request[order
 	}
 
 	resp := &orderbookv1.ReplayOrderBookResponse{
-		Symbol:       symbol,
-		AtVersion:    int32(atVersion),
-		Phase:        MarketPhaseToProto(book.Phase),
-		Bids:         aggregateLevels(book.Bids.All(), true),
-		Asks:         aggregateLevels(book.Asks.All(), false),
-		Orders:       openOrdersFromBook(book),
-		RecentTrades: recentTradesFromEvents(windowEvents, tradeLimit),
+		Symbol:             symbol,
+		AtVersion:          int32(atVersion),
+		Phase:              MarketPhaseToProto(book.Phase),
+		Bids:               aggregateLevels(book.Bids.All(), true),
+		Asks:               aggregateLevels(book.Asks.All(), false),
+		Orders:             openOrdersFromBook(book),
+		RecentTrades:       recentTradesFromEvents(windowEvents, tradeLimit),
+		LuldReferencePrice: book.LULDReferencePrice,
+		LuldUpperBand:      book.LULDUpperBand,
+		LuldLowerBand:      book.LULDLowerBand,
+		LuldBandBps:        book.LULDBandBps,
+		LuldHaltDeadline:   timeToProto(book.LULDHaltDeadline),
+		LuldReopenAt:       timeToProto(book.LULDReopenAt),
 	}
 
 	for i := len(windowEvents) - 1; i >= 0; i-- {

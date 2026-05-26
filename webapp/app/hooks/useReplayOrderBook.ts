@@ -8,6 +8,7 @@ import type {
   ReplayOrderBookResponse,
   Trade,
 } from "../../src/gen/orderbook/v1/service_pb";
+import { luldFromProto, type LULDState } from "~/lib/luld";
 
 // ReplayTarget identifies a point in the event stream. Use {date} for
 // timestamp-driven scrubbing (the natural axis for a time slider) and
@@ -26,6 +27,7 @@ export type ReplaySnapshot = {
   asks: PriceLevel[];
   orders: OrderSummary[];
   recentTrades: Trade[];
+  luld: LULDState;
 };
 
 const DEBOUNCE_MS = 120;
@@ -86,6 +88,7 @@ export function useReplayOrderBook(
           asks: resp.asks,
           orders: resp.orders,
           recentTrades: resp.recentTrades,
+          luld: luldFromProto(resp),
         });
       } catch {
         // ignore transient errors — keep previous snapshot visible

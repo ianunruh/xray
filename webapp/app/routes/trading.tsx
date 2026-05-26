@@ -46,6 +46,7 @@ import type {
   PreviewOrderImpactResponse,
 } from "../../src/gen/portfolio/v1/service_pb";
 import type { ReplayBounds } from "~/lib/replay";
+import { emptyLULDState, luldFromProto, type LULDState } from "~/lib/luld";
 import { AccountDataProvider } from "~/hooks/accountData";
 import { MarketDepthProvider } from "~/hooks/marketDepth";
 import { useOrderStatusNotifications } from "~/hooks/useOrderStatusNotifications";
@@ -101,6 +102,10 @@ async function loadSymbolData(symbol: string) {
       : MarketPhase.CONTINUOUS;
   const sessionVolume =
     phaseR.status === "fulfilled" ? phaseR.value.sessionVolume : 0n;
+  const luld =
+    phaseR.status === "fulfilled"
+      ? luldFromProto(phaseR.value)
+      : emptyLULDState();
 
   let officialClose: GetOfficialCloseResponse | null = null;
   if (closeR.status === "fulfilled") {
@@ -136,7 +141,7 @@ async function loadSymbolData(symbol: string) {
     }
   }
 
-  return { phase, sessionVolume, officialClose, replayBounds };
+  return { phase, sessionVolume, officialClose, replayBounds, luld };
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -154,6 +159,7 @@ export async function loader({ request }: Route.LoaderArgs) {
           sessionVolume: 0n,
           officialClose: null as GetOfficialCloseResponse | null,
           replayBounds: null as ReplayBounds | null,
+          luld: emptyLULDState(),
         }),
   ]);
 
@@ -425,6 +431,7 @@ export default function Trading({ loaderData }: Route.ComponentProps) {
     phase,
     sessionVolume,
     replayBounds,
+    luld,
   } = loaderData;
   // RR's loader serialization deeply-readonly-flattens proto message
   // types in a way that doesn't structurally match the original
@@ -571,6 +578,7 @@ export default function Trading({ loaderData }: Route.ComponentProps) {
             sessionVolume={sessionVolume}
             officialClose={officialClose}
             replayBounds={replayBounds}
+            luld={luld}
             onRefreshReplay={() => revalidator.revalidate()}
             onTabChange={(t) => updateParam("tab", t === "trade" ? "" : t)}
             orderPrefill={orderPrefill}
@@ -625,6 +633,7 @@ function TradingBody({
   sessionVolume,
   officialClose,
   replayBounds,
+  luld,
   onRefreshReplay,
   onTabChange,
   orderPrefill,
@@ -643,6 +652,7 @@ function TradingBody({
   sessionVolume: bigint;
   officialClose: GetOfficialCloseResponse | null;
   replayBounds: ReplayBounds | null;
+  luld: LULDState;
   onRefreshReplay: () => void;
   onTabChange: (t: Tab) => void;
   orderPrefill: OrderPrefill | null;
@@ -675,6 +685,7 @@ function TradingBody({
                     sessionVolume={sessionVolume}
                     officialClose={officialClose}
                     replayBounds={replayBounds}
+                    luld={luld}
                     onRefreshReplay={onRefreshReplay}
                   />
                 </Grid.Col>
