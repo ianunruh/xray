@@ -196,7 +196,63 @@ func (c *Coordinator) applySplit(ctx context.Context, action ActionRow) (FanoutC
 		}
 		counts.Holders++
 	}
+
+	// 4. Re-anchor LULD bands at the post-split price. Without this,
+	//    a forward split's halved post-split price would sit far below
+	//    the pre-split lower band and instantly trip LIMIT_STATE on
+	//    the first continuous print after reopen. Issued only when the
+	//    aggregate already has bands set; otherwise the next live
+	//    trade will compute them naturally via the rolling reference.
+	//    reason="split_reanchor" tells the reference projection to
+	//    clear its (now-stale) window for this symbol.
+	if err := c.reanchorLULDForSplit(ctx, action); err != nil {
+		// Don't fail the action on re-anchor errors — holdings already
+		// adjusted; the next continuous trade's natural band update
+		// path (luld.Reactor.HandleEvents) recovers. Log via the
+		// returned error so the reactor's surrounding warn picks it up.
+		return counts, fmt.Errorf("reanchor LULD bands for %s: %w", action.Symbol, err)
+	}
 	return counts, nil
+}
+
+// reanchorLULDForSplit issues a SetLULDBands against the orderbook
+// with the reference scaled by Denominator/Numerator — the same
+// transform the portfolio applies to per-account share counts.
+func (c *Coordinator) reanchorLULDForSplit(ctx context.Context, action ActionRow) error {
+	if action.SplitNumerator <= 0 || action.SplitDenominator <= 0 {
+		return nil
+	}
+	book, err := c.orderbookHandler.Load(ctx, orderbook.AggregateID(action.Symbol))
+	if err != nil {
+		return fmt.Errorf("load orderbook: %w", err)
+	}
+	if book.LULDReferencePrice <= 0 || book.LULDBandBps <= 0 {
+		// No prior bands — nothing to re-anchor.
+		return nil
+	}
+	// new_ref = old_ref * Denominator / Numerator. A 2-for-1 forward
+	// split (Num=2, Den=1) halves the reference; a 1-for-10 reverse
+	// (Num=1, Den=10) multiplies by 10.
+	newRef := book.LULDReferencePrice * int64(action.SplitDenominator) / int64(action.SplitNumerator)
+	if newRef <= 0 {
+		return nil
+	}
+	bps := book.LULDBandBps
+	delta := newRef * int64(bps) / 10000
+	if delta <= 0 {
+		delta = 1
+	}
+	cmd := orderbook.SetLULDBands{
+		Symbol:         action.Symbol,
+		ReferencePrice: newRef,
+		UpperBand:      newRef + delta,
+		LowerBand:      newRef - delta,
+		BandBps:        bps,
+		Reason:         "split_reanchor",
+	}
+	return c.orderbookHandler.Handle(ctx, cmd, func(b *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecuteSetLULDBands(b, cmd)
+	})
 }
 
 // applyRename cancels orders + sagas for the old symbol, migrates

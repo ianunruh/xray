@@ -191,6 +191,65 @@ func TestCoordinator_Split_FansOutAcrossAggregates(t *testing.T) {
 	require.Len(t, e.sagaC.cancelled, 2)
 }
 
+// TestCoordinator_Split_ReanchorsLULDBands verifies that a forward
+// split scales the orderbook's LULD reference (and recomputes bands)
+// so the post-split price doesn't sit outside the pre-split band.
+func TestCoordinator_Split_ReanchorsLULDBands(t *testing.T) {
+	e := newCoordinatorEnv(t)
+	depositAndCredit(t, e.handler, "acct-1", "AAPL", 100, 500_000)
+	e.holders.rows["AAPL"] = []string{"acct-1"}
+
+	// Pre-seed bands at $150 ±5%.
+	bandsCmd := orderbook.SetLULDBands{
+		Symbol: "AAPL", ReferencePrice: 1_500_000,
+		UpperBand: 1_575_000, LowerBand: 1_425_000, BandBps: 500,
+		Reason: "initial",
+	}
+	require.NoError(t, e.obHandler.Handle(context.Background(), bandsCmd, func(b *orderbook.OrderBook) ([]es.Event, error) {
+		return orderbook.ExecuteSetLULDBands(b, bandsCmd)
+	}))
+
+	_, err := e.coord.ApplyAction(context.Background(), corpaction.ActionRow{
+		ActionID:         "split-1",
+		Symbol:           "AAPL",
+		Type:             corpactionv1.ActionType_ACTION_TYPE_SPLIT,
+		SplitNumerator:   2,
+		SplitDenominator: 1,
+	})
+	require.NoError(t, err)
+
+	book, err := e.obHandler.Load(context.Background(), orderbook.AggregateID("AAPL"))
+	require.NoError(t, err)
+	// 2-for-1 forward split halves the reference: 1_500_000 → 750_000.
+	// Bands at ±5%: [712_500, 787_500].
+	assert.Equal(t, int64(750_000), book.LULDReferencePrice)
+	assert.Equal(t, int64(787_500), book.LULDUpperBand)
+	assert.Equal(t, int64(712_500), book.LULDLowerBand)
+	assert.Equal(t, int32(500), book.LULDBandBps, "band width preserved")
+}
+
+// TestCoordinator_Split_NoLULDBeforeSplit verifies the coordinator
+// doesn't crash or fail when the symbol has no prior LULD bands —
+// the natural live-trade path will compute them after reopen.
+func TestCoordinator_Split_NoLULDBeforeSplit(t *testing.T) {
+	e := newCoordinatorEnv(t)
+	depositAndCredit(t, e.handler, "acct-1", "AAPL", 100, 500_000)
+	e.holders.rows["AAPL"] = []string{"acct-1"}
+
+	_, err := e.coord.ApplyAction(context.Background(), corpaction.ActionRow{
+		ActionID:         "split-1",
+		Symbol:           "AAPL",
+		Type:             corpactionv1.ActionType_ACTION_TYPE_SPLIT,
+		SplitNumerator:   2,
+		SplitDenominator: 1,
+	})
+	require.NoError(t, err)
+
+	book, err := e.obHandler.Load(context.Background(), orderbook.AggregateID("AAPL"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), book.LULDUpperBand, "no bands stamped pre-split, none after")
+}
+
 func TestCoordinator_Split_NoHoldersNoOrders(t *testing.T) {
 	e := newCoordinatorEnv(t)
 

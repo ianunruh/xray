@@ -75,6 +75,14 @@ func (p *LULDReferenceProjection) HandleEvents(_ context.Context, events []es.Ev
 		case *orderbookv1.TradingHalted:
 			// Drop samples so the reopening cross becomes the next anchor.
 			delete(p.samples, data.Symbol)
+		case *orderbookv1.LULDBandsSet:
+			// On a corporate-action re-anchor (split), the pre-split
+			// samples in the window are at the wrong scale — drop
+			// them so the next continuous trade rebuilds the VWAP at
+			// the new price level.
+			if data.Reason == "split_reanchor" {
+				delete(p.samples, data.Symbol)
+			}
 		}
 	}
 	return nil

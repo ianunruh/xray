@@ -111,6 +111,49 @@ func TestLULDReference_HaltClearsWindow(t *testing.T) {
 	assert.Equal(t, int64(1300000), ref)
 }
 
+// TestLULDReference_SplitReanchorClearsWindow: a SetLULDBands with
+// reason="split_reanchor" must clear the per-symbol sample buffer so
+// the next continuous trade re-anchors the VWAP at the new price level
+// (pre-split prices are at the wrong scale).
+func TestLULDReference_SplitReanchorClearsWindow(t *testing.T) {
+	p := orderbook.NewLULDReferenceProjection(5 * time.Minute)
+	now := time.Now()
+
+	require.NoError(t, p.HandleEvents(context.Background(), []es.Event{
+		tradeEvt("AAPL", 1500000, 100, now.Add(-1*time.Minute), orderbookv1.CrossType_CROSS_TYPE_NONE),
+	}))
+	_, ok := p.GetReference("AAPL", now)
+	require.True(t, ok)
+
+	// A non-reanchor bands event must NOT clear the window.
+	require.NoError(t, p.HandleEvents(context.Background(), []es.Event{
+		{
+			Type: orderbook.EventLULDBandsSet,
+			Data: &orderbookv1.LULDBandsSet{
+				Symbol: "AAPL", ReferencePrice: 1500000,
+				UpperBand: 1575000, LowerBand: 1425000,
+				BandBps: 500, Reason: "reference_update",
+			},
+		},
+	}))
+	_, ok = p.GetReference("AAPL", now)
+	assert.True(t, ok, "reference_update must not clear samples")
+
+	// The split_reanchor reason must clear the window.
+	require.NoError(t, p.HandleEvents(context.Background(), []es.Event{
+		{
+			Type: orderbook.EventLULDBandsSet,
+			Data: &orderbookv1.LULDBandsSet{
+				Symbol: "AAPL", ReferencePrice: 750000,
+				UpperBand: 787500, LowerBand: 712500,
+				BandBps: 500, Reason: "split_reanchor",
+			},
+		},
+	}))
+	_, ok = p.GetReference("AAPL", now)
+	assert.False(t, ok, "split_reanchor must clear samples so the next trade anchors fresh")
+}
+
 func TestLULDReference_PerSymbol(t *testing.T) {
 	p := orderbook.NewLULDReferenceProjection(5 * time.Minute)
 	now := time.Now()
