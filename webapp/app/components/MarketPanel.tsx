@@ -92,6 +92,7 @@ export function MarketPanel({
             symbol={symbol}
             sessionVolume={sessionVolume}
             officialClose={officialClose}
+            luld={luld}
           />
         ) : (
           <ReplayBody
@@ -357,10 +358,12 @@ function LiveBody({
   symbol,
   sessionVolume,
   officialClose,
+  luld,
 }: {
   symbol: string;
   sessionVolume: bigint;
   officialClose: GetOfficialCloseResponse | null;
+  luld: LULDState;
 }) {
   const { bids, asks, maxQuantity } = useSharedMarketDepth();
   const trades = useLiveTrades(symbol);
@@ -380,7 +383,7 @@ function LiveBody({
       {inAuction && indicative && (
         <IndicativeAuctionBanner state={indicative} />
       )}
-      <CandleChart symbol={symbol} />
+      <CandleChart symbol={symbol} luld={luld} />
       <Grid>
         <Grid.Col span={6}>
           <DepthSide

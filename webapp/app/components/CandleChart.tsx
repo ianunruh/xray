@@ -4,8 +4,10 @@ import {
   type CandlestickData,
   type HistogramData,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   ColorType,
+  LineStyle,
   type UTCTimestamp,
 } from "lightweight-charts";
 import { timestampDate } from "@bufbuild/protobuf/wkt";
@@ -13,6 +15,7 @@ import { Box, Text } from "@mantine/core";
 import { orderBookClient } from "~/lib/client";
 import { priceToNumber } from "~/lib/format";
 import { CandleInterval, type Candle } from "../../src/gen/orderbook/v1/service_pb";
+import type { LULDState } from "~/lib/luld";
 
 const UP_COLOR = "#22c55e";
 const DOWN_COLOR = "#ef4444";
@@ -49,11 +52,20 @@ function candleToVolume(c: Candle): HistogramData<UTCTimestamp> {
   };
 }
 
-export function CandleChart({ symbol }: { symbol: string }) {
+export function CandleChart({
+  symbol,
+  luld,
+}: {
+  symbol: string;
+  luld?: LULDState;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const upperBandRef = useRef<IPriceLine | null>(null);
+  const lowerBandRef = useRef<IPriceLine | null>(null);
+  const refLineRef = useRef<IPriceLine | null>(null);
   const errorRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -153,8 +165,72 @@ export function CandleChart({ symbol }: { symbol: string }) {
       chartRef.current = null;
       seriesRef.current = null;
       volumeSeriesRef.current = null;
+      upperBandRef.current = null;
+      lowerBandRef.current = null;
+      refLineRef.current = null;
     };
   }, [symbol]);
+
+  // Maintain LULD band lines as a separate effect so we re-draw them
+  // when the bands shift without tearing down the whole chart. Three
+  // price lines: upper band (dashed yellow), lower band (dashed
+  // yellow), and a faint dotted reference. Hidden when bands are unset
+  // (luld undefined or upperBand == 0n) — the chart looks identical to
+  // pre-LULD in that case.
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series) return;
+
+    const clear = () => {
+      if (upperBandRef.current) {
+        series.removePriceLine(upperBandRef.current);
+        upperBandRef.current = null;
+      }
+      if (lowerBandRef.current) {
+        series.removePriceLine(lowerBandRef.current);
+        lowerBandRef.current = null;
+      }
+      if (refLineRef.current) {
+        series.removePriceLine(refLineRef.current);
+        refLineRef.current = null;
+      }
+    };
+
+    clear();
+    if (!luld || luld.upperBand <= 0n || luld.lowerBand <= 0n) {
+      return;
+    }
+    upperBandRef.current = series.createPriceLine({
+      price: priceToNumber(luld.upperBand),
+      color: "#fbbf24",
+      lineStyle: LineStyle.Dashed,
+      lineWidth: 1,
+      axisLabelVisible: true,
+      title: "LULD ▲",
+    });
+    lowerBandRef.current = series.createPriceLine({
+      price: priceToNumber(luld.lowerBand),
+      color: "#fbbf24",
+      lineStyle: LineStyle.Dashed,
+      lineWidth: 1,
+      axisLabelVisible: true,
+      title: "LULD ▼",
+    });
+    if (luld.referencePrice > 0n) {
+      refLineRef.current = series.createPriceLine({
+        price: priceToNumber(luld.referencePrice),
+        color: "rgba(251, 191, 36, 0.4)",
+        lineStyle: LineStyle.Dotted,
+        lineWidth: 1,
+        axisLabelVisible: false,
+        title: "ref",
+      });
+    }
+  }, [
+    luld?.upperBand,
+    luld?.lowerBand,
+    luld?.referencePrice,
+  ]);
 
   return (
     <Box>
