@@ -150,6 +150,39 @@ func TestReactor_EvaluateExpiry_NoOpBeforeDeadline(t *testing.T) {
 	assert.Equal(t, orderbook.PhaseLimitState, book.Phase)
 }
 
+// TestReactor_EvaluateExpiry_HaltReopen: once a halt's ReopenAt has
+// passed, the reactor opens a halt-reopen auction, uncrosses it, and
+// the symbol returns to PhaseContinuous. The Uncross emits
+// TradingResumed (with HALT_REOPEN cross type) which clears the halt
+// timers and arms LULDRearmAt.
+func TestReactor_EvaluateExpiry_HaltReopen(t *testing.T) {
+	e := newEnv(t, stubReference{price: 1500000, ok: true})
+	now := time.Now()
+
+	// Seed: trip + escalate to halt with ReopenAt in the past.
+	require.NoError(t, seedAsk(t, e, "AAPL", 1580000, 100))
+	require.NoError(t, seedTrippedLimitState(t, e, "AAPL", 1500000, now))
+	require.NoError(t, e.reactor.EvaluateLULDExpiry(e.ctx, "AAPL",
+		now.Add(orderbook.LULDLimitStateGrace).Add(1*time.Second)))
+
+	book, err := e.obHandler.Load(e.ctx, orderbook.AggregateID("AAPL"))
+	require.NoError(t, err)
+	require.Equal(t, orderbook.PhaseHalted, book.Phase)
+	reopen := book.LULDReopenAt
+	require.False(t, reopen.IsZero())
+
+	// Advance past reopen — reactor should fire the halt-reopen auction.
+	require.NoError(t, e.reactor.EvaluateLULDExpiry(e.ctx, "AAPL",
+		reopen.Add(1*time.Second)))
+
+	book, err = e.obHandler.Load(e.ctx, orderbook.AggregateID("AAPL"))
+	require.NoError(t, err)
+	assert.Equal(t, orderbook.PhaseContinuous, book.Phase, "symbol should be back in continuous trading")
+	assert.True(t, book.LULDHaltStartedAt.IsZero(), "halt timer should clear")
+	assert.True(t, book.LULDReopenAt.IsZero(), "reopen timer should clear")
+	assert.False(t, book.LULDRearmAt.IsZero(), "rearm window should be armed")
+}
+
 // TestActiveSymbols_Lifecycle verifies the watch set tracks
 // LimitStateEntered → LimitStateExited and LimitStateEntered →
 // TradingHalted → TradingResumed.

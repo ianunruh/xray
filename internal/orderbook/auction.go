@@ -47,13 +47,15 @@ func (c Uncross) AggregateID() string {
 }
 
 // ExecuteOpenAuction emits a MarketPhaseChanged(AUCTION) event. Valid
-// only from CONTINUOUS or CLOSED — calling while already in an auction
-// returns ErrAlreadyInAuction.
+// from CONTINUOUS, CLOSED, or HALTED — calling while already in an
+// auction returns ErrAlreadyInAuction. The HALTED path is the
+// LULD halt-reopen entry point; the subsequent Uncross emits a
+// TradingResumed marker (see ExecuteUncross).
 func ExecuteOpenAuction(book *OrderBook, cmd OpenAuction) ([]es.Event, error) {
 	switch book.Phase {
 	case PhaseAuction, PhaseClosingAuction:
 		return nil, ErrAlreadyInAuction
-	case PhaseContinuous, PhaseClosed:
+	case PhaseContinuous, PhaseClosed, PhaseHalted:
 		// ok
 	default:
 		return nil, ErrCannotOpenAuction
@@ -114,14 +116,26 @@ func ExecuteBeginClosingAuction(book *OrderBook, cmd BeginClosingAuction) ([]es.
 
 // ExecuteUncross runs the auction uncross. From AUCTION, it produces
 // opening-cross trades and flips to CONTINUOUS; from CLOSING_AUCTION
-// it produces closing-cross trades and flips to CLOSED.
+// it produces closing-cross trades and flips to CLOSED. When the
+// auction was a halt-reopen (LULDHaltStartedAt is non-zero), the
+// cross is tagged CROSS_TYPE_HALT_REOPEN and a TradingResumed marker
+// is appended after the phase change — that marker clears the halt
+// timer fields and arms LULDRearmAt (a brief window during which the
+// matcher does not enforce LULD bands so the reopening prints can
+// settle).
 func ExecuteUncross(book *OrderBook, cmd Uncross) ([]es.Event, error) {
 	var ct CrossType
 	var nextPhase MarketPhase
+	isHaltReopen := false
 
 	switch book.Phase {
 	case PhaseAuction:
-		ct = CrossOpening
+		if !book.LULDHaltStartedAt.IsZero() {
+			ct = CrossHaltReopen
+			isHaltReopen = true
+		} else {
+			ct = CrossOpening
+		}
 		nextPhase = PhaseContinuous
 	case PhaseClosingAuction:
 		ct = CrossClosing
@@ -133,6 +147,10 @@ func ExecuteUncross(book *OrderBook, cmd Uncross) ([]es.Event, error) {
 	now := time.Now()
 	events, res := uncross(book, ct, now)
 
+	phaseReason := "uncross_complete"
+	if isHaltReopen {
+		phaseReason = "halt_reopen_complete"
+	}
 	phaseEvt := es.Event{
 		AggregateID: book.AggregateID(),
 		Type:        EventMarketPhaseChanged,
@@ -140,7 +158,7 @@ func ExecuteUncross(book *OrderBook, cmd Uncross) ([]es.Event, error) {
 		Data: &orderbookv1.MarketPhaseChanged{
 			Symbol: book.Symbol,
 			Phase:  MarketPhaseToProto(nextPhase),
-			Reason: "uncross_complete",
+			Reason: phaseReason,
 			At:     timestamppb.New(now),
 		},
 	}
@@ -148,6 +166,23 @@ func ExecuteUncross(book *OrderBook, cmd Uncross) ([]es.Event, error) {
 		return nil, fmt.Errorf("apply phase changed: %w", err)
 	}
 	events = append(events, phaseEvt)
+
+	if isHaltReopen {
+		resumedEvt := es.Event{
+			AggregateID: book.AggregateID(),
+			Type:        EventTradingResumed,
+			Timestamp:   now,
+			Data: &orderbookv1.TradingResumed{
+				Symbol:    book.Symbol,
+				At:        timestamppb.New(now),
+				CrossType: CrossTypeToProto(CrossHaltReopen),
+			},
+		}
+		if err := book.Apply(resumedEvt); err != nil {
+			return nil, fmt.Errorf("apply trading resumed: %w", err)
+		}
+		events = append(events, resumedEvt)
+	}
 
 	// After an opening uncross, the clearing print may trigger pre-existing
 	// stops. After a closing uncross, the book is dead (PhaseClosed) so

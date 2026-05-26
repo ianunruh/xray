@@ -196,13 +196,26 @@ func (r *Reactor) EvaluateLULDExpiry(ctx context.Context, symbol string, now tim
 		return nil
 
 	case orderbook.PhaseHalted:
-		// The halt → reopen-auction transition lands in step 6 (needs
-		// ExecuteOpenAuction to accept PhaseHalted as a source). For
-		// now, just log if we're past the reopen deadline so the
-		// reconciler doesn't sit silent.
-		if !book.LULDReopenAt.IsZero() && now.After(book.LULDReopenAt) {
-			r.log.Warn("luld: halt reopen pending wiring", "symbol", symbol, "reopen_at", book.LULDReopenAt)
+		if book.LULDReopenAt.IsZero() || now.Before(book.LULDReopenAt) {
+			return nil
 		}
+		// Halt-reopen: open a one-shot auction from PhaseHalted, then
+		// immediately uncross. ExecuteUncross detects the halt-reopen
+		// case (LULDHaltStartedAt != 0) and emits a TradingResumed
+		// marker so projections, brokers, and the watch set can clear.
+		openCmd := orderbook.OpenAuction{Symbol: symbol, Reason: "halt_reopen"}
+		if err := r.orderbookHandler.Handle(ctx, openCmd, func(b *orderbook.OrderBook) ([]es.Event, error) {
+			return orderbook.ExecuteOpenAuction(b, openCmd)
+		}); err != nil {
+			return fmt.Errorf("open halt-reopen auction %s: %w", symbol, err)
+		}
+		uncCmd := orderbook.Uncross{Symbol: symbol}
+		if err := r.orderbookHandler.Handle(ctx, uncCmd, func(b *orderbook.OrderBook) ([]es.Event, error) {
+			return orderbook.ExecuteUncross(b, uncCmd)
+		}); err != nil {
+			return fmt.Errorf("uncross halt-reopen auction %s: %w", symbol, err)
+		}
+		r.log.Info("luld: halt reopened via auction", "symbol", symbol)
 		return nil
 	}
 	return nil

@@ -28,6 +28,7 @@ import (
 	"github.com/ianunruh/xray/internal/corpaction"
 	"github.com/ianunruh/xray/internal/diagnostics"
 	"github.com/ianunruh/xray/internal/feesaccruer"
+	"github.com/ianunruh/xray/internal/luld"
 	"github.com/ianunruh/xray/internal/margincall"
 	"github.com/ianunruh/xray/internal/metrics"
 	"github.com/ianunruh/xray/internal/ocosaga"
@@ -241,6 +242,23 @@ func main() {
 	marginReactor := margincall.NewReactor(portfolioHandler, orderSagaHandler, obHandler, shortsProjection, longsProjection, activeUserSagasProjection, markProjection, activeCallsProjection,
 		margincall.Config{Grace: 30 * time.Second}, log)
 
+	// LULD volatility moderator wiring. The reference projection is the
+	// rolling 5-minute VWAP of continuous trade prints; the watch set
+	// tracks symbols currently in LIMIT_STATE or HALTED so the
+	// reconciler can drive timer-based transitions. Static tier config
+	// for v1: AAPL/MSFT/GOOG are Tier 1 (±5%); everything else gets
+	// the ±10% default.
+	luldReference := orderbook.NewLULDReferenceProjection(5 * time.Minute)
+	luldActiveSymbols := luld.NewInMemoryActiveSymbols()
+	luldTiers := luld.NewTiers(map[string]int32{
+		"AAPL": 500,
+		"MSFT": 500,
+		"GOOG": 500,
+	}, 1000)
+	luldReactor := luld.NewReactor(obHandler, luldReference, luldActiveSymbols, luldTiers, luld.Config{
+		HaltDuration: 5 * time.Minute,
+	}, log)
+
 	snap := newSnapshotter(store, registry, log).WithMaxIdle(30 * time.Minute)
 
 	// One consumer per persistent projection so each one's cursor advances
@@ -249,7 +267,7 @@ func main() {
 	// state rebuilds from the start of the stream.
 	consumers := []*natsstore.ProjectionConsumer{
 		natsstore.NewProjectionConsumer(js, registry, log, "ephemeral").
-			WithEphemeral(depthProjection, statusProjection, candleProjection, markProjection, activeCallsProjection, accruableAccounts, broker),
+			WithEphemeral(depthProjection, statusProjection, candleProjection, markProjection, activeCallsProjection, accruableAccounts, broker, luldReference, luldActiveSymbols),
 		// shortsProjection MUST precede marginReactor here: the
 		// reactor queries the shorts table the projection writes,
 		// and the consumer dispatches projections in slice order
@@ -283,6 +301,14 @@ func main() {
 			WithReactor(),
 		natsstore.NewProjectionConsumer(js, registry, log, "twap-reactor").
 			WithPersistent(store, twapReactor).
+			WithReactor(),
+		// LULD reactor: watches continuous trades to update bands and
+		// the halt-reopen AuctionUncrossed to re-anchor after a halt.
+		// Time-based limit-state→halt and halt→reopen transitions are
+		// driven by the reconciler via EvaluateLULDExpiry, not by this
+		// consumer.
+		natsstore.NewProjectionConsumer(js, registry, log, "luld-reactor").
+			WithPersistent(store, luldReactor).
 			WithReactor(),
 		natsstore.NewProjectionConsumer(js, registry, log, "saga-projection").
 			WithPersistent(store, sagaProjection),
@@ -324,7 +350,7 @@ func main() {
 		projectionManager.Add(c)
 	}
 
-	rec := reconciler.New(30*time.Second, sagaProjection, tradeProjection, portfolioHandler, orderSagaReactor, bracketReactor, ocoSagaReactor, twapReactor, marginReactor, activeCallsProjection, log)
+	rec := reconciler.New(30*time.Second, sagaProjection, tradeProjection, portfolioHandler, orderSagaReactor, bracketReactor, ocoSagaReactor, twapReactor, marginReactor, activeCallsProjection, luldReactor, luldActiveSymbols, log)
 	go rec.Run(ctx)
 
 	accruer := feesaccruer.NewAccruer(portfolioHandler, accruableAccounts, markProjection, time.Now,

@@ -25,6 +25,7 @@ import (
 	orderbookv1 "github.com/ianunruh/xray/gen/orderbook/v1"
 	sagav1 "github.com/ianunruh/xray/gen/saga/v1"
 	"github.com/ianunruh/xray/internal/bracket"
+	"github.com/ianunruh/xray/internal/luld"
 	"github.com/ianunruh/xray/internal/margincall"
 	"github.com/ianunruh/xray/internal/ocosaga"
 	"github.com/ianunruh/xray/internal/ordersaga"
@@ -47,18 +48,20 @@ type SagaLookup interface {
 }
 
 type Reconciler struct {
-	interval         time.Duration
-	sagaLookup       SagaLookup
-	tradeLookup      TradeLookup
-	portfolioHandler *es.Handler[*portfolio.Portfolio]
-	orderSagaReactor *ordersaga.Reactor
-	bracketReactor   *bracket.Reactor
-	ocoSagaReactor   *ocosaga.Reactor
-	twapReactor      *twapsaga.Reactor
-	marginReactor    *margincall.Reactor
-	activeCalls      portfolio.ActiveMarginCallsTracker
-	now              func() time.Time
-	log              *slog.Logger
+	interval           time.Duration
+	sagaLookup         SagaLookup
+	tradeLookup        TradeLookup
+	portfolioHandler   *es.Handler[*portfolio.Portfolio]
+	orderSagaReactor   *ordersaga.Reactor
+	bracketReactor     *bracket.Reactor
+	ocoSagaReactor     *ocosaga.Reactor
+	twapReactor        *twapsaga.Reactor
+	marginReactor      *margincall.Reactor
+	activeCalls        portfolio.ActiveMarginCallsTracker
+	luldReactor        *luld.Reactor
+	luldActiveSymbols  luld.ActiveSymbolsTracker
+	now                func() time.Time
+	log                *slog.Logger
 
 	mu     sync.Mutex
 	status Status
@@ -72,6 +75,7 @@ type Status struct {
 	LastTickDuration             time.Duration
 	LastTickSagasReconciled      int
 	LastTickMarginCallsEvaluated int
+	LastTickLULDSymbolsEvaluated int
 	LastTickFailedSagas          int
 }
 
@@ -86,22 +90,26 @@ func New(
 	twapReactor *twapsaga.Reactor,
 	marginReactor *margincall.Reactor,
 	activeCalls portfolio.ActiveMarginCallsTracker,
+	luldReactor *luld.Reactor,
+	luldActiveSymbols luld.ActiveSymbolsTracker,
 	log *slog.Logger,
 ) *Reconciler {
 	return &Reconciler{
-		interval:         interval,
-		sagaLookup:       sagaLookup,
-		tradeLookup:      tradeLookup,
-		portfolioHandler: portfolioHandler,
-		orderSagaReactor: orderSagaReactor,
-		bracketReactor:   bracketReactor,
-		ocoSagaReactor:   ocoSagaReactor,
-		twapReactor:      twapReactor,
-		marginReactor:    marginReactor,
-		activeCalls:      activeCalls,
-		now:              time.Now,
-		log:              log,
-		status:           Status{Interval: interval},
+		interval:          interval,
+		sagaLookup:        sagaLookup,
+		tradeLookup:       tradeLookup,
+		portfolioHandler:  portfolioHandler,
+		orderSagaReactor:  orderSagaReactor,
+		bracketReactor:    bracketReactor,
+		ocoSagaReactor:    ocoSagaReactor,
+		twapReactor:       twapReactor,
+		marginReactor:     marginReactor,
+		activeCalls:       activeCalls,
+		luldReactor:       luldReactor,
+		luldActiveSymbols: luldActiveSymbols,
+		now:               time.Now,
+		log:               log,
+		status:            Status{Interval: interval},
 	}
 }
 
@@ -150,18 +158,39 @@ func (r *Reconciler) ReconcileOnce(ctx context.Context) error {
 		}
 	}
 	callsEvaluated := r.reconcileMarginCalls(ctx)
-	r.recordTick(start, len(sagas), callsEvaluated, failedSagas)
+	luldEvaluated := r.reconcileLULD(ctx)
+	r.recordTick(start, len(sagas), callsEvaluated, luldEvaluated, failedSagas)
 	return nil
 }
 
-func (r *Reconciler) recordTick(start time.Time, sagas, callsEvaluated, failed int) {
+func (r *Reconciler) recordTick(start time.Time, sagas, callsEvaluated, luldEvaluated, failed int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.status.LastTickAt = start
 	r.status.LastTickDuration = r.now().Sub(start)
 	r.status.LastTickSagasReconciled = sagas
 	r.status.LastTickMarginCallsEvaluated = callsEvaluated
+	r.status.LastTickLULDSymbolsEvaluated = luldEvaluated
 	r.status.LastTickFailedSagas = failed
+}
+
+// reconcileLULD iterates symbols currently in PhaseLimitState or
+// PhaseHalted and lets the LULD reactor drive the time-based
+// transitions (limit-state grace expiry, halt reopen). Idempotent
+// per-symbol; safe to skip when wiring isn't present.
+func (r *Reconciler) reconcileLULD(ctx context.Context) int {
+	if r.luldReactor == nil || r.luldActiveSymbols == nil {
+		return 0
+	}
+	now := r.now()
+	symbols := r.luldActiveSymbols.ListActiveSymbols(ctx)
+	for _, s := range symbols {
+		if err := r.luldReactor.EvaluateLULDExpiry(ctx, s.Symbol, now); err != nil {
+			r.log.Warn("reconcile luld failed",
+				"symbol", s.Symbol, "kind", s.Kind, "error", err)
+		}
+	}
+	return len(symbols)
 }
 
 func (r *Reconciler) reconcileMarginCalls(ctx context.Context) int {
