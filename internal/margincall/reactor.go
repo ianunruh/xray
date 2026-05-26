@@ -398,6 +398,23 @@ func (r *Reactor) spawnLiquidation(ctx context.Context, accountID, triggerID, ca
 		qty = capQty(needed, available)
 	}
 
+	// Defer liquidation when the target symbol is halted or in an
+	// LULD limit state — no order can rest while halted and a
+	// market-IOC would be cancel-on-arrival. The reconciler's
+	// time-bucketed retry (see EvaluateGraceExpiry) picks this up on
+	// the next pass once the symbol returns to continuous trading.
+	if book, err := r.orderbookHandler.Load(ctx, orderbook.AggregateID(symbol)); err != nil {
+		// Logging only — don't block the liquidation on an orderbook
+		// load failure. Worst case the saga reactor will reject the
+		// IOC with a phase error and we retry.
+		r.log.Warn("margincall: failed to inspect orderbook phase, proceeding",
+			"symbol", symbol, "error", err)
+	} else if book.Phase == orderbook.PhaseHalted || book.Phase == orderbook.PhaseLimitState {
+		r.log.Info("margincall: deferring liquidation, symbol not tradable",
+			"symbol", symbol, "phase", book.Phase, "account_id", accountID)
+		return nil
+	}
+
 	sagaID := fmt.Sprintf("liquidation:%s:%s", accountID, triggerID)
 	cmd := ordersaga.StartOrderSaga{
 		SagaID:       sagaID,

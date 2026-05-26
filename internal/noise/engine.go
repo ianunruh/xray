@@ -161,6 +161,14 @@ func (e *Engine) placeRandomOrder(ctx context.Context) {
 		e.log.Debug("closing auction active, skipping order")
 		return
 	}
+	// LULD halt / limit-state: skip the cycle entirely. New orders
+	// would either be rejected (halt) or be hemmed in by a band the
+	// noise bot ignores (limit-state).
+	if e.phase.IsHalted() || e.phase.IsLimitState() {
+		e.log.Debug("symbol halted or in limit state, skipping order",
+			"phase", e.phase.Phase())
+		return
+	}
 	rollMarket := !e.phase.IsAuction() && rand.Float64() < e.cfg.MarketOrderPct
 	if rollMarket {
 		orderType = orderbookv1.OrderType_ORDER_TYPE_MARKET

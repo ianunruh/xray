@@ -21,6 +21,14 @@ import (
 	"github.com/ianunruh/xray/pkg/es/memstore"
 )
 
+// fakeOBCmd injects a hand-crafted event via the handler in tests
+// without defining a real command type. The execute callback that
+// uses this MUST apply the event to the in-memory aggregate before
+// returning it, or the handler cache stays stale.
+type fakeOBCmd struct{ symbol string }
+
+func (c *fakeOBCmd) AggregateID() string { return orderbook.AggregateID(c.symbol) }
+
 type collectingPublisher struct {
 	events []es.Event // queue drained each batch
 	all    []es.Event // never cleared; used by integration tests for replay
@@ -214,6 +222,50 @@ func TestReactor_TradeBreach_IssuesCallAndSpawnsLiquidation(t *testing.T) {
 	assert.Equal(t, int64(69), saga.Quantity)
 	assert.Equal(t, orderbookv1.PositionSide_POSITION_SIDE_SHORT, saga.PositionSide)
 	assert.Equal(t, orderbook.Buy, saga.Side)
+}
+
+// TestReactor_DefersLiquidationOnHaltedSymbol verifies the margin
+// reactor does NOT spawn a liquidation saga while the target symbol
+// is in PhaseHalted (no order can rest, market IOCs would be
+// cancel-on-arrival). Once the symbol returns to PhaseContinuous the
+// reconciler's grace-bucketed retry path picks it up.
+func TestReactor_DefersLiquidationOnHaltedSymbol(t *testing.T) {
+	e := newEnv(t)
+
+	// Halt AAPL on the orderbook BEFORE the breach so spawnLiquidation
+	// sees PhaseHalted when it inspects the book.
+	haltCmd := orderbook.PlaceOrder{} // unused
+	_ = haltCmd
+	require.NoError(t, e.obHandler.Handle(e.ctx, &fakeOBCmd{symbol: "AAPL"}, func(b *orderbook.OrderBook) ([]es.Event, error) {
+		evt := es.Event{
+			Type:      orderbook.EventTradingHalted,
+			Timestamp: time.Now(),
+			Data: &orderbookv1.TradingHalted{
+				Symbol:   "AAPL",
+				Reason:   "luld_limit_state_expired",
+				At:       timestamppb.Now(),
+				ReopenAt: timestamppb.New(time.Now().Add(5 * time.Minute)),
+			},
+		}
+		if err := b.Apply(evt); err != nil {
+			return nil, err
+		}
+		return []es.Event{evt}, nil
+	}))
+
+	seedShort(t, e, "acct-1", "AAPL", 100, 1_500_000, 75_000_000)
+	e.flush()
+
+	fireTrade(t, e, "AAPL", "trade-halted", 8_000_000)
+
+	// The breach should issue the call (that's a portfolio update, not
+	// a symbol order). But the liquidation saga should be deferred.
+	p := loadPortfolio(t, e, "acct-1")
+	require.NotNil(t, p.ActiveMarginCall, "margin call must still issue on breach")
+
+	saga, err := e.orderSagaHandler.Load(e.ctx, ordersaga.AggregateID("liquidation:acct-1:trade-halted"))
+	require.NoError(t, err)
+	assert.Equal(t, 0, saga.Version(), "no liquidation saga should be spawned against halted symbol")
 }
 
 func TestReactor_TradeBreach_LiquidatesPartialOnlyForSmallBreach(t *testing.T) {

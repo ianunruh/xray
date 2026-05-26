@@ -56,6 +56,26 @@ func (pw *PhaseWatcher) IsAuction() bool {
 		p == orderbookv1.MarketPhase_MARKET_PHASE_CLOSING_AUCTION
 }
 
+// IsHalted reports whether the symbol is in a full LULD trading halt —
+// every new order is rejected until a reopening auction completes.
+func (pw *PhaseWatcher) IsHalted() bool {
+	return pw.Phase() == orderbookv1.MarketPhase_MARKET_PHASE_HALTED
+}
+
+// IsLimitState reports whether the symbol is in an LULD limit state —
+// limits can rest at-or-better than the band but through-the-band
+// orders are rejected.
+func (pw *PhaseWatcher) IsLimitState() bool {
+	return pw.Phase() == orderbookv1.MarketPhase_MARKET_PHASE_LIMIT_STATE
+}
+
+// CanTrade reports whether the bot can quote / cross / place orders
+// right now. False during auctions, halts, limit states, and after
+// close. Used by mm/noise/trend to short-circuit their cycle.
+func (pw *PhaseWatcher) CanTrade() bool {
+	return pw.IsContinuous()
+}
+
 // Watch blocks until ctx is cancelled, polling GetOrderBook on the
 // given interval. It seeds an immediate poll before starting the timer.
 func (pw *PhaseWatcher) Watch(
