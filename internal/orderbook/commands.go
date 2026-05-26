@@ -823,6 +823,156 @@ func ExecuteReplaceOrder(book *OrderBook, cmd ReplaceOrder) ([]es.Event, error) 
 	return events, nil
 }
 
+// SetLULDBands is the LULD reactor's command to (re)stamp the active
+// price bands on the orderbook aggregate. No-op when the supplied
+// values already match what's on the aggregate — so the reactor can
+// debounce-by-emitting on every trade without spamming the event log.
+type SetLULDBands struct {
+	Symbol         string
+	ReferencePrice int64
+	UpperBand      int64
+	LowerBand      int64
+	BandBps        int32
+	Reason         string
+}
+
+func (c SetLULDBands) AggregateID() string { return AggregateID(c.Symbol) }
+
+// ExecuteSetLULDBands emits LULDBandsSet when the new values differ
+// from the current aggregate state. Returns (nil, nil) on no-op.
+func ExecuteSetLULDBands(book *OrderBook, cmd SetLULDBands) ([]es.Event, error) {
+	if cmd.UpperBand <= 0 || cmd.LowerBand <= 0 || cmd.LowerBand >= cmd.UpperBand {
+		return nil, fmt.Errorf("invalid LULD bands: lower=%d upper=%d", cmd.LowerBand, cmd.UpperBand)
+	}
+	// No-op when bands haven't shifted by at least one tick — keeps
+	// the event log clean during steady-state trading.
+	if cmd.ReferencePrice == book.LULDReferencePrice &&
+		cmd.UpperBand == book.LULDUpperBand &&
+		cmd.LowerBand == book.LULDLowerBand &&
+		cmd.BandBps == book.LULDBandBps {
+		return nil, nil
+	}
+	now := time.Now()
+	reason := cmd.Reason
+	if reason == "" {
+		reason = "reference_update"
+	}
+	evt := es.Event{
+		AggregateID: book.AggregateID(),
+		Type:        EventLULDBandsSet,
+		Timestamp:   now,
+		Data: &orderbookv1.LULDBandsSet{
+			Symbol:         cmd.Symbol,
+			ReferencePrice: cmd.ReferencePrice,
+			UpperBand:      cmd.UpperBand,
+			LowerBand:      cmd.LowerBand,
+			BandBps:        cmd.BandBps,
+			Reason:         reason,
+			At:             timestamppb.New(now),
+		},
+	}
+	if err := book.Apply(evt); err != nil {
+		return nil, err
+	}
+	return []es.Event{evt}, nil
+}
+
+// ResumeFromLULDLimitState is the LULD reactor's "price returned to
+// band" command — at grace expiry the top of book sits inside the
+// bands again, so we lift the limit state and return to continuous
+// matching. Emits LULDLimitStateExited(reason="price_returned_in_band")
+// followed by MarketPhaseChanged(CONTINUOUS, reason="luld_recovery").
+// No-op when the phase isn't LimitState (idempotent across replays).
+type ResumeFromLULDLimitState struct {
+	Symbol string
+}
+
+func (c ResumeFromLULDLimitState) AggregateID() string { return AggregateID(c.Symbol) }
+
+func ExecuteResumeFromLULDLimitState(book *OrderBook, cmd ResumeFromLULDLimitState) ([]es.Event, error) {
+	if book.Phase != PhaseLimitState {
+		return nil, nil
+	}
+	now := time.Now()
+	exited := es.Event{
+		AggregateID: book.AggregateID(),
+		Type:        EventLULDLimitStateExited,
+		Timestamp:   now,
+		Data: &orderbookv1.LULDLimitStateExited{
+			Symbol: cmd.Symbol,
+			Reason: "price_returned_in_band",
+			At:     timestamppb.New(now),
+		},
+	}
+	if err := book.Apply(exited); err != nil {
+		return nil, err
+	}
+	phaseChanged := es.Event{
+		AggregateID: book.AggregateID(),
+		Type:        EventMarketPhaseChanged,
+		Timestamp:   now,
+		Data: &orderbookv1.MarketPhaseChanged{
+			Symbol: cmd.Symbol,
+			Phase:  orderbookv1.MarketPhase_MARKET_PHASE_CONTINUOUS,
+			Reason: "luld_recovery",
+			At:     timestamppb.New(now),
+		},
+	}
+	if err := book.Apply(phaseChanged); err != nil {
+		return nil, err
+	}
+	return []es.Event{exited, phaseChanged}, nil
+}
+
+// EscalateLULDToHalt escalates a limit-state pin to a full halt at
+// grace expiry. Emits LULDLimitStateExited(reason="halt_triggered")
+// followed by TradingHalted with the supplied reopen-at timestamp.
+// No-op when the phase isn't LimitState.
+type EscalateLULDToHalt struct {
+	Symbol   string
+	ReopenAt time.Time
+}
+
+func (c EscalateLULDToHalt) AggregateID() string { return AggregateID(c.Symbol) }
+
+func ExecuteEscalateLULDToHalt(book *OrderBook, cmd EscalateLULDToHalt) ([]es.Event, error) {
+	if book.Phase != PhaseLimitState {
+		return nil, nil
+	}
+	if cmd.ReopenAt.IsZero() {
+		return nil, errors.New("reopen_at required")
+	}
+	now := time.Now()
+	exited := es.Event{
+		AggregateID: book.AggregateID(),
+		Type:        EventLULDLimitStateExited,
+		Timestamp:   now,
+		Data: &orderbookv1.LULDLimitStateExited{
+			Symbol: cmd.Symbol,
+			Reason: "halt_triggered",
+			At:     timestamppb.New(now),
+		},
+	}
+	if err := book.Apply(exited); err != nil {
+		return nil, err
+	}
+	halted := es.Event{
+		AggregateID: book.AggregateID(),
+		Type:        EventTradingHalted,
+		Timestamp:   now,
+		Data: &orderbookv1.TradingHalted{
+			Symbol:   cmd.Symbol,
+			Reason:   "luld_limit_state_expired",
+			At:       timestamppb.New(now),
+			ReopenAt: timestamppb.New(cmd.ReopenAt),
+		},
+	}
+	if err := book.Apply(halted); err != nil {
+		return nil, err
+	}
+	return []es.Event{exited, halted}, nil
+}
+
 // MarkRenamed permanently terminates this orderbook's order-accepting
 // life. Called by the corporate-action coordinator on a SYMBOL_CHANGE
 // action after open orders have been cancelled. Idempotent: re-issuing

@@ -235,6 +235,28 @@ const LULDPostReopenRearm = 30 * time.Second
 // when issuing follow-up commands so the two stay in sync.
 const LULDLimitStateGrace = 15 * time.Second
 
+// LULDSpreadInBand reports whether both sides of the current top of
+// book are inside the active LULD bands. Used by the LULD reactor to
+// decide, at limit-state grace expiry, whether to recover to
+// CONTINUOUS or escalate to HALTED.
+//
+// "In band" means: best ask <= upper band (no ask pricing through the
+// upper edge) AND best bid >= lower band (no bid pricing through the
+// lower edge). A side with no resting orders does not block recovery —
+// it just means no pressure on that side.
+func (ob *OrderBook) LULDSpreadInBand() bool {
+	if ob.LULDUpperBand <= 0 {
+		return true
+	}
+	if ask := ob.Asks.BestPrice(); ask > 0 && ask > ob.LULDUpperBand {
+		return false
+	}
+	if bid := ob.Bids.BestPrice(); bid > 0 && bid < ob.LULDLowerBand {
+		return false
+	}
+	return true
+}
+
 func (ob *OrderBook) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 	ob.Symbol = data.Symbol
 
