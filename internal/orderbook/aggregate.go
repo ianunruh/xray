@@ -229,6 +229,12 @@ func (ob *OrderBook) Apply(evt es.Event) error {
 // discovery space to settle before the moderator re-arms.
 const LULDPostReopenRearm = 30 * time.Second
 
+// LULDLimitStateGrace is the deadline stamped on LULDLimitStateEntered:
+// if the symbol is still in limit state at trip-time + grace, the
+// reactor escalates to a hard halt. The reactor reads this constant
+// when issuing follow-up commands so the two stay in sync.
+const LULDLimitStateGrace = 15 * time.Second
+
 func (ob *OrderBook) applyOrderPlaced(data *orderbookv1.OrderPlaced) {
 	ob.Symbol = data.Symbol
 

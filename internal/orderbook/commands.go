@@ -350,6 +350,15 @@ func matchAndAppend(book *OrderBook, incoming *Order, events []es.Event, now tim
 		result := Match(book, incoming, now)
 		replenished := false
 		for _, trade := range result.Trades {
+			// LULD trip check — done before the trade is applied so
+			// the would-be print is dropped, not reversed. Earlier
+			// in-band trades in the same match cycle stand: real LULD
+			// trips on the first through-band print, not retroactively.
+			if shouldTripLULD(book, trade.Price, now) {
+				events = tripLULDLimitState(book, incoming, trade.Price, events, now)
+				return events, false
+			}
+
 			restingID := trade.BuyOrderId
 			if restingID == incoming.ID {
 				restingID = trade.SellOrderId
@@ -388,6 +397,54 @@ func matchAndAppend(book *OrderBook, incoming *Order, events []es.Event, now tim
 			return events, false
 		}
 	}
+}
+
+// shouldTripLULD reports whether a would-be trade at `price` should
+// trip LULD limit state. Trips require bands to be set, the symbol to
+// be in continuous matching (we never trip from inside an auction or
+// an existing limit-state/halt), and the post-reopen re-arm grace to
+// have elapsed.
+func shouldTripLULD(book *OrderBook, price int64, now time.Time) bool {
+	if book.LULDUpperBand <= 0 {
+		return false
+	}
+	if book.Phase != PhaseContinuous {
+		return false
+	}
+	if !book.LULDRearmAt.IsZero() && now.Before(book.LULDRearmAt) {
+		return false
+	}
+	return price > book.LULDUpperBand || price < book.LULDLowerBand
+}
+
+// tripLULDLimitState emits LULDLimitStateEntered, applies it to flip
+// Phase to LimitState, and cancels the aggressor's remaining qty with
+// reason "luld_band". Earlier trades in the same match cycle have
+// already been appended; this halts further matching for the cycle.
+func tripLULDLimitState(book *OrderBook, incoming *Order, tradePrice int64, events []es.Event, now time.Time) []es.Event {
+	bandSide := Buy
+	bandPrice := book.LULDUpperBand
+	if tradePrice < book.LULDLowerBand {
+		bandSide = Sell
+		bandPrice = book.LULDLowerBand
+	}
+	enterEvt := es.Event{
+		AggregateID: book.AggregateID(),
+		Type:        EventLULDLimitStateEntered,
+		Timestamp:   now,
+		Data: &orderbookv1.LULDLimitStateEntered{
+			Symbol:         book.Symbol,
+			BandSide:       SideToProto(bandSide),
+			BandPrice:      bandPrice,
+			TriggerOrderId: incoming.ID,
+			At:             timestamppb.New(now),
+			HaltDeadline:   timestamppb.New(now.Add(LULDLimitStateGrace)),
+		},
+	}
+	book.Apply(enterEvt)
+	events = append(events, enterEvt)
+	events = cancelUnfilled(book, incoming, events, now, "luld_band")
+	return events
 }
 
 func makeIcebergReplenish(book *OrderBook, order *Order, now time.Time) es.Event {
