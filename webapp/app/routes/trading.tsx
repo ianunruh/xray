@@ -382,6 +382,24 @@ export async function action({
         await sagaClient.cancel({ sagaId });
         return { ok: true, intent };
       }
+      case "cancel-all-orders": {
+        const sagaIds = String(form.get("sagaIds") ?? "")
+          .split(",")
+          .filter(Boolean);
+        if (sagaIds.length === 0) return { ok: true, intent };
+        const results = await Promise.allSettled(
+          sagaIds.map((sagaId) => sagaClient.cancel({ sagaId })),
+        );
+        const failed = results.filter((r) => r.status === "rejected").length;
+        if (failed > 0) {
+          return {
+            ok: false,
+            intent,
+            error: `${failed} of ${sagaIds.length} orders failed to cancel`,
+          };
+        }
+        return { ok: true, intent };
+      }
       case "preview-impact": {
         // Server-side preview of buying-power / margin impact before the
         // user commits an order. Fired by the OrderForm on every

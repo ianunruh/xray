@@ -1069,13 +1069,17 @@ export function PortfolioOrders({
     fetcher.formData?.get("intent") === "cancel-saga"
       ? String(fetcher.formData.get("sagaId") ?? "")
       : null;
+  const cancellingAll =
+    fetcher.state !== "idle" &&
+    fetcher.formData?.get("intent") === "cancel-all-orders";
 
   useEffect(() => {
     if (fetcher.state !== "idle" || !fetcher.data) return;
     const data = fetcher.data;
+    const many = data.intent === "cancel-all-orders";
     if (data.ok) {
       notifications.show({
-        title: "Order cancelled",
+        title: many ? "Orders cancelled" : "Order cancelled",
         message: "",
         color: "green",
       });
@@ -1092,6 +1096,13 @@ export function PortfolioOrders({
     const fd = new FormData();
     fd.set("intent", "cancel-saga");
     fd.set("sagaId", sagaId);
+    fetcher.submit(fd, { method: "post", action: "/trading" });
+  }
+
+  function handleCancelAll(sagaIds: string[]) {
+    const fd = new FormData();
+    fd.set("intent", "cancel-all-orders");
+    fd.set("sagaIds", sagaIds.join(","));
     fetcher.submit(fd, { method: "post", action: "/trading" });
   }
 
@@ -1187,7 +1198,20 @@ export function PortfolioOrders({
       <Stack gap="sm">
         {activeOrders.length > 0 && (
           <>
-            <Title order={6}>Pending Orders</Title>
+            <Group justify="space-between">
+              <Title order={6}>Pending Orders</Title>
+              <Button
+                size="xs"
+                variant="light"
+                color="red"
+                loading={cancellingAll}
+                onClick={() =>
+                  handleCancelAll(activeOrders.map((o) => o.sagaId))
+                }
+              >
+                Cancel all
+              </Button>
+            </Group>
             <Table striped highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
