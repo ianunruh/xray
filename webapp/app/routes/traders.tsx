@@ -34,6 +34,7 @@ import {
   formFromTrader,
   symbolOf,
   typeLabel,
+  withName,
 } from "~/lib/traderForm";
 import {
   TraderStatus,
@@ -468,7 +469,7 @@ export default function Traders({ loaderData }: Route.ComponentProps) {
               placeholder="e.g. mm-AAPL"
               value={form.name}
               onChange={(e) =>
-                setForm({ ...form, name: e.currentTarget.value })
+                setForm(withName(form, e.currentTarget.value))
               }
               required
             />

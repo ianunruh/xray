@@ -51,7 +51,7 @@ export function emptyForm(): FormState {
     name: "",
     type: TraderType.MM,
     mm: {
-      symbol: "",
+      symbol: "AAPL",
       accountId: "",
       initialDeposit: 10_000_000,
       initialShares: 10_000,
@@ -65,7 +65,7 @@ export function emptyForm(): FormState {
       maxSkew: 1.0,
     },
     noise: {
-      symbol: "",
+      symbol: "AAPL",
       accountId: "",
       initialDeposit: 500_000,
       initialShares: 500,
@@ -80,6 +80,18 @@ export function emptyForm(): FormState {
       orderTimeoutMs: 300_000,
     },
   };
+}
+
+// withName updates the form's name. The active config's accountId follows the
+// name by default, staying in sync until the user edits the accountId directly
+// (i.e. while it is still blank or equal to the previous name).
+export function withName(form: FormState, name: string): FormState {
+  const follow = (accountId: string) =>
+    accountId === "" || accountId === form.name ? name : accountId;
+  if (form.type === TraderType.MM) {
+    return { ...form, name, mm: { ...form.mm, accountId: follow(form.mm.accountId) } };
+  }
+  return { ...form, name, noise: { ...form.noise, accountId: follow(form.noise.accountId) } };
 }
 
 export function mmFromProto(c: MMConfig): MMFormFields {
